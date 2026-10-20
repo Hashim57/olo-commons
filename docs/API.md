@@ -28,7 +28,7 @@ Response:
 }
 ```
 
-Limits: 120 requests per hour per address; 3000 with a partner key sent as `x-olo-key`. A 429 carries `Retry-After`.
+Limits: 120 requests per hour per address; 3,000 with a partner key sent as `x-olo-key`. Helius Citizens (heliusnetwork.app/citizen) get a key on their profile; partner keys are also issued by hand. A 429 carries `Retry-After`.
 
 ## Direct SQL functions (anon key)
 

@@ -43,7 +43,9 @@ Deno.serve(async (req) => {
 
   // rate limit by hashed address (never the raw address), higher for keyed partners
   const keys = (Deno.env.get('OLO_API_KEYS') || '').split(',').map(s => s.trim()).filter(Boolean);
-  const keyed = keys.length > 0 && keys.includes(req.headers.get('x-olo-key') || '');
+  const hdrKey = req.headers.get('x-olo-key') || '';
+  let keyed = keys.length > 0 && keys.includes(hdrKey);
+  if (!keyed && hdrKey.startsWith('olo_')) { const { data } = await sb.rpc('olo_key_valid', { p_key: hdrKey }); keyed = data === true; }
   const ip = (req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown').split(',')[0].trim();
   const ipHash = (await sha256(ip + '|' + (Deno.env.get('OLO_SALT') || 'olo') + '|' + new Date().toISOString().slice(0, 10))).slice(0, 32);
   const { count } = await sb.from('olo_query_log').select('id', { count: 'exact', head: true }).eq('ip_hash', ipHash).gt('at', new Date(Date.now() - 3600e3).toISOString());

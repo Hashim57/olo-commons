@@ -289,12 +289,14 @@ begin
   );
 end $$;
 revoke execute on function public.run_olo_ingest() from public, anon, authenticated;
+grant execute on function public.run_olo_ingest() to service_role;
 create or replace function public.olo_snapshot() returns void language sql security definer set search_path = public as $$
   insert into public.olo_daily (day, atoms, links, sources, queries)
   values (current_date, (select count(*) from public.olo_atoms), (select count(*) from public.olo_links), (select count(*) from public.olo_sources where enabled), (select count(*) from public.olo_query_log where at::date = current_date))
   on conflict (day) do update set atoms = excluded.atoms, links = excluded.links, sources = excluded.sources, queries = excluded.queries;
 $$;
 revoke execute on function public.olo_snapshot() from public, anon, authenticated;
+grant execute on function public.olo_snapshot() to service_role;
 do $$ begin perform cron.unschedule('olo_ingest_hourly'); exception when others then null; end $$;
 do $$ begin perform cron.unschedule('olo_snapshot_daily'); exception when others then null; end $$;
 select cron.schedule('olo_ingest_hourly', '15 * * * *', $$ select public.run_olo_ingest(); $$);
