@@ -104,10 +104,25 @@ function quality(c: Candidate, trust: number) {
   return Math.max(0, Math.min(100, Math.round(q)));
 }
 
+// Only the service role may call this. The bearer is accepted when it equals the
+// key injected into this function, or when it passes a real admin call against
+// the project (which only a service key can). That keeps the cron working across
+// key rotations and the legacy-JWT / sb_secret changeover, without trusting the
+// caller's say-so.
+async function isServiceCaller(req: Request, supabaseUrl: string, serviceKey: string) {
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim();
+  if (!token || token.length < 32) return false;
+  if (token === serviceKey) return true;
+  try {
+    const r = await fetch(`${supabaseUrl}/auth/v1/admin/users?per_page=1`, { headers: { apikey: token, Authorization: `Bearer ${token}` } });
+    return r.status === 200;
+  } catch { return false; }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!, serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  if ((req.headers.get('Authorization') || '') !== `Bearer ${serviceKey}`) return json({ error: 'forbidden' }, 403);
+  if (!(await isServiceCaller(req, supabaseUrl, serviceKey))) return json({ error: 'forbidden' }, 403);
   const body = await req.json().catch(() => ({}));
   const budget = Math.max(5, Math.min(Number(body.budget) || 40, 120));
   const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
