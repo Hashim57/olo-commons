@@ -280,12 +280,16 @@ grant select on public.olo_projects_public to anon, authenticated, service_role;
 create or replace function public.run_olo_ingest() returns void language plpgsql security definer set search_path = public, vault, extensions as $$
 declare svc_key text;
 begin
+  -- Close any run the Edge runtime cut off (its per-atom checkpoints keep the counts accurate).
+  update public.olo_ingest_runs set finished_at = now(), note = coalesce(note, '') || ' (closed: cut off by runtime)'
+   where finished_at is null and started_at < now() - interval '5 minutes';
   select decrypted_secret into svc_key from vault.decrypted_secrets where name = 'service_role_key' limit 1;
   if svc_key is null then return; end if;
   perform net.http_post(
     url := 'https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-ingest',
     headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', 'Bearer ' || svc_key),
-    body := jsonb_build_object('source', 'cron', 'budget', 40)
+    body := jsonb_build_object('source', 'cron', 'budget', 8),
+    timeout_milliseconds := 60000
   );
 end $$;
 revoke execute on function public.run_olo_ingest() from public, anon, authenticated;
@@ -299,7 +303,7 @@ revoke execute on function public.olo_snapshot() from public, anon, authenticate
 grant execute on function public.olo_snapshot() to service_role;
 do $$ begin perform cron.unschedule('olo_ingest_hourly'); exception when others then null; end $$;
 do $$ begin perform cron.unschedule('olo_snapshot_daily'); exception when others then null; end $$;
-select cron.schedule('olo_ingest_hourly', '15 * * * *', $$ select public.run_olo_ingest(); $$);
+select cron.schedule('olo_ingest_hourly', '3,18,33,48 * * * *', $$ select public.run_olo_ingest(); $$);  -- every 15 minutes, small batches
 select cron.schedule('olo_snapshot_daily', '55 23 * * *', $$ select public.olo_snapshot(); $$);
 
 -- ---------------------------------------------------------------------------

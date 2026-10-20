@@ -23,7 +23,7 @@ type Candidate = { external_id?: string; url: string; title: string; summary?: s
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 function clean(s: unknown) { return String(s ?? '').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim(); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
-async function get(url: string, accept = 'application/json') { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept } }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
+async function get(url: string, accept = 'application/json') { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
 /* ---------- discovery per source: each returns a few candidates from the source's own API ---------- */
@@ -124,11 +124,14 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!, serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   if (!(await isServiceCaller(req, supabaseUrl, serviceKey))) return json({ error: 'forbidden' }, 403);
   const body = await req.json().catch(() => ({}));
-  const budget = Math.max(5, Math.min(Number(body.budget) || 24, 120));
+  // Small batches: the Edge runtime's CPU budget allows roughly a dozen embeddings
+  // per invocation, so the cron calls this every 15 minutes with a small budget
+  // rather than hourly with a large one.
+  const budget = Math.max(2, Math.min(Number(body.budget) || 8, 120));
   // Edge Functions have a hard CPU and wall-clock budget; embedding is the costly
   // part. Stop discovering new sources after this and write the tally, so a run
   // that gets cut off still leaves an accurate record. The next hour continues.
-  const DEADLINE_MS = 85_000, t0 = Date.now();
+  const DEADLINE_MS = 40_000, t0 = Date.now();
   const outOfTime = () => Date.now() - t0 > DEADLINE_MS;
   const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
   // @ts-ignore Supabase.ai is provided by the Edge runtime
@@ -138,7 +141,7 @@ Deno.serve(async (req) => {
   // Least recently run first, so no source is starved when a run is cut short.
   const { data: sources } = await sb.from('olo_sources').select('*').eq('enabled', true).order('last_run_at', { ascending: true, nullsFirst: true });
   const stats = { fetched: 0, added: 0, skipped: 0, failed: 0, linked: 0 };
-  const perSource = Math.max(2, Math.floor(budget / Math.max(1, (sources || []).length)));
+  const perSource = Math.max(1, Math.floor(budget / Math.max(1, (sources || []).length)));
 
   const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats }).eq('id', run?.id);
   let cutShort = false;
@@ -165,6 +168,7 @@ Deno.serve(async (req) => {
         const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K });
         const links = (nb || []).filter((x: any) => x.sim >= MIN_LINK).flatMap((x: any) => [{ from_atom: atom.id, to_atom: x.id, relation: 'similar', weight: x.sim }, { from_atom: x.id, to_atom: atom.id, relation: 'similar', weight: x.sim }]);
         if (links.length) { const { error: le } = await sb.from('olo_links').upsert(links, { onConflict: 'from_atom,to_atom,relation', ignoreDuplicates: true }); if (!le) stats.linked += links.length; }
+        await checkpoint();
       } catch (_) { stats.failed++; }
     }
     await sb.from('olo_sources').update({ last_run_at: new Date().toISOString(), atoms: (src.atoms || 0) + addedHere }).eq('id', src.id);
