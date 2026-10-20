@@ -54,4 +54,10 @@ python zeus/train_lora.py --base Qwen/Qwen2.5-7B-Instruct --out zeus/out/zeus-v0
 python zeus/eval.py --adapter zeus/out/zeus-v0
 ```
 
-Training needs a GPU (a rented 24 GB card is enough). Dataset building and eval of an existing adapter run anywhere.
+Training needs a GPU. On an Apple Silicon Mac, one command does the whole thing on the Mac's own GPU with MLX:
+
+```
+bash zeus/train_mac.sh v1
+```
+
+It builds the dataset, picks the 7B or 1.5B base by how much memory the Mac has, trains a LoRA, evaluates it on the frozen split and writes `zeus/out/zeus-v1/eval.json` and `train_summary.json`. Commit those two files (never the weights). On Linux with an NVIDIA card use `train_lora.py` instead. Dataset building and eval run anywhere.

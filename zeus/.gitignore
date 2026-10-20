@@ -1,2 +1,4 @@
-out/
+out/*
+!out/*/eval.json
+!out/*/train_summary.json
 __pycache__/
