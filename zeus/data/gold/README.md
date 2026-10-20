@@ -1,0 +1,1 @@
+Hand-written examples, one JSON object per line in any `*.jsonl` file here, same shape as `data/train.jsonl`. These are the highest-value examples Zeus trains on: contradictions a rule could not write, claims that look covered but are not, multi-passage support. Keep provenance on every passage. Never include text you do not have the right to publish.

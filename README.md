@@ -25,6 +25,10 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 3. Optional secrets: `OLO_API_KEYS` (comma-separated partner keys for a higher rate limit), `OLO_SALT` (for address hashing).
 4. Trigger the first ingest by hand: `select public.run_olo_ingest();`. From then on it runs at 15 past every hour.
 
+## Zeus: the verification model
+
+`zeus/` holds the open build of Zeus, Olo's claim verification layer: a LoRA fine-tune of an open-weight instruction model (Qwen2.5-7B-Instruct by default) trained on examples made from the Commons itself. `build_dataset.py` makes the data, `train_lora.py` trains on one GPU, `eval.py` scores every version on a frozen split, `serve.py` exposes it over HTTP. `zeus/STATUS.md` records each build. Hand-written examples in `zeus/data/gold/` are the most useful contribution you can make.
+
 ## Build on it
 
 - `examples/cited-chat.mjs`: a chatbot that asks the Commons first and cites.
