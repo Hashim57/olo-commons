@@ -25,9 +25,20 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 3. Optional secrets: `OLO_API_KEYS` (comma-separated partner keys for a higher rate limit), `OLO_SALT` (for address hashing).
 4. Trigger the first ingest by hand: `select public.run_olo_ingest();`. From then on it runs at 15 past every hour.
 
+## Build on it
+
+- `examples/cited-chat.mjs`: a chatbot that asks the Commons first and cites.
+- `examples/notebook.py`: a topic's atoms as a pandas DataFrame with provenance.
+- `examples/graph-export.mjs`: the whole graph as GraphML or JSON.
+- `docs/API.md`: the read API; `docs/ARCHITECTURE.md`: how it works inside.
+
+## Starting points for contributors
+
+Issues labelled `good first issue` are small and real: a new source connector, a better `clean()`, a language other than English, tests for a connector. Templates: propose a source, report an atom, bug.
+
 ## Adding a source
 
-Open a pull request that adds a `discover` routine in `functions/olo-ingest/index.ts` and a row in `olo_sources`. Requirements: a public API or dump, an open licence that allows redistribution with attribution, no personal data, and a `trust` value with a one-line justification. A source that is not `enabled` in the registry is never fetched.
+See `docs/ADDING_A_SOURCE.md`. In short: open a pull request that adds a `discover` routine in `functions/olo-ingest/index.ts` and a row in `olo_sources`. Requirements: a public API or dump, an open licence that allows redistribution with attribution, no personal data, and a `trust` value with a one-line justification. A source that is not `enabled` in the registry is never fetched.
 
 ## Licences
 

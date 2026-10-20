@@ -299,3 +299,26 @@ do $$ begin perform cron.unschedule('olo_ingest_hourly'); exception when others 
 do $$ begin perform cron.unschedule('olo_snapshot_daily'); exception when others then null; end $$;
 select cron.schedule('olo_ingest_hourly', '15 * * * *', $$ select public.run_olo_ingest(); $$);
 select cron.schedule('olo_snapshot_daily', '55 23 * * *', $$ select public.olo_snapshot(); $$);
+
+-- ---------------------------------------------------------------------------
+-- 6. Bulk export for builders: pages of atoms in creation order (no embeddings).
+--    Use with p_after = the last created_at you received. 500 per page.
+-- ---------------------------------------------------------------------------
+create or replace function public.olo_export(p_after timestamptz default '1970-01-01', p_limit int default 500) returns json language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'atoms', coalesce((select json_agg(json_build_object('id', a.id, 'title', a.title, 'summary', a.summary, 'content', a.content, 'url', a.url, 'source', s.slug, 'licence', a.licence, 'authors', a.authors, 'published_at', a.published_at, 'content_hash', a.content_hash, 'quality', a.quality, 'retrieved_at', a.retrieved_at, 'created_at', a.created_at) order by a.created_at)
+                 from (select * from public.olo_atoms where created_at > p_after order by created_at limit least(greatest(p_limit, 1), 500)) a join public.olo_sources s on s.id = a.source_id), '[]'::json),
+    'next_after', (select max(created_at) from (select created_at from public.olo_atoms where created_at > p_after order by created_at limit least(greatest(p_limit, 1), 500)) x),
+    'licence_note', 'Each atom carries its own licence; the compilation is CC BY-SA 4.0. Attribute Olo Commons by Helius Network.'
+  );
+$$;
+grant execute on function public.olo_export(timestamptz, int) to anon, authenticated;
+
+create or replace function public.olo_links_export(p_after timestamptz default '1970-01-01', p_limit int default 2000) returns json language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'links', coalesce((select json_agg(json_build_object('from', from_atom, 'to', to_atom, 'relation', relation, 'weight', weight, 'created_at', created_at) order by created_at)
+                 from (select * from public.olo_links where created_at > p_after order by created_at limit least(greatest(p_limit, 1), 2000)) l), '[]'::json),
+    'next_after', (select max(created_at) from (select created_at from public.olo_links where created_at > p_after order by created_at limit least(greatest(p_limit, 1), 2000)) x)
+  );
+$$;
+grant execute on function public.olo_links_export(timestamptz, int) to anon, authenticated;
