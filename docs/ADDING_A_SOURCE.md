@@ -28,7 +28,7 @@ Rules that keep the Commons safe and clean:
 
 - Return at most `n` candidates. Randomise the window so repeated runs discover new items.
 - `url` must be https and stable; `external_id` is the source's own identifier.
-- Everything passes through `clean()`: tags stripped, whitespace collapsed. Never return HTML.
+- Everything passes through `clean()` (in `text.ts`): tags stripped, entities decoded, whitespace collapsed. Never return HTML. If the source carries LaTeX (arXiv does), wrap the field in `delatex()` first so summaries read as plain text.
 - `licence` must be a real licence string for that item or the source's default.
 - Keys go in Supabase secrets (`supabase secrets set EUROPEANA_KEY=...`), never in code.
 - Respect the source's rate limits; the ingester runs hourly with a small budget per source.
