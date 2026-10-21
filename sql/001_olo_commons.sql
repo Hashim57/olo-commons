@@ -268,9 +268,27 @@ $$;
 grant execute on function public.olo_atom(uuid) to anon, authenticated;
 
 -- Public project gallery with owner names
-create or replace view public.olo_projects_public as
-select p.id, p.name, p.description, p.url, p.repo_url, p.kind, p.created_at, pr.name as owner_name, pr.username as owner_username, pr.avatar_url as owner_avatar
-from public.olo_projects p left join public.profiles pr on pr.id = p.owner_id where p.status = 'approved';
+-- Owner card for the gallery: only display name, username and avatar, and only
+-- for someone who owns at least one approved project. profiles stays readable by
+-- signed-in users only; this exposes nothing about anyone without public work.
+create or replace function public.olo_owner_card(p_owner uuid)
+returns table (name text, username text, avatar_url text)
+language sql stable security definer set search_path = public as $$
+  select pr.name::text, pr.username::text, pr.avatar_url::text
+    from public.profiles pr
+   where pr.id = p_owner
+     and exists (select 1 from public.olo_projects p where p.owner_id = p_owner and p.status = 'approved');
+$$;
+revoke execute on function public.olo_owner_card(uuid) from public;
+grant execute on function public.olo_owner_card(uuid) to anon, authenticated, service_role;
+
+-- The view runs with the reader's rights (security_invoker), so RLS on
+-- olo_projects applies; olo_projects_read already lets anyone see approved rows.
+-- Drop then create: the owner columns change type to text.
+drop view if exists public.olo_projects_public;
+create view public.olo_projects_public with (security_invoker = true) as
+select p.id, p.name, p.description, p.url, p.repo_url, p.kind, p.created_at, o.name as owner_name, o.username as owner_username, o.avatar_url as owner_avatar
+from public.olo_projects p left join lateral public.olo_owner_card(p.owner_id) o on true where p.status = 'approved';
 grant select on public.olo_projects_public to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
