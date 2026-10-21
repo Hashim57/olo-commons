@@ -60,6 +60,8 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the full history is needed to diff against the previous push
       - uses: supabase/setup-cli@v1
         with:
           version: latest
@@ -69,7 +71,7 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "list=${{ github.event.inputs.functions }}" >> "$GITHUB_OUTPUT"
           else
-            changed=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- functions/ | cut -d/ -f2 | sort -u | tr '\n' ' ')
+            changed=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- functions/ 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ' || true)
             # A force push or a new branch has no usable "before" commit: deploy both.
             [ -n "$changed" ] || changed="olo-ingest olo-query"
             echo "list=$changed" >> "$GITHUB_OUTPUT"
