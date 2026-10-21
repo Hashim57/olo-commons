@@ -1,4 +1,5 @@
 out/*
 !out/*/eval.json
 !out/*/train_summary.json
+!out/*/FAILED.txt
 __pycache__/

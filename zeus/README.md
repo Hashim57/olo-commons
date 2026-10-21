@@ -61,3 +61,7 @@ bash zeus/train_mac.sh v1
 ```
 
 It builds the dataset, picks the 7B or 1.5B base by how much memory the Mac has, trains a LoRA, evaluates it on the frozen split and writes `zeus/out/zeus-v1/eval.json` and `train_summary.json`. Commit those two files (never the weights). On Linux with an NVIDIA card use `train_lora.py` instead. Dataset building and eval run anywhere.
+
+## Hands-free training (how the daily run trains)
+
+The scheduled cloud run cannot type on the Mac, so it asks for training through the repository: `python3 zeus/request_training.py --reason "..."` writes `zeus/TRAIN_REQUEST.json` with the next version; the run commits and pushes it. A launchd agent on the Mac (`zeus/mac/`, installed once with `bash zeus/mac/install.sh`) polls every 30 minutes, trains the requested version on the Mac GPU, commits `eval.json` and `train_summary.json` (or `FAILED.txt` with the log tail), removes the request and pushes. The next cloud run reads whatever landed under `zeus/out/` and writes the STATUS row, or records the failure and fixes the cause. A pending request is never overwritten; a version that already has results is never trained twice.
