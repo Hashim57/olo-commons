@@ -1,0 +1,92 @@
+# Deploys the Edge Functions to the live Supabase project after a human approves.
+#
+# Trigger: any push to main that changes functions/**, or run it by hand (Actions
+# tab, "Deploy Edge Functions", Run workflow). The deploy job targets the GitHub
+# environment "production"; set a required reviewer on that environment so every
+# deploy waits for an Approve tap (GitHub app or web). Nothing deploys without it.
+#
+# One-time setup (repository Settings):
+#   Environments > New environment "production" > Required reviewers: your account.
+#   Secrets and variables > Actions > New repository secret:
+#     SUPABASE_ACCESS_TOKEN   a personal access token from supabase.com/dashboard/account/tokens
+#   The project ref is public (it is in every API URL) and lives below as a variable.
+#
+# SQL changes (sql/001_olo_commons.sql) are not deployed here on purpose: they need
+# the database password and are safer run by hand in the SQL editor.
+
+name: Deploy Edge Functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:
+    inputs:
+      functions:
+        description: 'Space-separated function names to deploy'
+        default: 'olo-ingest olo-query'
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  SUPABASE_PROJECT_REF: bfldflbkebyapfagsxnr
+
+jobs:
+  check:
+    name: Syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax-check the functions and run the unit tests
+        run: |
+          npx --yes esbuild functions/olo-ingest/index.ts --format=esm --log-level=error --outfile=/tmp/ingest.js
+          npx --yes esbuild functions/olo-query/index.ts --format=esm --log-level=error --outfile=/tmp/query.js
+          deno test tests/
+
+  deploy:
+    name: Deploy (waits for approval)
+    needs: check
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Decide which functions to deploy
+        id: which
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "list=${{ github.event.inputs.functions }}" >> "$GITHUB_OUTPUT"
+          else
+            changed=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- functions/ | cut -d/ -f2 | sort -u | tr '\n' ' ')
+            # A force push or a new branch has no usable "before" commit: deploy both.
+            [ -n "$changed" ] || changed="olo-ingest olo-query"
+            echo "list=$changed" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Lay the repo out the way the CLI expects (supabase/functions/<name>)
+        run: |
+          mkdir -p supabase/functions
+          for f in ${{ steps.which.outputs.list }}; do
+            [ -d "functions/$f" ] && cp -r "functions/$f" "supabase/functions/$f"
+          done
+          [ -f supabase/config.toml ] || supabase init --yes >/dev/null 2>&1 || true
+      - name: Deploy
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          for f in ${{ steps.which.outputs.list }}; do
+            echo "Deploying $f"
+            supabase functions deploy "$f" --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+          done
+          supabase functions list --project-ref "$SUPABASE_PROJECT_REF"

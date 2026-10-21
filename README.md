@@ -21,7 +21,7 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 ## Run your own
 
 1. Create a Supabase project. In the SQL editor run `sql/001_olo_commons.sql`. Store your service-role key in Vault as `service_role_key` (the schedule uses it).
-2. `supabase functions deploy olo-ingest --no-verify-jwt` and `supabase functions deploy olo-query --no-verify-jwt`.
+2. `supabase functions deploy olo-ingest --no-verify-jwt` and `supabase functions deploy olo-query --no-verify-jwt`. (This repository also ships `.github/workflows/deploy-functions.yml`, which deploys both after a human approves the run; see the comments at the top of that file for the two-step setup.)
 3. Optional secrets: `OLO_API_KEYS` (comma-separated partner keys for a higher rate limit), `OLO_SALT` (for address hashing).
 4. Trigger the first ingest by hand: `select public.run_olo_ingest();`. From then on it runs at 15 past every hour.
 
