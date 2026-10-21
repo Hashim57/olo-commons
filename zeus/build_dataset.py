@@ -26,14 +26,25 @@ def fetch_atoms(url, key, max_atoms):
     while len(atoms) < max_atoms:
         r = requests.post(f"{url}/rest/v1/rpc/olo_export", headers=h, json={"p_after": after, "p_limit": 500}, timeout=60)
         r.raise_for_status()
-        page = r.json() or []
+        page, nxt = export_page(r.json())
         if not page:
             break
         atoms.extend(page)
-        after = page[-1].get("created_at") or after
-        if len(page) < 500:
+        if not nxt or nxt == after or len(page) < 500:
             break
+        after = nxt
     return atoms[:max_atoms]
+
+
+def export_page(body):
+    """olo_export returns {"atoms": [...], "next_after": ts, "licence_note": ...}.
+    Older builds returned a bare list. Accept both; return (atoms, next_after)."""
+    if isinstance(body, dict):
+        atoms = body.get("atoms") or []
+        return atoms, body.get("next_after") or (atoms[-1].get("created_at") if atoms else None)
+    if isinstance(body, list):
+        return body, (body[-1].get("created_at") if body else None)
+    return [], None
 
 
 def sentences(text):
@@ -50,8 +61,48 @@ def passage(a, text=None):
     return {"id": a["id"][:8], "source": a.get("source") or a.get("source_slug") or "", "url": a.get("url", ""), "text": (text or a.get("summary") or a.get("content") or "")[:900]}
 
 
-def contradict(sentence, rng, other_titles):
-    """Change exactly one fact by rule. Returns (new_sentence, what_changed) or None."""
+# Pairs of words whose swap reverses the meaning of a sentence without touching
+# any number or name. These make the negatives a model cannot solve by spotting
+# an unfamiliar digit. Only whole words are swapped, case preserved.
+FLIPS = [("before", "after"), ("increase", "decrease"), ("increased", "decreased"), ("increases", "decreases"),
+         ("higher", "lower"), ("highest", "lowest"), ("larger", "smaller"), ("largest", "smallest"), ("more", "fewer"),
+         ("north", "south"), ("east", "west"), ("northern", "southern"), ("eastern", "western"),
+         ("first", "last"), ("earliest", "latest"), ("oldest", "youngest"), ("older", "younger"),
+         ("above", "below"), ("inside", "outside"), ("positive", "negative"), ("rise", "fall"), ("rising", "falling"),
+         ("born", "died"), ("founded", "dissolved"), ("began", "ended"), ("opened", "closed"), ("won", "lost"),
+         ("supports", "contradicts"), ("confirmed", "rejected"), ("accepted", "rejected"), ("always", "never"),
+         ("male", "female"), ("son", "daughter"), ("brother", "sister"), ("father", "mother"), ("king", "queen"),
+         ("can", "cannot"), ("is", "is not"), ("was", "was not"), ("are", "are not"), ("were", "were not")]
+FLIP_MAP = {}
+for _a, _b in FLIPS:
+    FLIP_MAP.setdefault(_a, _b)
+    FLIP_MAP.setdefault(_b, _a)
+
+
+def flip_relation(sentence, rng):
+    """Swap one relation word for its opposite. Returns (new_sentence, what_changed) or None."""
+    words = re.findall(r"[A-Za-z]+(?: not)?", sentence)
+    cands = [w for w in words if w.lower() in FLIP_MAP]
+    if not cands:
+        return None
+    w = rng.choice(cands)
+    repl = FLIP_MAP[w.lower()]
+    if w[0].isupper():
+        repl = repl[0].upper() + repl[1:]
+    new = re.sub(r"\b" + re.escape(w) + r"\b(?! not)", repl, sentence, count=1)
+    if new == sentence:
+        return None
+    return new, f"relation {w} -> {repl}"
+
+
+def contradict(sentence, rng, other_titles, prefer_relation=False):
+    """Change exactly one fact by rule. Returns (new_sentence, what_changed) or None.
+    Half the time (or always with prefer_relation) a relation flip is tried first,
+    so the contradicted set is not only changed digits."""
+    if prefer_relation or rng.random() < 0.5:
+        f = flip_relation(sentence, rng)
+        if f:
+            return f
     years = YEAR_RE.findall(sentence)
     if years:
         y = rng.choice(years)
@@ -72,7 +123,7 @@ def contradict(sentence, rng, other_titles):
         t = rng.choice(other_titles)
         if t and t != c:
             return sentence.replace(c, t, 1), f"name {c} -> {t}"
-    return None
+    return flip_relation(sentence, rng)
 
 
 def build(atoms, eval_share, seed=7):
@@ -104,6 +155,27 @@ def build(atoms, eval_share, seed=7):
     return out
 
 
+def count_gold(gold_dir):
+    """(number of gold files, number of valid gold examples). A gold line counts
+    only if it parses and carries claim, passages, label and evidence."""
+    files = n = 0
+    for p in sorted(os.listdir(gold_dir)) if os.path.isdir(gold_dir) else []:
+        if not p.endswith(".jsonl"):
+            continue
+        files += 1
+        for line in open(os.path.join(gold_dir, p), encoding="utf-8"):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ex = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if all(k in ex for k in ("claim", "passages", "label", "evidence")) and ex["label"] in ("supported", "contradicted", "not_covered"):
+                n += 1
+    return files, n
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", "https://bfldflbkebyapfagsxnr.supabase.co"))
@@ -121,9 +193,10 @@ def main():
         with open(os.path.join(args.out, f"{split}.jsonl"), "w") as f:
             for ex in data[split]:
                 f.write(json.dumps(ex, ensure_ascii=False) + "\n")
-    gold = os.path.join(args.out, "gold")
-    n_gold = sum(1 for p in (os.listdir(gold) if os.path.isdir(gold) else []) if p.endswith(".jsonl"))
-    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]), "gold_files": n_gold}
+    gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
+    by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
+    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]),
+            "gold_files": gold_files, "gold": n_gold, "train_total": len(data["train"]) + n_gold, "train_by_label": by_label}
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta))

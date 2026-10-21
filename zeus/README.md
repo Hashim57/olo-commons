@@ -32,14 +32,14 @@ Labels: `supported`, `contradicted`, `not_covered`. The model is trained to answ
 `build_dataset.py` pulls recent atoms through the public `olo_export` RPC and makes examples three ways, all with provenance kept:
 
 1. **Supported**: a sentence from an atom's summary becomes the claim; the atom and two unrelated atoms are the passages.
-2. **Contradicted**: the same sentence with one fact changed by a rule (a year, a number, a name swapped for another atom's name); the original atom is still a passage, so the model learns to read closely rather than match topics.
+2. **Contradicted**: the same sentence with one fact changed by a rule: half the time a relation word flipped for its opposite (before/after, increased/decreased, north/south, is/is not), otherwise a year, a number, or a name swapped for another atom's name. The original atom is still a passage, so the model learns to read closely rather than match topics, and the relation flips stop it learning that an odd-looking digit means contradicted.
 3. **Not covered**: a claim from one atom with passages drawn only from atoms far from it in the graph.
 
 Rule-made contradictions are a start, not the finish. The improvement task's standing job is to raise the share of human-grade examples: hand-written ones in `data/gold/`, and (when an API key is available) LLM-written hard negatives that a rule could not make.
 
 ## Files
 
-- `build_dataset.py`: export from the Commons, make examples, write `data/train.jsonl` and `data/eval.jsonl` (the eval split is frozen by atom id, so new data never leaks into it).
+- `build_dataset.py`: export from the Commons, make examples, write `data/train.jsonl`, `data/eval.jsonl` and `data/meta.json` (counts, including `gold` and `train_total`; the eval split is frozen by atom id, so new data never leaks into it). Unit tests: `python3 -m pytest zeus/tests` (no network).
 - `train_lora.py`: QLoRA fine-tune with TRL. One GPU, about 40 minutes for 5k examples on a 7B at 4-bit.
 - `eval.py`: label accuracy, evidence hit rate (did the quoted span come from the right passage), and JSON validity, for any model path or adapter.
 - `serve.py`: a minimal OpenAI-compatible endpoint for the adapter, so helius-olo.io can call Zeus the same way it calls any model.
