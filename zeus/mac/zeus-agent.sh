@@ -22,7 +22,7 @@ REPO="${ZEUS_REPO:-$HOME/olo-commons}"
 LOG="$HOME/zeus-agent.log"
 LOCK="$HOME/.zeus-agent.lock"
 REQ="zeus/TRAIN_REQUEST.json"
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
 log() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$LOG"; }
 

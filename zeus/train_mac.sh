@@ -13,7 +13,11 @@ pip -q install --upgrade pip
 pip -q install mlx-lm requests
 ANON="${SUPABASE_ANON_KEY:-$(curl -fsSL https://heliusnetwork.app/assets/config.js | sed -n "s/.*SUPABASE_ANON_KEY: *'\([^']*\)'.*/\1/p" | head -1)}"
 python3 zeus/build_dataset.py --anon-key "$ANON"
-MEM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
+# sysctl lives in /usr/sbin, which launchd's PATH leaves out; call it by full path.
+SYSCTL="$(command -v sysctl || echo /usr/sbin/sysctl)"
+MEM_BYTES="$("$SYSCTL" -n hw.memsize 2>/dev/null || echo 0)"
+MEM_GB=$(( ${MEM_BYTES:-0} / 1073741824 ))
+if [ "$MEM_GB" -le 0 ]; then echo "could not read the Mac's memory size; using the 1.5B base to be safe"; fi
 BASE="mlx-community/Qwen2.5-7B-Instruct-4bit"; LAYERS=16
 if [ "$MEM_GB" -lt 24 ]; then BASE="mlx-community/Qwen2.5-1.5B-Instruct-4bit"; LAYERS=12; echo "Mac has ${MEM_GB} GB, using the 1.5B base"; fi
 python3 zeus/train_mlx.py --base "$BASE" --num-layers "$LAYERS" --out "zeus/out/zeus-$V" --iters "${ITERS:-600}"
