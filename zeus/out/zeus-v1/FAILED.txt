@@ -1,0 +1,7 @@
+train_mac.sh v1 failed at 2026-10-22T09:49:13Z. Last 40 lines of the log:
+/Users/hashimruan/olo-commons/.zeus-venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+{"built_at": "2026-10-22T09:49:13.146264+00:00", "atoms": 469, "train": 1484, "eval": 87, "gold_files": 0, "gold": 0, "train_total": 1484, "train_by_label": {"supported": 381, "contradicted": 348, "not_covered": 755}, "train_near_miss": 374}
+zeus/train_mac.sh: line 16: sysctl: command not found
+zeus/train_mac.sh: line 16: / 1073741824 : syntax error: operand expected (error token is "/ 1073741824 ")
+zeus/train_mac.sh: line 18: MEM_GB: unbound variable
