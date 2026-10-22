@@ -38,6 +38,13 @@ insert into public.olo_sources (slug, name, kind, homepage, api_base, licence, l
  ('gutenberg', 'Project Gutenberg', 'books', 'https://www.gutenberg.org', 'https://gutendex.com/books', 'Public domain', 'https://www.gutenberg.org/policy/license.html', 'Catalogue of over 70,000 public-domain books.', 90),
  ('pubmed', 'PubMed', 'papers', 'https://pubmed.ncbi.nlm.nih.gov', 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils', 'Public domain (NLM metadata); abstracts as published', 'https://www.ncbi.nlm.nih.gov/home/about/policies/', 'Biomedical literature citations and abstracts from the US National Library of Medicine.', 90)
 on conflict (slug) do nothing;
+-- Connectors added after launch. They start disabled: a human enables each one
+-- after the deployed connector has been watched for a run or two
+-- (update public.olo_sources set enabled = true where slug = '...').
+insert into public.olo_sources (slug, name, kind, homepage, api_base, licence, licence_url, description, trust, enabled) values
+ ('data_gov', 'Data.gov', 'government', 'https://catalog.data.gov', 'https://catalog.data.gov/api/3', 'Per dataset; only open licence ids are kept (U.S. public domain, CC0, CC BY, CC BY-SA, ODC, OGL)', 'https://resources.data.gov/open-licenses/', 'Descriptions of U.S. government open datasets from the data.gov CKAN catalogue.', 75, false),
+ ('wikipedia_es', 'Wikipedia (español)', 'encyclopedia', 'https://es.wikipedia.org', 'https://es.wikipedia.org/api/rest_v1', 'CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/', 'La enciclopedia libre: article summaries from the Spanish Wikipedia, stored with lang = es.', 85, false)
+on conflict (slug) do nothing;
 
 -- ---------------------------------------------------------------------------
 -- 2. Atoms: one unit of knowledge with provenance and an embedding.

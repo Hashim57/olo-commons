@@ -12,6 +12,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { clean, delatex } from './text.ts';
+import { ckanCandidates, OPEN_LICENCES } from './ckan.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -19,7 +20,9 @@ const EMBED_CHARS = 1500;      // characters fed to the embedding model
 const LINK_K = 5;              // neighbours linked per new atom
 const MIN_LINK = 0.72;         // cosine similarity needed to make a link
 
-type Candidate = { external_id?: string; url: string; title: string; summary?: string; content?: string; authors?: string[]; published_at?: string; licence?: string };
+type Candidate = { external_id?: string; url: string; title: string; summary?: string; content?: string; authors?: string[]; published_at?: string; licence?: string; lang?: string };
+// The registry row a connector is called with, so a connector can read its own api_base.
+type Source = { slug: string; api_base?: string | null };
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
@@ -27,17 +30,30 @@ async function get(url: string, accept = 'application/json') { const r = await f
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
 /* ---------- discovery per source: each returns a few candidates from the source's own API ---------- */
-const discover: Record<string, (n: number) => Promise<Candidate[]>> = {
-  async wikipedia(n) {
-    const out: Candidate[] = [];
-    for (let i = 0; i < n; i++) {
-      try {
-        const p: any = await get('https://en.wikipedia.org/api/rest_v1/page/random/summary');
-        if (p.type !== 'standard' || !p.extract || p.extract.length < 200) continue;
-        out.push({ external_id: String(p.pageid), url: p.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(p.title)}`, title: p.title, summary: clean(p.description ? p.description + '. ' + p.extract : p.extract).slice(0, 600), content: clean(p.extract), published_at: p.timestamp ? p.timestamp.slice(0, 10) : undefined, licence: 'CC BY-SA 4.0' });
-      } catch (_) {}
-    }
-    return out;
+// Random article summaries from one language edition of Wikipedia.
+async function wikiRandom(lang: string, n: number): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  for (let i = 0; i < n; i++) {
+    try {
+      const p: any = await get(`https://${lang}.wikipedia.org/api/rest_v1/page/random/summary`);
+      if (p.type !== 'standard' || !p.extract || p.extract.length < 200) continue;
+      out.push({ external_id: String(p.pageid), url: p.content_urls?.desktop?.page || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.title)}`, title: p.title, summary: clean(p.description ? p.description + '. ' + p.extract : p.extract).slice(0, 600), content: clean(p.extract), published_at: p.timestamp ? p.timestamp.slice(0, 10) : undefined, licence: 'CC BY-SA 4.0', lang });
+    } catch (_) {}
+  }
+  return out;
+}
+
+const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>> = {
+  wikipedia: (n) => wikiRandom('en', n),
+  wikipedia_es: (n) => wikiRandom('es', n),
+  // data.gov dataset descriptions through CKAN package_search (issue #3). Only
+  // packages under an open licence id are requested and kept (see ckan.ts). The
+  // API base comes from the registry row so a portal move needs no code change.
+  async data_gov(n, src) {
+    const api = (src.api_base || 'https://catalog.data.gov/api/3').replace(/\/+$/, '');
+    const fq = 'license_id:(' + Object.keys(OPEN_LICENCES).map(id => `"${id}"`).join(' OR ') + ')';
+    const r: any = await get(`${api}/action/package_search?rows=${Math.min(n * 3, 30)}&start=${Math.floor(Math.random() * 2000)}&fq=${encodeURIComponent(fq)}`);
+    return pick(ckanCandidates(r, 'https://catalog.data.gov', n * 3), n);
   },
   async wikidata(n) {
     const r: any = await get(`https://www.wikidata.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=${Math.min(n * 2, 20)}&format=json`);
@@ -149,7 +165,7 @@ Deno.serve(async (req) => {
     if (outOfTime()) { cutShort = true; break; }
     const fn = discover[src.slug]; if (!fn) continue;
     let cands: Candidate[] = [];
-    try { cands = await fn(perSource); } catch (e) { stats.failed++; continue; }
+    try { cands = await fn(perSource, src); } catch (e) { stats.failed++; continue; }
     stats.fetched += cands.length;
     let addedHere = 0;
     for (const c of cands) {
@@ -161,7 +177,7 @@ Deno.serve(async (req) => {
         const { data: dup } = await sb.from('olo_atoms').select('id').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
         if (dup && dup.length) { stats.skipped++; continue; }
         const emb: number[] = await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
-        const row = { source_id: src.id, external_id: c.external_id || null, url: c.url, title, summary: summary || null, content: content || null, lang: 'en', licence: c.licence || src.licence, authors: c.authors || null, published_at: c.published_at || null, content_hash: hash, quality: quality({ ...c, summary, content }, src.trust), tokens: Math.round((title + summary + content).length / 4), embedding: emb };
+        const row = { source_id: src.id, external_id: c.external_id || null, url: c.url, title, summary: summary || null, content: content || null, lang: c.lang || 'en', licence: c.licence || src.licence, authors: c.authors || null, published_at: c.published_at || null, content_hash: hash, quality: quality({ ...c, summary, content }, src.trust), tokens: Math.round((title + summary + content).length / 4), embedding: emb };
         const { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
         if (error || !atom) { stats.failed++; continue; }
         stats.added++; addedHere++;
