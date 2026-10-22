@@ -26,6 +26,10 @@ async europeana(n) {
 
 Rules that keep the Commons safe and clean:
 
+- A discover function is called as `fn(n, src)`, where `src` is the source's registry row. Read `src.api_base` rather than hard-coding a host when the source might move (the `data_gov` connector does this).
+- Set `lang` on each candidate when the source is not English (ISO 639-1, for example `es`); the ingester stores `lang` and defaults to `en`. `wikipedia_es` is the model for a second language edition.
+- If the source is a CKAN portal (data.gov, data.gov.uk, data.europa.eu and many city portals), reuse `ckanCandidates()` from `ckan.ts`: it keeps only packages under an open licence id and is unit tested in `tests/ckan_test.ts`.
+
 - Return at most `n` candidates. Randomise the window so repeated runs discover new items.
 - `url` must be https and stable; `external_id` is the source's own identifier.
 - Everything passes through `clean()` (in `text.ts`): tags stripped, entities decoded, whitespace collapsed. Never return HTML. If the source carries LaTeX (arXiv does), wrap the field in `delatex()` first so summaries read as plain text.

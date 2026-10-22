@@ -2,7 +2,7 @@
 
 An open, verifiable knowledge base that an AI can think with, and that belongs to everyone.
 
-Olo Commons grows every hour from sources the world already trusts (Wikipedia, Wikidata, the Internet Archive, arXiv, Project Gutenberg, PubMed). Every unit of knowledge (an "atom") keeps its provenance: source, URL, licence, authors, publication date, a SHA-256 fingerprint of its content and the time it was retrieved. Atoms are embedded and linked to their nearest neighbours, so the Commons is a graph that thickens as it learns. Anyone can read it through one free API. Only allow-listed sources, fetched by the server, can write to it.
+Olo Commons grows every 15 minutes from sources the world already trusts (Wikipedia, Wikidata, the Internet Archive, arXiv, Project Gutenberg, PubMed; connectors for data.gov and the Spanish Wikipedia are in review). Every unit of knowledge (an "atom") keeps its provenance: source, URL, licence, authors, publication date, a SHA-256 fingerprint of its content and the time it was retrieved. Atoms are embedded and linked to their nearest neighbours, so the Commons is a graph that thickens as it learns. Anyone can read it through one free API. Only allow-listed sources, fetched by the server, can write to it.
 
 Live: https://heliusnetwork.app/olo
 
