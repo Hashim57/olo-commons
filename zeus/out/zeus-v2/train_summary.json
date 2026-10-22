@@ -1,0 +1,10 @@
+{
+  "base": "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+  "framework": "mlx",
+  "train_examples": 1536,
+  "eval_examples": 86,
+  "iters": 600,
+  "num_layers": 12,
+  "lr": 1e-05,
+  "minutes": 27.7
+}
