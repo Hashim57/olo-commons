@@ -107,3 +107,37 @@ def test_count_gold_counts_valid_lines_only(tmp_path):
     (g / "notes.txt").write_text("ignored")
     assert bd.count_gold(str(g)) == (1, 1)
     assert bd.count_gold(str(tmp_path / "missing")) == (0, 0)
+
+
+def test_near_misses_share_words_but_do_not_cover():
+    pool = ATOMS + [atom(7, "Queensland has many beaches and a warm climate. Tourism is a major industry in the northern parts of the state."),
+                    atom(8, "The Great Barrier Reef lies off the northern coast of Queensland, and it is the largest coral reef system on Earth today.")]
+    claim = "The Great Barrier Reef lies off the northern coast of Queensland."
+    near = bd.near_misses(claim, ATOMS[1], pool)
+    ids = [o["id"] for o in near]
+    assert pool[6]["id"] in ids              # shares Queensland and northern: a near miss
+    assert pool[7]["id"] not in ids          # restates the claim: refused, it would support it
+    assert ATOMS[1]["id"] not in ids         # never the claim's own atom
+    assert bd.near_misses("Zzzz qqqq wwww xxxx.", ATOMS[0], pool) == []
+
+
+NEAR = ATOMS + [
+    atom(9, "Queensland has many beaches and a warm climate. Tourism is a major industry in the northern parts of the state."),
+    atom(10, "Warsaw is the capital of Poland and its largest city. The city was rebuilt after heavy damage in the war."),
+    atom(11, "The Black Sea is bordered by six countries including Romania and Turkey. Several large rivers drain into it."),
+    atom(12, "Michael Hart worked at the University of Illinois. He typed the first electronic text on a mainframe computer."),
+]
+
+
+def test_near_miss_goes_to_train_only_and_keeps_eval_frozen():
+    plain = bd.build(NEAR, eval_share=0.5, near_miss=False)
+    hard = bd.build(NEAR, eval_share=0.5, near_miss=True)
+    assert any(ex.get("kind") == "near_miss" for ex in hard["train"])
+    assert hard["eval"] == plain["eval"]
+    assert all(ex.get("kind") != "near_miss" for ex in hard["eval"])
+    nm = [ex for ex in hard["train"] if ex.get("kind") == "near_miss"]
+    for ex in nm:
+        assert ex["label"] == "not_covered" and ex["evidence"] == []
+        assert all(p["id"] != ex["atom_id"][:8] for p in ex["passages"])
+    # the plain train examples keep their order; near misses are only inserted between them
+    assert [x for x in hard["train"] if x.get("kind") != "near_miss"] == plain["train"]

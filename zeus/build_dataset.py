@@ -126,11 +126,52 @@ def contradict(sentence, rng, other_titles, prefer_relation=False):
     return flip_relation(sentence, rng)
 
 
-def build(atoms, eval_share, seed=7):
+STOP = set("""about above after again also among an and any are because been before being between both but by can could did does
+during each from further had has have having here into its itself just more most much near only other over same should some such
+than that their them then there these they this those through under until very was were what when where which while with would
+your years year first after known used called including""".split())
+WORD_RE = re.compile(r"[A-Za-z][A-Za-z'-]{3,}")
+
+
+def content_words(text):
+    """Lower-cased words of four letters or more that carry meaning (stop words dropped)."""
+    return {w.lower() for w in WORD_RE.findall(text or "") if w.lower() not in STOP}
+
+
+def near_misses(claim, a, pool, k=3, max_cover=0.6):
+    """Atoms that share words with the claim but do not cover it: the hard kind of
+    not_covered, where topic matching would wrongly say supported. Ranked by how
+    many claim words they share. An atom is refused when its text holds more than
+    max_cover of the claim's content words (it might really support the claim),
+    or when it is the claim's own atom. Returns [] when nothing shares a word."""
+    cw = content_words(claim)
+    if not cw:
+        return []
+    scored = []
+    for o in pool:
+        if o["id"] == a["id"]:
+            continue
+        text = (o.get("summary") or o.get("content") or "")
+        if claim[:60] in text:
+            continue
+        shared = len(cw & content_words(text + " " + (o.get("title") or "")))
+        if shared == 0 or shared / len(cw) > max_cover:
+            continue
+        scored.append((shared, o["id"], o))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    return [o for _, _, o in scored[:k]]
+
+
+def build(atoms, eval_share, seed=7, near_miss=True):
     rng = random.Random(seed)
+    # Near-miss negatives use their own generator and go to train only, so the
+    # frozen eval split stays byte-identical to earlier builds and scores stay
+    # comparable across versions.
+    hard_rng = random.Random(seed + 1)
     usable = [a for a in atoms if sentences(a.get("summary") or a.get("content") or "")]
     titles = [a.get("title", "") for a in usable if a.get("title")]
     out = {"train": [], "eval": []}
+    hard = []
     for a in usable:
         split = stable_split(a["id"], eval_share)
         sents = sentences(a.get("summary") or a.get("content") or "")
@@ -150,8 +191,20 @@ def build(atoms, eval_share, seed=7):
         far = rng.sample([o for o in usable if o["id"] != a["id"]], k=min(3, len(usable) - 1))
         out[split].append({"claim": claim, "passages": [passage(o) for o in far], "label": "not_covered", "evidence": [],
                            "rationale": "None of the passages mention this.", "atom_id": a["id"]})
+        # not covered, near miss: related passages that still do not state the claim
+        if near_miss and split == "train":
+            near = near_misses(claim, a, usable)
+            if near:
+                hard_rng.shuffle(near)
+                hard.append({"claim": claim, "passages": [passage(o) for o in near], "label": "not_covered", "evidence": [],
+                                   "rationale": "The passages are on a related topic, but none of them states this claim.",
+                                   "atom_id": a["id"], "kind": "near_miss"})
     for k in out:
         rng.shuffle(out[k])
+    # Insert near misses after the shuffle, with their own generator, so the main
+    # generator's draws (and so the eval split and the plain train order) do not move.
+    for ex in hard:
+        out["train"].insert(hard_rng.randrange(len(out["train"]) + 1), ex)
     return out
 
 
@@ -183,11 +236,12 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "data"))
     ap.add_argument("--max-atoms", type=int, default=5000)
     ap.add_argument("--eval-share", type=float, default=0.1)
+    ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     args = ap.parse_args()
     if not args.anon_key:
         sys.exit("anon key required (--anon-key or SUPABASE_ANON_KEY); it is the public read key, not a secret")
     atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
-    data = build(atoms, args.eval_share)
+    data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     os.makedirs(args.out, exist_ok=True)
     for split in ("train", "eval"):
         with open(os.path.join(args.out, f"{split}.jsonl"), "w") as f:
@@ -196,7 +250,8 @@ def main():
     gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
     by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
     meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]),
-            "gold_files": gold_files, "gold": n_gold, "train_total": len(data["train"]) + n_gold, "train_by_label": by_label}
+            "gold_files": gold_files, "gold": n_gold, "train_total": len(data["train"]) + n_gold, "train_by_label": by_label,
+            "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss")}
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta))

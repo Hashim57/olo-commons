@@ -33,7 +33,7 @@ Labels: `supported`, `contradicted`, `not_covered`. The model is trained to answ
 
 1. **Supported**: a sentence from an atom's summary becomes the claim; the atom and two unrelated atoms are the passages.
 2. **Contradicted**: the same sentence with one fact changed by a rule: half the time a relation word flipped for its opposite (before/after, increased/decreased, north/south, is/is not), otherwise a year, a number, or a name swapped for another atom's name. The original atom is still a passage, so the model learns to read closely rather than match topics, and the relation flips stop it learning that an odd-looking digit means contradicted.
-3. **Not covered**: a claim from one atom with passages drawn only from atoms far from it in the graph.
+3. **Not covered**: a claim from one atom with passages drawn only from atoms far from it in the graph. In the train split a second, harder kind is added: a **near miss**, where the passages share words with the claim (same place, person or topic) but none of them states it, so topic matching alone would wrongly say supported. Near misses use their own random generator and never enter the eval split, so the frozen eval stays identical across builds. `--no-near-miss` leaves them out; `meta.json` counts them as `train_near_miss`.
 
 Rule-made contradictions are a start, not the finish. The improvement task's standing job is to raise the share of human-grade examples: hand-written ones in `data/gold/`, and (when an API key is available) LLM-written hard negatives that a rule could not make.
 
