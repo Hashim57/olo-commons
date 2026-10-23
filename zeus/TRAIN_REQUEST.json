@@ -1,0 +1,1 @@
+{"version": "v4", "requested_at": "2026-10-23T13:19:25Z", "reason": "Rerun after v3 GPU out-of-memory fix (grad checkpointing, resume on crash); 2,718 train"}
