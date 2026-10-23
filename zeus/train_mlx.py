@@ -76,6 +76,17 @@ def evaluate(base, adapter, data_dir, limit):
             "json_valid": round(valid / n, 3) if n else 0, "evidence_hit": round(ev_hits / n, 3) if n else 0, "f1": f1}
 
 
+def last_checkpoint(out):
+    """(iteration, path) of the newest numbered adapter checkpoint mlx_lm saved in out, or (0, None)."""
+    best = (0, None)
+    if os.path.isdir(out):
+        for name in os.listdir(out):
+            m = re.fullmatch(r"(\d{7})_adapters\.safetensors", name)
+            if m and int(m.group(1)) > best[0]:
+                best = (int(m.group(1)), os.path.join(out, name))
+    return best
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="mlx-community/Qwen2.5-7B-Instruct-4bit")
@@ -87,6 +98,8 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-5)
     ap.add_argument("--eval-limit", type=int, default=200)
     ap.add_argument("--skip-train", action="store_true")
+    ap.add_argument("--no-grad-checkpoint", action="store_true", help="faster but uses more GPU memory")
+    ap.add_argument("--max-seq-length", type=int, default=3072)
     args = ap.parse_args()
 
     mlx_dir = os.path.join(args.data, "mlx")
@@ -94,11 +107,35 @@ def main():
     print("mlx data", counts)
     t0 = time.time()
     if not args.skip_train:
-        cmd = [sys.executable, "-m", "mlx_lm.lora", "--model", args.base, "--train", "--data", mlx_dir, "--iters", str(args.iters),
-               "--batch-size", str(args.batch_size), "--num-layers", str(args.num_layers), "--learning-rate", str(args.lr),
-               "--adapter-path", args.out, "--save-every", "100", "--steps-per-eval", "100", "--max-seq-length", "3072"]
+        def lora_cmd(iters, batch, resume=None):
+            c = [sys.executable, "-m", "mlx_lm.lora", "--model", args.base, "--train", "--data", mlx_dir, "--iters", str(iters),
+                 "--batch-size", str(batch), "--num-layers", str(args.num_layers), "--learning-rate", str(args.lr),
+                 "--adapter-path", args.out, "--save-every", "100", "--steps-per-eval", "100", "--max-seq-length", str(args.max_seq_length)]
+            # Gradient checkpointing trades some speed for much less activation memory. v3 died with a
+            # Metal out-of-memory error at iter 250 on a 16 GB Mac while other apps were open.
+            if not args.no_grad_checkpoint:
+                c.append("--grad-checkpoint")
+            if resume:
+                c += ["--resume-adapter-file", resume]
+            return c
+        cmd = lora_cmd(args.iters, args.batch_size)
         print(" ".join(cmd))
-        subprocess.run(cmd, check=True)
+        r = subprocess.run(cmd)
+        if r.returncode != 0:
+            # One retry for a crash mid-run (for example GPU memory pressure): resume from the last saved
+            # checkpoint with batch size 1 for the iterations that are left. Recorded in train_summary.json.
+            done, ckpt = last_checkpoint(args.out)
+            if not ckpt or done >= args.iters:
+                sys.exit(f"training failed (exit {r.returncode}) with no checkpoint to resume from")
+            print(f"training stopped (exit {r.returncode}); resuming from iter {done} with batch size 1", flush=True)
+            retry = {"resumed_from_iter": done, "retry_batch_size": 1}
+            cmd = lora_cmd(args.iters - done, 1, resume=ckpt)
+            print(" ".join(cmd))
+            subprocess.run(cmd, check=True)
+        else:
+            retry = None
+    else:
+        retry = None
     minutes = round((time.time() - t0) / 60, 1)
     report = evaluate(args.base, args.out, args.data, args.eval_limit)
     os.makedirs(args.out, exist_ok=True)
@@ -106,7 +143,8 @@ def main():
         json.dump(report, f, indent=2)
     with open(os.path.join(args.out, "train_summary.json"), "w") as f:
         json.dump({"base": args.base, "framework": "mlx", "train_examples": counts.get("train"), "eval_examples": counts.get("valid"),
-                   "iters": args.iters, "num_layers": args.num_layers, "lr": args.lr, "minutes": minutes}, f, indent=2)
+                   "iters": args.iters, "num_layers": args.num_layers, "lr": args.lr, "minutes": minutes,
+                   "grad_checkpoint": not args.no_grad_checkpoint, "retry": retry}, f, indent=2)
     print(json.dumps(report))
 
 
