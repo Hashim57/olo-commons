@@ -1,3 +1,6 @@
 train.jsonl
 eval.jsonl
 meta.json
+cache/
+imported/
+mlx/

@@ -208,12 +208,14 @@ def build(atoms, eval_share, seed=7, near_miss=True):
     return out
 
 
-def count_gold(gold_dir):
-    """(number of gold files, number of valid gold examples). A gold line counts
-    only if it parses and carries claim, passages, label and evidence."""
+def count_gold(gold_dir, skip_eval=False):
+    """(number of files, number of valid examples) in a directory of jsonl files.
+    A line counts only if it parses and carries claim, passages, label and
+    evidence. With skip_eval, files named *-eval.jsonl (held-out imported sets)
+    are left out, since they never train."""
     files = n = 0
     for p in sorted(os.listdir(gold_dir)) if os.path.isdir(gold_dir) else []:
-        if not p.endswith(".jsonl"):
+        if not p.endswith(".jsonl") or (skip_eval and p.endswith("-eval.jsonl")):
             continue
         files += 1
         for line in open(os.path.join(gold_dir, p), encoding="utf-8"):
@@ -248,9 +250,11 @@ def main():
             for ex in data[split]:
                 f.write(json.dumps(ex, ensure_ascii=False) + "\n")
     gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
+    imported_files, n_imported = count_gold(os.path.join(args.out, "imported"), skip_eval=True)
     by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
     meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]),
-            "gold_files": gold_files, "gold": n_gold, "train_total": len(data["train"]) + n_gold, "train_by_label": by_label,
+            "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
+            "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
             "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss")}
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)

@@ -14,6 +14,8 @@ pip -q install mlx-lm requests
 ANON="${SUPABASE_ANON_KEY:-$(curl -fsSL https://heliusnetwork.app/assets/config.js | sed -n "s/.*SUPABASE_ANON_KEY: *'\([^']*\)'.*/\1/p" | head -1)}"
 # A gold line with a quote that is not in its passage would teach the wrong thing; refuse to train on one.
 python3 zeus/validate_gold.py
+# Open fact-checking corpora (VitaminC, CC BY-SA 3.0) train alongside the Commons examples. IMPORT_N=0 turns it off.
+if [ "${IMPORT_N:-1500}" -gt 0 ]; then python3 zeus/import_corpora.py --corpus vitaminc --n "${IMPORT_N:-1500}" || echo "corpus import failed; training on Commons data only"; fi
 python3 zeus/build_dataset.py --anon-key "$ANON"
 # sysctl lives in /usr/sbin, which launchd's PATH leaves out; call it by full path.
 SYSCTL="$(command -v sysctl || echo /usr/sbin/sysctl)"

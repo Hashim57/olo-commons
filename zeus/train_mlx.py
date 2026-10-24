@@ -3,7 +3,7 @@
 
   python zeus/train_mlx.py --out zeus/out/zeus-v1 [--base mlx-community/Qwen2.5-7B-Instruct-4bit] [--iters 600]
 
-Steps: convert zeus/data/{train,eval}.jsonl (+ gold) to MLX chat format, run
+Steps: convert zeus/data/{train,eval}.jsonl (+ gold and imported corpora) to MLX chat format, run
 mlx_lm LoRA, then evaluate the adapter on the frozen eval split and write
 --out/eval.json and --out/train_summary.json (commit those two, not the weights).
 
@@ -19,8 +19,12 @@ from eval import parse, evidence_ok, LABELS  # noqa: E402
 
 def to_mlx(data_dir, out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    gold = os.path.join(data_dir, "gold")
-    extra = [os.path.join(gold, p) for p in os.listdir(gold) if p.endswith(".jsonl")] if os.path.isdir(gold) else []
+    # hand-written gold and imported open corpora train alongside the Commons examples; never in valid
+    extra = []
+    for sub in ("gold", "imported"):
+        d = os.path.join(data_dir, sub)
+        if os.path.isdir(d):
+            extra += [os.path.join(d, p) for p in sorted(os.listdir(d)) if p.endswith(".jsonl") and not p.endswith("-eval.jsonl")]
     counts = {}
     for split, files in (("train", [os.path.join(data_dir, "train.jsonl")] + extra), ("valid", [os.path.join(data_dir, "eval.jsonl")])):
         n = 0

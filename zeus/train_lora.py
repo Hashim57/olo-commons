@@ -46,11 +46,13 @@ def main():
     from trl import SFTConfig, SFTTrainer
 
     files = {"train": os.path.join(args.data, "train.jsonl"), "eval": os.path.join(args.data, "eval.jsonl")}
-    gold = os.path.join(args.data, "gold")
-    if os.path.isdir(gold):
-        extra = [os.path.join(gold, p) for p in os.listdir(gold) if p.endswith(".jsonl")]
-        if extra:
-            files["train"] = [files["train"]] + extra
+    extra = []
+    for sub in ("gold", "imported"):
+        d = os.path.join(args.data, sub)
+        if os.path.isdir(d):
+            extra += [os.path.join(d, p) for p in sorted(os.listdir(d)) if p.endswith(".jsonl") and not p.endswith("-eval.jsonl")]
+    if extra:
+        files["train"] = [files["train"]] + extra
     ds = load_dataset("json", data_files=files)
     ds = ds.map(to_messages, remove_columns=ds["train"].column_names)
 

@@ -48,6 +48,7 @@ def main():
     ap.add_argument("--base", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--data", default=os.path.join(os.path.dirname(__file__), "data"))
     ap.add_argument("--limit", type=int, default=300)
+    ap.add_argument("--eval-file", help="score this jsonl instead of <data>/eval.jsonl (for example zeus/data/imported/vitaminc-eval.jsonl)")
     ap.add_argument("--out")
     args = ap.parse_args()
     if not (args.adapter or args.model):
@@ -63,7 +64,7 @@ def main():
         model = PeftModel.from_pretrained(model, args.adapter)
     model.eval()
 
-    with open(os.path.join(args.data, "eval.jsonl")) as f:
+    with open(args.eval_file or os.path.join(args.data, "eval.jsonl")) as f:
         examples = [json.loads(l) for l in f][: args.limit]
 
     tp, fp, fn = Counter(), Counter(), Counter()
