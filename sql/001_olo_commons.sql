@@ -353,3 +353,81 @@ create or replace function public.olo_links_export(p_after timestamptz default '
   );
 $$;
 grant execute on function public.olo_links_export(timestamptz, int) to anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 8. Gaps: what people asked that the Commons could not answer, kept as a bag
+--    of content words (never the question itself), so the ingester can look
+--    for sources on that topic and the page can show what Olo is learning.
+-- ---------------------------------------------------------------------------
+create table if not exists public.olo_gaps (
+  id uuid primary key default gen_random_uuid(),
+  topic text not null,                      -- up to six lower-case content words, sorted, space separated
+  topic_hash text not null unique,          -- md5 of topic
+  asks int not null default 1,
+  first_seen timestamptz not null default now(),
+  last_seen timestamptz not null default now(),
+  filled_at timestamptz,
+  atoms_added int not null default 0,
+  tries int not null default 0,
+  last_tried_at timestamptz
+);
+create index if not exists olo_gaps_open_idx on public.olo_gaps (filled_at, asks desc, last_seen desc);
+alter table public.olo_gaps enable row level security;
+do $$ begin
+  if not exists (select 1 from pg_policies where tablename='olo_gaps' and policyname='olo_gaps_read') then create policy olo_gaps_read on public.olo_gaps for select using (true); end if;
+end $$;
+grant select on public.olo_gaps to anon, authenticated;
+grant select, insert, update, delete on public.olo_gaps to service_role;
+
+-- Turn a question into its topic words: letters only, lower case, four letters
+-- or more, no stop words, distinct, sorted, at most six. Returns null when fewer
+-- than two words survive, so single-word or empty questions record nothing.
+create or replace function public.olo_gap_topic(p_q text) returns text language sql immutable as $$
+  select nullif(string_agg(w, ' ' order by w), '') from (
+    select distinct w from (
+      select w from unnest(regexp_split_to_array(lower(coalesce(p_q, '')), '[^a-z]+')) as w
+      where length(w) >= 4 and w not in ('what','when','where','which','whom','whose','this','that','these','those','there','their','them','they','then','than','with','from','into','about','does','have','been','were','will','would','could','should','shall','much','many','more','most','some','such','only','also','very','just','like','over','under','after','before','between','because','while','until','since','being','were','your','ours','mine','tell','know','give','show','find','explain','describe','please','question','answer','olo','commons')
+    ) x
+  ) y
+  having count(*) >= 2 and count(*) <= 40
+$$;
+
+-- Called by olo-answer (service role) when a question came back uncovered.
+create or replace function public.olo_record_gap(p_q text) returns void language plpgsql security definer set search_path = public as $$
+declare t text; h text;
+begin
+  t := public.olo_gap_topic(p_q);
+  if t is null then return; end if;
+  -- keep the topic to six words so it stays a topic, not a sentence
+  t := array_to_string((regexp_split_to_array(t, ' '))[1:6], ' ');
+  h := md5(t);
+  insert into public.olo_gaps (topic, topic_hash) values (t, h)
+  on conflict (topic_hash) do update set asks = public.olo_gaps.asks + 1, last_seen = now(), filled_at = null;
+end $$;
+revoke execute on function public.olo_record_gap(text) from public, anon, authenticated;
+grant execute on function public.olo_record_gap(text) to service_role;
+
+-- The ingester takes the most-asked open gap it has not tried in the last day.
+create or replace function public.olo_next_gap() returns json language sql stable security definer set search_path = public as $$
+  select to_json(g) from (
+    select id, topic, asks, tries from public.olo_gaps
+    where filled_at is null and tries < 5 and (last_tried_at is null or last_tried_at < now() - interval '1 day')
+    order by asks desc, last_seen desc limit 1
+  ) g;
+$$;
+revoke execute on function public.olo_next_gap() from public, anon, authenticated;
+grant execute on function public.olo_next_gap() to service_role;
+
+-- Public: what Olo is reading to fill, and what it filled, for the page.
+create or replace function public.olo_gaps_recent(p_k int default 12) returns json language sql stable security definer set search_path = public as $$
+  select json_build_object(
+    'open', (select coalesce(json_agg(json_build_object('topic', topic, 'asks', asks, 'last_seen', last_seen, 'tries', tries) order by asks desc, last_seen desc), '[]'::json)
+             from (select * from public.olo_gaps where filled_at is null order by asks desc, last_seen desc limit least(greatest(p_k, 1), 50)) o),
+    'filled', (select coalesce(json_agg(json_build_object('topic', topic, 'asks', asks, 'filled_at', filled_at, 'atoms_added', atoms_added) order by filled_at desc), '[]'::json)
+               from (select * from public.olo_gaps where filled_at is not null order by filled_at desc limit least(greatest(p_k, 1), 50)) f),
+    'open_count', (select count(*) from public.olo_gaps where filled_at is null),
+    'filled_24h', (select count(*) from public.olo_gaps where filled_at > now() - interval '24 hours'),
+    'atoms_added_24h', (select coalesce(sum(atoms_added), 0) from public.olo_gaps where filled_at > now() - interval '24 hours')
+  );
+$$;
+grant execute on function public.olo_gaps_recent(int) to anon, authenticated;

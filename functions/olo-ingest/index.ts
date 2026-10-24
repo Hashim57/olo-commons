@@ -1,18 +1,26 @@
 // supabase/functions/olo-ingest/index.ts
 //
-// Grows Olo Commons. Runs hourly from pg_cron (or by hand with the service key).
-// For each enabled source it discovers a few new items from that source's own
-// public API, turns each into an atom with provenance, embeds it with gte-small
-// INSIDE Supabase (no external AI key, nothing leaves the project), inserts it
-// if the content hash is new, and links it to its nearest neighbours.
+// Grows Olo Commons. Runs every 15 minutes from pg_cron (or by hand with the
+// service key). For each enabled source it discovers a few new items from that
+// source's own public API, turns each into an atom with provenance, embeds it
+// with gte-small INSIDE Supabase (no external AI key, nothing leaves the
+// project), inserts it if the content hash is new, and links it to its nearest
+// neighbours.
+//
+// Gap filling: before the random walk, the run takes the most-asked open gap
+// (a bag of topic words recorded by olo-answer when a question came back
+// uncovered, see olo_gaps in sql/001) and searches the sources that have a
+// search API for it, spending up to a third of the budget. So Olo learns from
+// being used: what people ask and it cannot answer, it reads next.
 //
 // Deploy:  supabase functions deploy olo-ingest --no-verify-jwt
 // Only the service role may call it. Sources are read from olo_sources; a
 // source that is not enabled there is never fetched, whatever the code says.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { clean, delatex } from './text.ts';
+import { clean } from './text.ts';
 import { ckanCandidates, OPEN_LICENCES } from './ckan.ts';
+import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikiSearchTitles, type Candidate } from './sources.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -20,27 +28,39 @@ const EMBED_CHARS = 1500;      // characters fed to the embedding model
 const LINK_K = 5;              // neighbours linked per new atom
 const MIN_LINK = 0.72;         // cosine similarity needed to make a link
 
-type Candidate = { external_id?: string; url: string; title: string; summary?: string; content?: string; authors?: string[]; published_at?: string; licence?: string; lang?: string };
 // The registry row a connector is called with, so a connector can read its own api_base.
-type Source = { slug: string; api_base?: string | null };
+type Source = { id: string; slug: string; api_base?: string | null; trust: number; licence?: string | null; atoms?: number | null };
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
 async function get(url: string, accept = 'application/json') { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
-/* ---------- discovery per source: each returns a few candidates from the source's own API ---------- */
-// Random article summaries from one language edition of Wikipedia.
+/* ---------- discovery per source: each returns a few random candidates from the source's own API ---------- */
 async function wikiRandom(lang: string, n: number): Promise<Candidate[]> {
   const out: Candidate[] = [];
   for (let i = 0; i < n; i++) {
-    try {
-      const p: any = await get(`https://${lang}.wikipedia.org/api/rest_v1/page/random/summary`);
-      if (p.type !== 'standard' || !p.extract || p.extract.length < 200) continue;
-      out.push({ external_id: String(p.pageid), url: p.content_urls?.desktop?.page || `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(p.title)}`, title: p.title, summary: clean(p.description ? p.description + '. ' + p.extract : p.extract).slice(0, 600), content: clean(p.extract), published_at: p.timestamp ? p.timestamp.slice(0, 10) : undefined, licence: 'CC BY-SA 4.0', lang });
-    } catch (_) {}
+    try { const c = wikiCandidate(await get(`https://${lang}.wikipedia.org/api/rest_v1/page/random/summary`), lang); if (c) out.push(c); } catch (_) {}
   }
   return out;
+}
+async function wikiByTitles(lang: string, titles: string[], n: number): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  for (const t of titles) {
+    if (out.length >= n) break;
+    try { const c = wikiCandidate(await get(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(t.replace(/ /g, '_'))}`), lang); if (c) out.push(c); } catch (_) {}
+  }
+  return out;
+}
+async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
+  if (!ids.length) return [];
+  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=labels|descriptions|sitelinks&languages=en&format=json`);
+  return wikidataCandidates(e, ids, n);
+}
+async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
+  if (!ids.length) return [];
+  const xml: string = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${ids.join(',')}&rettype=abstract&retmode=xml`, 'text/xml');
+  return pubmedCandidates(xml);
 }
 
 const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>> = {
@@ -58,57 +78,38 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
   async wikidata(n) {
     const r: any = await get(`https://www.wikidata.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=${Math.min(n * 2, 20)}&format=json`);
     const ids = (r.query?.random || []).map((x: any) => x.title).filter((t: string) => /^Q\d+$/.test(t));
-    if (!ids.length) return [];
-    const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.join('|')}&props=labels|descriptions|sitelinks&languages=en&format=json`);
-    const out: Candidate[] = [];
-    for (const id of ids) {
-      const ent = e.entities?.[id]; const label = ent?.labels?.en?.value, desc = ent?.descriptions?.en?.value;
-      if (!label || !desc) continue;
-      const links = Object.keys(ent.sitelinks || {}).length;
-      if (links < 3) continue;   // keep entities with some notability
-      out.push({ external_id: id, url: `https://www.wikidata.org/wiki/${id}`, title: label, summary: `${label}: ${desc}.`, content: `${label}. ${desc}. Described in ${links} Wikimedia projects.`, licence: 'CC0 1.0' });
-      if (out.length >= n) break;
-    }
-    return out;
+    return wikidataByIds(ids, n);
   },
   async archive_org(n) {
     const page = 1 + Math.floor(Math.random() * 200);
     const r: any = await get(`https://archive.org/advancedsearch.php?q=mediatype%3Atexts+AND+description%3A*&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&fl%5B%5D=creator&fl%5B%5D=date&fl%5B%5D=licenseurl&rows=${n * 2}&page=${page}&output=json`);
-    return pick((r.response?.docs || []).filter((d: any) => d.title && d.description), n).map((d: any) => ({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description).slice(0, 600), content: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence: d.licenseurl ? `See ${d.licenseurl}` : 'Public domain / as stated by the Archive' }));
+    return pick(archiveCandidates(r.response?.docs || []), n);
   },
   async arxiv(n) {
     const cats = ['cs.AI', 'cs.LG', 'cs.CR', 'q-bio', 'physics.soc-ph', 'econ', 'stat.ML', 'cs.CY', 'eess.SP', 'math.OC'];
     const cat = cats[Math.floor(Math.random() * cats.length)];
     const xml: string = await get(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`, 'application/atom+xml');
-    const out: Candidate[] = [];
-    for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
-      const e = m[1]; const id = (e.match(/<id>(.*?)<\/id>/) || [])[1]; const title = clean(delatex((e.match(/<title>([\s\S]*?)<\/title>/) || [])[1])); const abs = clean(delatex((e.match(/<summary>([\s\S]*?)<\/summary>/) || [])[1]));
-      const authors = Array.from(e.matchAll(/<name>(.*?)<\/name>/g)).map(x => clean(x[1])); const pub = (e.match(/<published>(.*?)<\/published>/) || [])[1];
-      if (!id || !title || abs.length < 100) continue;
-      out.push({ external_id: id.replace('http://arxiv.org/abs/', ''), url: id.replace('http://', 'https://'), title, summary: abs.slice(0, 600), content: abs, authors, published_at: pub ? pub.slice(0, 10) : undefined, licence: 'arXiv.org perpetual non-exclusive licence (abstract)' });
-    }
-    return out;
+    return arxivCandidates(xml);
   },
   async gutenberg(n) {
     const r: any = await get(`https://gutendex.com/books?page=${1 + Math.floor(Math.random() * 60)}`);
-    return pick((r.results || []).filter((b: any) => b.title && (b.summaries?.length || b.subjects?.length)), n).map((b: any) => ({ external_id: String(b.id), url: `https://www.gutenberg.org/ebooks/${b.id}`, title: clean(b.title).slice(0, 200), summary: clean(b.summaries?.[0] || `${b.title}. Subjects: ${(b.subjects || []).slice(0, 6).join('; ')}`).slice(0, 600), content: clean(b.summaries?.[0] || '') + ' Subjects: ' + (b.subjects || []).join('; '), authors: (b.authors || []).map((a: any) => a.name), published_at: undefined, licence: 'Public domain' }));
+    return pick(gutenbergCandidates(r.results || []), n);
   },
   async pubmed(n) {
     const terms = ['review[pt] AND open access[filter]', 'public health[MeSH] AND review[pt]', 'nutrition[MeSH] AND review[pt]', 'exercise[MeSH] AND review[pt]', 'climate change[MeSH]', 'vaccination[MeSH] AND review[pt]'];
     const term = terms[Math.floor(Math.random() * terms.length)];
     const s: any = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(term)}&retmax=${n}&retstart=${Math.floor(Math.random() * 500)}&sort=pub_date&retmode=json`);
-    const ids: string[] = s.esearchresult?.idlist || []; if (!ids.length) return [];
-    const xml: string = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${ids.join(',')}&rettype=abstract&retmode=xml`, 'text/xml');
-    const out: Candidate[] = [];
-    for (const m of xml.matchAll(/<PubmedArticle>([\s\S]*?)<\/PubmedArticle>/g)) {
-      const a = m[1]; const pmid = (a.match(/<PMID[^>]*>(\d+)<\/PMID>/) || [])[1]; const title = clean((a.match(/<ArticleTitle>([\s\S]*?)<\/ArticleTitle>/) || [])[1]);
-      const abs = clean(Array.from(a.matchAll(/<AbstractText[^>]*>([\s\S]*?)<\/AbstractText>/g)).map(x => x[1]).join(' ')); const year = (a.match(/<PubDate>[\s\S]*?<Year>(\d{4})<\/Year>/) || [])[1];
-      const authors = Array.from(a.matchAll(/<Author[^>]*>[\s\S]*?<LastName>(.*?)<\/LastName>[\s\S]*?<ForeName>(.*?)<\/ForeName>/g)).slice(0, 8).map(x => clean(x[2] + ' ' + x[1]));
-      if (!pmid || !title || abs.length < 150) continue;
-      out.push({ external_id: pmid, url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`, title, summary: abs.slice(0, 600), content: abs, authors, published_at: year ? `${year}-01-01` : undefined, licence: 'Abstract as published; citation data public domain (NLM)' });
-    }
-    return out;
+    return pubmedByIds(pubmedSearchIds(s));
   },
+};
+
+/* ---------- search per source, for gap filling: the same mappers, a topic instead of chance ---------- */
+const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>> = {
+  async wikipedia(topic, n) { const r: any = await get(searchUrl('wikipedia', topic, n * 2)!); return wikiByTitles('en', wikiSearchTitles(r), n); },
+  async wikipedia_es(topic, n) { const r: any = await get(searchUrl('wikipedia_es', topic, n * 2)!); return wikiByTitles('es', wikiSearchTitles(r), n); },
+  async wikidata(topic, n) { const r: any = await get(searchUrl('wikidata', topic, n * 2)!); return wikidataByIds(wikidataSearchIds(r), n); },
+  async arxiv(topic, n) { const xml: string = await get(searchUrl('arxiv', topic, n)!, 'application/atom+xml'); return arxivCandidates(xml); },
+  async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
 };
 
 function quality(c: Candidate, trust: number) {
@@ -146,7 +147,7 @@ Deno.serve(async (req) => {
   const budget = Math.max(2, Math.min(Number(body.budget) || 8, 120));
   // Edge Functions have a hard CPU and wall-clock budget; embedding is the costly
   // part. Stop discovering new sources after this and write the tally, so a run
-  // that gets cut off still leaves an accurate record. The next hour continues.
+  // that gets cut off still leaves an accurate record. The next run continues.
   const DEADLINE_MS = 40_000, t0 = Date.now();
   const outOfTime = () => Date.now() - t0 > DEADLINE_MS;
   const sb = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
@@ -157,15 +158,11 @@ Deno.serve(async (req) => {
   // Least recently run first, so no source is starved when a run is cut short.
   const { data: sources } = await sb.from('olo_sources').select('*').eq('enabled', true).order('last_run_at', { ascending: true, nullsFirst: true });
   const stats = { fetched: 0, added: 0, skipped: 0, failed: 0, linked: 0 };
-  const perSource = Math.max(1, Math.floor(budget / Math.max(1, (sources || []).length)));
-
   const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats }).eq('id', run?.id);
   let cutShort = false;
-  for (const src of sources || []) {
-    if (outOfTime()) { cutShort = true; break; }
-    const fn = discover[src.slug]; if (!fn) continue;
-    let cands: Candidate[] = [];
-    try { cands = await fn(perSource, src); } catch (e) { stats.failed++; continue; }
+
+  // Insert candidates for one source: clean, hash, refuse duplicates, embed, insert, link. Returns how many were added.
+  async function ingest(src: Source, cands: Candidate[]): Promise<number> {
     stats.fetched += cands.length;
     let addedHere = 0;
     for (const c of cands) {
@@ -187,11 +184,44 @@ Deno.serve(async (req) => {
         await checkpoint();
       } catch (_) { stats.failed++; }
     }
-    await sb.from('olo_sources').update({ last_run_at: new Date().toISOString(), atoms: (src.atoms || 0) + addedHere }).eq('id', src.id);
+    if (addedHere) { src.atoms = (src.atoms || 0) + addedHere; await sb.from('olo_sources').update({ atoms: src.atoms }).eq('id', src.id); }
+    return addedHere;
+  }
+
+  // 1. Gap filling: the most-asked open topic, searched across the sources that can search.
+  let gapNote = '';
+  const searchable = (sources || []).filter((s: Source) => search[s.slug]);
+  if (budget >= 6 && searchable.length) {
+    const { data: gap } = await sb.rpc('olo_next_gap');
+    if (gap && gap.topic) {
+      const gapBudget = Math.max(2, Math.floor(budget / 3));
+      const perSrc = Math.max(1, Math.ceil(gapBudget / searchable.length));
+      let gapAdded = 0, gapFetched = 0;
+      for (const src of searchable) {
+        if (outOfTime() || gapAdded >= gapBudget) break;
+        let cands: Candidate[] = [];
+        try { cands = await search[src.slug](gap.topic, perSrc); } catch (_) { stats.failed++; continue; }
+        gapFetched += cands.length;
+        gapAdded += await ingest(src, cands.slice(0, gapBudget - gapAdded));
+      }
+      await sb.from('olo_gaps').update({ tries: (gap.tries || 0) + 1, last_tried_at: new Date().toISOString(), atoms_added: gapAdded, ...(gapAdded > 0 ? { filled_at: new Date().toISOString() } : {}) }).eq('id', gap.id);
+      gapNote = ` (gap "${gap.topic}": ${gapAdded} added of ${gapFetched} found)`;
+    }
+  }
+
+  // 2. The random walk through every enabled source, as before.
+  const perSource = Math.max(1, Math.floor(budget / Math.max(1, (sources || []).length)));
+  for (const src of sources || []) {
+    if (outOfTime()) { cutShort = true; break; }
+    const fn = discover[src.slug]; if (!fn) continue;
+    let cands: Candidate[] = [];
+    try { cands = await fn(perSource, src); } catch (e) { stats.failed++; continue; }
+    await ingest(src, cands);
+    await sb.from('olo_sources').update({ last_run_at: new Date().toISOString() }).eq('id', src.id);
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + (cutShort ? ' (time budget reached, continues next run)' : '') }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + (cutShort ? ' (time budget reached, continues next run)' : '') }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });
