@@ -21,6 +21,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 import urllib.request
 
 EXPORT = os.environ.get("OLO_EXPORT_URL", "https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query")
@@ -30,17 +31,25 @@ TEXT_MAX = 600
 
 def page(after, limit=500, tries=4):
     url = f"{EXPORT}?export=1&after={urllib.request.quote(after)}&limit={limit}"
+    last = ""
     for i in range(tries):
         try:
             with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "olo-snapshot/1"}), timeout=60) as r:
                 data = json.loads(r.read())
-            if "atoms" not in data:
-                raise ValueError(f"unexpected response: {str(data)[:200]}")
-            return data
+            if "atoms" in data:
+                return data
+            last = f"unexpected response: {str(data)[:200]}"
+        except urllib.error.HTTPError as e:
+            body = e.read()
+            if e.code == 400 and b"q is required" in body:
+                # olo-query from before the export was added: nothing to build until it is deployed.
+                print("olo-query does not offer ?export=1 yet (deploy functions/olo-query); keeping the current snapshot")
+                sys.exit(0)
+            last = f"HTTP {e.code}"
         except Exception as e:  # network blips: back off and retry, then give up loudly
-            if i == tries - 1:
-                raise SystemExit(f"export failed after {tries} tries: {e}")
-            time.sleep(5 * (i + 1))
+            last = str(e)
+        time.sleep(5 * (i + 1))
+    raise SystemExit(f"export failed after {tries} tries: {last}")
 
 
 def compact(a):
