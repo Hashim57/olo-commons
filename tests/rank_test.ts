@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { citation, fuse, RRF_C } from '../functions/olo-query/rank.ts';
+import { citation, fuse, looseQuery, RRF_C } from '../functions/olo-query/rank.ts';
 
 const sem = (id: string, similarity: number, extra: Record<string, unknown> = {}) => ({ id, similarity, content: `content of ${id}`, ...extra });
 const key = (id: string, rank: number, extra: Record<string, unknown> = {}) => ({ id, rank, ...extra });
@@ -64,4 +64,13 @@ Deno.test('citation never prints undefined', () => {
   assertEquals(citation({ title: 'T', source: 'S', url: 'https://x' }), 'T (S). https://x');
   assertEquals(citation({}), 'Untitled.');
   assert(!citation({ title: undefined, source: undefined }).includes('undefined'));
+});
+
+
+Deno.test('looseQuery keeps content words and joins them with or', () => {
+  assertEquals(looseQuery('when was project gutenberg founded'), 'project or gutenberg or founded');
+  assertEquals(looseQuery('what is the sun made from ?'), '');          // one content word left: no retry
+  assertEquals(looseQuery('coral reef recovery after bleaching'), 'coral or reef or recovery or after or bleaching');
+  assertEquals(looseQuery('Gutenberg gutenberg GUTENBERG press'), 'gutenberg or press');
+  assertEquals(looseQuery('¿cuándo se fundó el proyecto Gutenberg?'), 'cuándo or fundó or proyecto or gutenberg');
 });

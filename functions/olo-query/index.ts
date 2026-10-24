@@ -21,7 +21,7 @@
 // callers 3000. Query text is never stored; only its length and result count.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { citation, fuse } from './rank.ts';
+import { citation, fuse, looseQuery } from './rank.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400;
@@ -34,7 +34,9 @@ async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256
 
 Deno.serve(async (req) => {
   const H = cors(req.headers.get('origin'));
-  if (req.method === 'OPTIONS') return new Response('', { status: 204, headers: H });
+  // Deno refuses a body (even '') on a 204, so the old `new Response('', { status: 204 })` threw and
+  // every browser preflight failed with no CORS headers: pages fell back to keyword-only RPC search.
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: H });
   if (req.method !== 'GET' && req.method !== 'POST') return new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: H });
 
   let q = '', k = 8, mode = 'hybrid', status = false;
@@ -83,7 +85,11 @@ Deno.serve(async (req) => {
       semantic = Array.isArray(data) ? data : [];
     } catch (_) { /* fall through to keyword */ }
   }
-  if (mode !== 'semantic') { const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : []; }
+  if (mode !== 'semantic') {
+    const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : [];
+    // the strict query ANDs every word; when it finds nothing, retry with the content words ORed
+    if (!keyword.length) { const loose = looseQuery(q); if (loose) { const { data: d2 } = await sb.rpc('olo_search_text', { p_q: loose, p_k: want }); keyword = Array.isArray(d2) ? d2 : []; } }
+  }
 
   // merge by reciprocal rank fusion: an atom found by both retrievers rises to the top
   const results = fuse(semantic, keyword, k).map((r: any) => ({

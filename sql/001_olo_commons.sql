@@ -385,8 +385,8 @@ grant select, insert, update, delete on public.olo_gaps to service_role;
 create or replace function public.olo_gap_topic(p_q text) returns text language sql immutable as $$
   select nullif(string_agg(w, ' ' order by w), '') from (
     select distinct w from (
-      select w from unnest(regexp_split_to_array(lower(coalesce(p_q, '')), '[^a-z]+')) as w
-      where length(w) >= 4 and w not in ('what','when','where','which','whom','whose','this','that','these','those','there','their','them','they','then','than','with','from','into','about','does','have','been','were','will','would','could','should','shall','much','many','more','most','some','such','only','also','very','just','like','over','under','after','before','between','because','while','until','since','being','were','your','ours','mine','tell','know','give','show','find','explain','describe','please','question','answer','olo','commons')
+      select w from unnest(regexp_split_to_array(lower(coalesce(p_q, '')), '[^[:alpha:]0-9]+')) as w
+      where length(w) >= 3 and w not in ('the','and','for','are','was','how','why','who','did','can','its','our','you','not','but','all','any','has','had','may','get','use','one','two','what','when','where','which','whom','whose','this','that','these','those','there','their','them','they','then','than','with','from','into','about','does','have','been','were','will','would','could','should','shall','much','many','more','most','some','such','only','also','very','just','like','over','under','after','before','between','because','while','until','since','being','were','your','ours','mine','tell','know','give','show','find','explain','describe','please','question','answer','olo','commons')
     ) x
   ) y
   having count(*) >= 2 and count(*) <= 40

@@ -31,7 +31,7 @@
 // time-limited so a slow provider cannot hold the function open.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { citation, fuse } from './rank.ts';
+import { citation, fuse, looseQuery } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -62,7 +62,9 @@ async function chat(baseUrl: string, apiKey: string, model: string, system: stri
 
 Deno.serve(async (req) => {
   const H = cors(req.headers.get('origin'));
-  if (req.method === 'OPTIONS') return new Response('', { status: 204, headers: H });
+  // Deno refuses a body (even '') on a 204, so the old `new Response('', { status: 204 })` threw and
+  // every browser preflight failed with no CORS headers: pages fell back to keyword-only RPC search.
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: H });
   if (req.method !== 'GET' && req.method !== 'POST') return new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: H });
 
   let q = '', k = 8;
@@ -100,7 +102,11 @@ Deno.serve(async (req) => {
     const { data } = await sb.rpc('olo_match', { p_embedding: emb, p_k: want, p_min: 0.5 });
     semantic = Array.isArray(data) ? data : [];
   } catch (_) { /* keyword only */ }
-  { const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : []; }
+  {
+    const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : [];
+    // the strict query ANDs every word; when it finds nothing, retry with the content words ORed
+    if (!keyword.length) { const loose = looseQuery(q); if (loose) { const { data: d2 } = await sb.rpc('olo_search_text', { p_q: loose, p_k: want }); keyword = Array.isArray(d2) ? d2 : []; } }
+  }
   const results = fuse(semantic, keyword, k);
   const passages: Passage[] = labelPassages(results);
   const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, summary: r.summary || null, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at, similarity: typeof r.similarity === 'number' ? r.similarity : null, match: r.match, citation: citation(r) }));

@@ -57,3 +57,19 @@ export function citation(r: { title?: unknown; source?: unknown; licence?: unkno
   const inside = [r.source, r.licence].map(x => String(x ?? '').trim()).filter(Boolean).join(', ');
   return `${title}${inside ? ` (${inside})` : ''}.${r.url ? ' ' + String(r.url) : ''}`;
 }
+
+/**
+ * A looser keyword query for when the strict one finds nothing. olo_search_text
+ * uses websearch_to_tsquery, which ANDs every word, so "when was project
+ * gutenberg founded" needs an atom that contains "found" as well as the name.
+ * This keeps the content words (letters or digits, 3+ characters, not in a
+ * small stop list) and joins them with "or", which websearch_to_tsquery
+ * understands. Returns '' when fewer than two content words remain, so a
+ * single word is never retried (the strict query already covered it).
+ */
+const STOP = new Set(['the', 'and', 'for', 'are', 'was', 'were', 'what', 'when', 'where', 'who', 'why', 'how', 'does', 'did', 'this', 'that', 'with', 'from', 'into', 'about', 'which', 'there', 'their', 'have', 'has', 'had', 'been', 'being', 'can', 'could', 'would', 'should', 'made', 'make', 'many', 'much', 'some', 'any', 'all', 'not', 'but', 'you', 'your', 'its', 'our', 'one', 'two']);
+export function looseQuery(q: string): string {
+  const words = q.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [];
+  const keep = [...new Set(words.filter(w => !STOP.has(w)))];
+  return keep.length >= 2 ? keep.join(' or ') : '';
+}
