@@ -85,7 +85,7 @@ def main():
     a = ap.parse_args()
     checks = [("Commons ingest and read API", check_status), ("olo-query from the browser", lambda: check_preflight("olo-query")),
               ("olo-answer from the browser", lambda: check_preflight("olo-answer")), ("heliusnetwork.app/olo", lambda: check_page("https://heliusnetwork.app/olo/")),
-              ("helius-olo.io", lambda: check_page(os.environ.get("OLO_WEB_URL", "https://helius-olo.io")))]
+              ("helius-olo.io", lambda: check_page(os.environ.get("OLO_WEB_URL") or "https://helius-olo.io"))]
     if os.environ.get("ZEUS_HEALTH_URL"):
         checks.append(("Zeus on Cloudflare", lambda: check_zeus(os.environ["ZEUS_HEALTH_URL"])))
     if a.deep:
