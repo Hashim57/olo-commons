@@ -102,6 +102,9 @@ public final class OloAPI: @unchecked Sendable {
         public var message: String
         public var code: String?
         public var httpStatus: Int
+        public init(message: String, code: String?, httpStatus: Int) {
+            self.message = message; self.code = code; self.httpStatus = httpStatus
+        }
         public var errorDescription: String? { message }
         /// The free allowance is used up: signing in (or a plan) is the way on.
         public var isQuota: Bool { code == "quota_exceeded" || httpStatus == 402 }
