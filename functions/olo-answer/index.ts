@@ -46,10 +46,13 @@ async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256
 
 /** One chat completion against an OpenAI-compatible API. Returns the text or throws. */
 async function chat(baseUrl: string, apiKey: string, model: string, system: string, user: string, maxTokens: number, timeoutMs: number): Promise<string> {
+  // Reasoning models (gpt-oss on Groq) spend max_tokens on hidden reasoning first; ask for the
+  // least of it so the budget reaches the answer. Other servers ignore the field.
+  const extra = /gpt-oss/i.test(model) ? { reasoning_effort: 'low' } : {};
   const r = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
-    body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, max_tokens: maxTokens }),
+    body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, max_tokens: maxTokens, ...extra }),
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!r.ok) throw new Error(r.status === 404 ? `model ${r.status}: ${model} is not offered at ${baseUrl}; set OLO_LLM_MODEL to one the provider lists` : `model ${r.status}`);
@@ -57,7 +60,9 @@ async function chat(baseUrl: string, apiKey: string, model: string, system: stri
   const text = j?.choices?.[0]?.message?.content;
   if (typeof text !== 'string') throw new Error('model returned no text');
   // some providers wrap reasoning in <think> blocks; the answer is what follows
-  return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const out = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  if (!out) throw new Error('model returned empty text (raise max_tokens or lower reasoning)');
+  return out;
 }
 
 Deno.serve(async (req) => {
@@ -120,7 +125,7 @@ Deno.serve(async (req) => {
 
   // draft
   let answer: string;
-  try { answer = await chat(llmBase, llmKey, llmModel, ANSWER_SYSTEM, renderAnswerPrompt(q, passages), 400, LLM_TIMEOUT_MS); }
+  try { answer = await chat(llmBase, llmKey, llmModel, ANSWER_SYSTEM, renderAnswerPrompt(q, passages), 700, LLM_TIMEOUT_MS); }
   catch (e) { await logIt(passages.length); return new Response(JSON.stringify({ error: 'model_unavailable', detail: String((e as Error).message || e).slice(0, 200) }), { status: 502, headers: H }); }
 
   const covered = !answer.includes(NOT_COVERED_TEXT);
@@ -131,14 +136,14 @@ Deno.serve(async (req) => {
   const verdicts = await Promise.all(sentences.map(async (s) => {
     const cited = passages.filter(p => s.citations.includes(p.id));
     const scope = cited.length ? cited : passages;
-    let v: Verdict | null = null;
+    let v: Verdict | null = null, verifyError = '';
     try {
       const text = zeusUrl
         ? await chat(zeusUrl, Deno.env.get('OLO_ZEUS_API_KEY') || '', zeusModel, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), 200, VERIFY_TIMEOUT_MS)
-        : await chat(llmBase, llmKey, llmModel, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), 200, VERIFY_TIMEOUT_MS);
+        : await chat(llmBase, llmKey, llmModel, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), 600, VERIFY_TIMEOUT_MS);
       v = parseVerdict(text);
-    } catch (_) { v = null; }
-    const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer.', evidence_checked: false };
+    } catch (e) { v = null; verifyError = String((e as Error).message || e).slice(0, 80); }
+    const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
     return { text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked };
   }));
 
