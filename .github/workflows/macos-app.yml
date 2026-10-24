@@ -78,6 +78,34 @@ jobs:
           path: apps/macos/Olo-macOS-unsigned.zip
           retention-days: 30
 
+  xcode-project:
+    # A ready-to-open Xcode project on the macos-xcode branch, so the app can be built and submitted
+    # from Xcode on a Mac without installing XcodeGen. Regenerated after every green build of main.
+    name: Publish the Xcode project
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate and publish
+        run: |
+          brew install xcodegen
+          cd apps/macos && xcodegen generate && cd ../..
+          out="$(mktemp -d)/Olo-macOS"
+          mkdir -p "$out"
+          rsync -a --exclude build --exclude .build --exclude '*.zip' --exclude .gitignore apps/macos/ "$out/"
+          cd "$out"
+          git init -q -b macos-xcode
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Xcode project for Olo macOS, generated from main at ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${GITHUB_REPOSITORY}.git" macos-xcode
+          echo "Published branch macos-xcode"
+
   app-store:
     name: Archive and upload to App Store Connect
     if: github.event_name == 'workflow_dispatch' && inputs.app_store
