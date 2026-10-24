@@ -1,0 +1,13 @@
+{
+  "model": "zeus/out/zeus-v5",
+  "base": "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+  "n": 200,
+  "label_accuracy": 0.835,
+  "json_valid": 0.98,
+  "evidence_hit": 0.81,
+  "f1": {
+    "supported": 0.848,
+    "contradicted": 0.7,
+    "not_covered": 0.938
+  }
+}
