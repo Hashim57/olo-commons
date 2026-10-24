@@ -74,3 +74,14 @@ def test_status_notes_reads_the_notes_cell(tmp_path):
     p.write_text(STATUS)
     assert publish.status_notes(str(p), "v5") == "gold set"
     assert publish.status_notes(str(p), "v7") == ""
+
+
+def test_cloudflare_pick_is_the_best_mistral_version_and_never_demoted():
+    cands = [{"version": "v5", "base": "mlx-community/Qwen2.5-1.5B-Instruct-4bit", "label_accuracy": 0.84, "evidence_hit": 0.81},
+             {"version": "v6", "base": "mlx-community/Mistral-7B-Instruct-v0.2-4bit", "label_accuracy": 0.80, "evidence_hit": 0.78},
+             {"version": "v7", "base": "mlx-community/Mistral-7B-Instruct-v0.2-4bit", "label_accuracy": 0.79, "evidence_hit": 0.80}]
+    cf = [c for c in cands if promote.cloudflare_servable(c)]
+    assert [c["version"] for c in cf] == ["v6", "v7"]
+    assert promote.choose(cf)["version"] == "v6"
+    assert promote.choose(cf, {"version": "v6"})["version"] == "v6"
+    assert promote.choose(cands)["version"] == "v5"  # the overall best can stay a version Cloudflare cannot serve

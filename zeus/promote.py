@@ -51,6 +51,10 @@ def candidates(out_dir, rows):
     return out
 
 
+def cloudflare_servable(c):
+    return "mistral-7b-instruct-v0.2" in str(c.get("base", "")).lower()
+
+
 def rank_key(c):
     return (c["label_accuracy"], c["evidence_hit"], int(c["version"][1:]))
 
@@ -88,6 +92,11 @@ def main():
     record = {**best, "promoted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "measured_versions": sorted(c["version"] for c in cands)}
     if current and current.get("version") == best["version"] and not args.force:
         record["promoted_at"] = current.get("promoted_at", record["promoted_at"])
+    # The best version Cloudflare can serve (Mistral 7B Instruct v0.2 base), chosen by the same rule and
+    # never demoted. This is what zeus/cloudflare/publish.sh uploads; it can differ from the overall best.
+    cf_cur = (current or {}).get("cloudflare")
+    cf = choose([c for c in cands if cloudflare_servable(c)], cf_cur, args.force)
+    record["cloudflare"] = {k: cf[k] for k in ("version", "date", "base", "label_accuracy", "evidence_hit", "json_valid", "eval_n", "f1") if k in cf} if cf else None
     print(json.dumps(record, indent=2))
     if not args.dry_run:
         with open(args.best, "w", encoding="utf-8") as f:

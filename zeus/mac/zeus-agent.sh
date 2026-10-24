@@ -45,6 +45,25 @@ if [ -n "$WANT" ] && [ "$WANT" != "$HAVE" ] && launchctl print "gui/$(id -u)/com
   launchctl kickstart -k "gui/$(id -u)/com.helius.zeus-serve" >> "$LOG" 2>&1 || true
 fi
 
+# The same promotion goes to Cloudflare (zeus/cloudflare/setup.sh done once): upload the new adapter,
+# point the Worker at it, score the served model and commit that score next to the local one.
+CF_HAVE="$(cat "$HOME/zeus-cf.version" 2>/dev/null || true)"
+WANT="$(git show origin/main:zeus/BEST.json 2>/dev/null | python3 -c 'import json,sys; print((json.load(sys.stdin).get("cloudflare") or {}).get("version",""))' 2>/dev/null || true)"
+if [ -n "$WANT" ] && [ "$WANT" != "$CF_HAVE" ] && [ -s "$HOME/zeus-cf.url" ] && [ -f "zeus/out/zeus-$WANT/adapters.safetensors" ]; then
+  git checkout -q main && (git pull -q --ff-only origin main >> "$LOG" 2>&1 || true)
+  log "publishing $WANT to Cloudflare"
+  if bash zeus/cloudflare/publish.sh "$WANT" >> "$LOG" 2>&1; then
+    echo "$WANT" > "$HOME/zeus-cf.version"
+    if [ -f "zeus/out/zeus-$WANT/eval-cloudflare.json" ]; then
+      git add -f "zeus/out/zeus-$WANT/eval-cloudflare.json"
+      git -c user.name="zeus-agent" -c user.email="zeus-agent@heliusnetwork.app" commit -q -m "zeus: $WANT served on Cloudflare, measured there" >> "$LOG" 2>&1 && \
+        (git push -q origin main >> "$LOG" 2>&1 || (git pull -q --rebase origin main >> "$LOG" 2>&1 && git push -q origin main >> "$LOG" 2>&1) || log "push of the Cloudflare score failed")
+    fi
+  else
+    log "Cloudflare publish of $WANT failed; will retry next run"
+  fi
+fi
+
 # Nothing requested: stay quiet.
 git cat-file -e "origin/main:$REQ" 2>/dev/null || exit 0
 
