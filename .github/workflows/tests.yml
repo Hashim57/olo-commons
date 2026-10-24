@@ -1,0 +1,57 @@
+# Runs the unit tests on every push and pull request, whatever files changed.
+#
+# deploy-functions.yml already syntax-checks the Edge Functions, but only when a
+# push touches functions/**, and it never runs the Zeus tests. This workflow is
+# the one a contributor sees on a pull request: the Deno tests for the connector
+# helpers, the Python tests for the Zeus dataset builder, a syntax check of every
+# script, and a validation pass over the hand-written gold examples. No network,
+# no secrets, nothing deployed.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  functions:
+    name: Edge Functions (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Bundle both functions (catches syntax and import errors)
+        run: |
+          npx --yes esbuild functions/olo-ingest/index.ts --format=esm --log-level=error --outfile=/tmp/ingest.js
+          npx --yes esbuild functions/olo-query/index.ts --format=esm --log-level=error --outfile=/tmp/query.js
+      - name: Unit tests
+        run: deno test tests/
+
+  zeus:
+    name: Zeus (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Syntax-check every script
+        run: |
+          python3 -m py_compile zeus/*.py zeus/tests/*.py
+          bash -n zeus/train_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh
+      - name: Unit tests
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest zeus/tests -q
+      - name: Validate the gold examples
+        run: |
+          if [ -f zeus/validate_gold.py ]; then python3 zeus/validate_gold.py; else echo "no validator yet"; fi
