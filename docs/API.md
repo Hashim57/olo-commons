@@ -8,7 +8,9 @@ Base: `https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query`
 
 - `q`: 2 to 400 characters. Never stored.
 - `k`: 1 to 20 results.
-- `mode`: `hybrid` (default: meaning search merged with keyword search), `semantic`, or `keyword`.
+- `mode`: `hybrid` (default: meaning search merged with keyword search), `semantic`, or `keyword`. Anything else is treated as `hybrid`.
+
+In `hybrid` mode the two result lists are merged by reciprocal rank fusion: each retriever contributes `1 / (60 + position)` and an atom found by both is placed first. Each result carries `match` (`both`, `semantic` or `keyword`) so you can see which retriever found it. `similarity` is the cosine score from the meaning search and is `null` for keyword-only hits.
 
 Response:
 
@@ -16,11 +18,12 @@ Response:
 {
   "q": "...",
   "k": 8,
+  "mode": "hybrid",
   "results": [
     {
       "id": "uuid", "title": "...", "summary": "...", "content": "up to 2000 chars or null",
       "url": "https://...", "source": "Wikipedia", "source_slug": "wikipedia", "licence": "CC BY-SA 4.0",
-      "published_at": "2024-03-01", "retrieved_at": "2026-10-20T17:00:00Z", "similarity": 0.81,
+      "published_at": "2024-03-01", "retrieved_at": "2026-10-20T17:00:00Z", "similarity": 0.81, "match": "both",
       "citation": "Title (Wikipedia, CC BY-SA 4.0). https://..."
     }
   ],
