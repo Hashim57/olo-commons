@@ -72,3 +72,25 @@ Deno.test('checkEvidence keeps only quotes found in their passage and downgrades
 Deno.test('summarise counts labels', () => {
   assertEquals(summarise([{ label: 'supported' }, { label: 'supported' }, { label: 'not_covered' }]), { supported: 2, contradicted: 0, not_covered: 1 });
 });
+
+import { extractiveAnswer, summarise as summarise2 } from '../functions/olo-answer/answer.ts';
+
+Deno.test('extractive answer quotes the best-matching sentence of each passage, at most three', () => {
+  const passages = [
+    { id: 'p1', source: 'wikipedia', url: 'u1', text: 'Some unrelated opening sentence about the weather today. Project Gutenberg was founded in 1971 by Michael Hart as a digital library.' },
+    { id: 'p2', source: 'gutenberg', url: 'u2', text: 'The Gutenberg collection now offers over seventy thousand free eBooks to readers everywhere.' },
+    { id: 'p3', source: 'pubmed', url: 'u3', text: 'Coral reefs recover slowly after a bleaching event, according to long term surveys.' },
+  ];
+  const out = extractiveAnswer('when was project gutenberg founded', passages);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].citations, ['p1']);
+  assertEquals(out[0].verdict, 'supported');
+  assert(passages[0].text.includes(out[0].evidence[0].quote));
+  assertEquals(out[0].text, 'Project Gutenberg was founded in 1971 by Michael Hart as a digital library.');
+  assertEquals(extractiveAnswer('the and of', passages), []);
+  assertEquals(extractiveAnswer('coral', passages)[0].citations, ['p3']);
+});
+
+Deno.test('summarise counts verdicts given as label or verdict', () => {
+  assertEquals(summarise2([{ verdict: 'supported' }, { verdict: 'not_covered' }, { label: 'contradicted' }]), { supported: 1, contradicted: 1, not_covered: 1 });
+});

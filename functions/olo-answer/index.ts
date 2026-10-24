@@ -14,7 +14,10 @@
 //
 // Deploy:  supabase functions deploy olo-answer --no-verify-jwt
 // Secrets (Supabase project secrets, never in code):
-//   OLO_LLM_API_KEY    key for an OpenAI-compatible chat API (required; without it the function answers 503)
+//   OLO_LLM_API_KEY    key for an OpenAI-compatible chat API (the main writer)
+//   OLO_LLM_FALLBACK_BASE_URL, OLO_LLM_FALLBACK_API_KEY, OLO_LLM_FALLBACK_MODEL   the second writer
+//                      (zeus/cloudflare/setup.sh points them at the Worker's olo-draft). With no writer
+//                      reachable the answer is extractive (docs/RELIABILITY.md); it never fails for that.
 //   OLO_LLM_BASE_URL   default https://api.groq.com/openai/v1
 //   OLO_LLM_MODEL      default openai/gpt-oss-120b (Apache 2.0 weights, a production model on Groq;
 //                      qwen/qwen3-32b was retired there on 17 July 2026 and answers 404)
@@ -32,7 +35,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, fuse, looseQuery } from './rank.ts';
-import { ANSWER_SYSTEM, checkEvidence, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
+import { ANSWER_SYSTEM, checkEvidence, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400, MAX_SENTENCES = 5;
@@ -78,10 +81,13 @@ Deno.serve(async (req) => {
   q = q.replace(/\s+/g, ' ').trim().slice(0, MAX_Q); k = Math.max(2, Math.min(k, 12));
   if (q.length < 2) return new Response(JSON.stringify({ error: 'q is required (2 to 400 characters)' }), { status: 400, headers: H });
 
-  const llmKey = Deno.env.get('OLO_LLM_API_KEY') || '';
-  if (!llmKey) return new Response(JSON.stringify({ error: 'answering_not_configured', hint: 'set OLO_LLM_API_KEY' }), { status: 503, headers: H });
-  const llmBase = Deno.env.get('OLO_LLM_BASE_URL') || 'https://api.groq.com/openai/v1';
-  const llmModel = Deno.env.get('OLO_LLM_MODEL') || 'openai/gpt-oss-120b';
+  // Writers, tried in order: the main provider, then the fallback (the Cloudflare Worker's "olo-draft",
+  // set by zeus/cloudflare/setup.sh). With neither reachable the answer is extractive: the passages' own
+  // sentences, marked as such. The function never fails a question because a model provider is down.
+  const writers = [
+    { base: Deno.env.get('OLO_LLM_BASE_URL') || 'https://api.groq.com/openai/v1', key: Deno.env.get('OLO_LLM_API_KEY') || '', model: Deno.env.get('OLO_LLM_MODEL') || 'openai/gpt-oss-120b' },
+    { base: Deno.env.get('OLO_LLM_FALLBACK_BASE_URL') || '', key: Deno.env.get('OLO_LLM_FALLBACK_API_KEY') || '', model: Deno.env.get('OLO_LLM_FALLBACK_MODEL') || 'olo-draft' },
+  ].filter(w => w.base && w.key);
   const zeusUrl = Deno.env.get('OLO_ZEUS_URL') || '';
   const zeusModel = Deno.env.get('OLO_ZEUS_MODEL') || 'default_model';
 
@@ -123,29 +129,53 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ q, answer: NOT_COVERED_TEXT, sentences: [], passages: [], verifier: null, model: null, summary: summarise([]), covered: false, attribution: 'Olo Commons by Helius Network.' }), { headers: H });
   }
 
-  // draft
-  let answer: string;
-  try { answer = await chat(llmBase, llmKey, llmModel, ANSWER_SYSTEM, renderAnswerPrompt(q, passages), 700, LLM_TIMEOUT_MS); }
-  catch (e) { await logIt(passages.length); return new Response(JSON.stringify({ error: 'model_unavailable', detail: String((e as Error).message || e).slice(0, 200) }), { status: 502, headers: H }); }
+  // draft, with the first writer that answers
+  let answer = '', writer: typeof writers[number] | null = null;
+  const draftErrors: string[] = [];
+  for (const w of writers) {
+    try { answer = await chat(w.base, w.key, w.model, ANSWER_SYSTEM, renderAnswerPrompt(q, passages), 700, LLM_TIMEOUT_MS); writer = w; break; }
+    catch (e) { draftErrors.push(String((e as Error).message || e).slice(0, 80)); }
+  }
+
+  if (!writer) {
+    // No writer reachable: answer from the passages themselves.
+    const quoted = extractiveAnswer(q, passages);
+    await logIt(passages.length);
+    if (!quoted.length) sb.rpc('olo_record_gap', { p_q: q }).then(() => {}, () => {});
+    return new Response(JSON.stringify({
+      q, mode: 'extractive', answer: quoted.length ? quoted.map(s => s.text).join(' ') : NOT_COVERED_TEXT, covered: quoted.length > 0, sentences: quoted, summary: summarise(quoted),
+      passages: provenance, verifier: 'extractive', model: null, notice: 'No writing model could be reached, so these are the passages\' own sentences that best match the question.' + (draftErrors.length ? ` (${draftErrors.join('; ')})` : ''),
+      attribution: 'Olo Commons by Helius Network. Each passage carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api',
+    }), { headers: H });
+  }
 
   const covered = !answer.includes(NOT_COVERED_TEXT);
   const sentences = covered ? splitSentences(answer).slice(0, MAX_SENTENCES) : [];
 
-  // verify every sentence against its cited passages (all passages when it cites none)
-  const verifier = zeusUrl ? `zeus:${zeusModel}` : 'llm-fallback';
+  // Verifiers, tried in order for each sentence: Zeus, then the writers with the Zeus prompt. The response
+  // names the one that answered most sentences, and each sentence says if it could not be checked at all.
+  const zeusKey = Deno.env.get('OLO_ZEUS_API_KEY') || '';
+  const verifiers = [
+    ...(zeusUrl ? [{ name: `zeus:${zeusModel}`, base: zeusUrl, key: zeusKey, model: zeusModel, tokens: 200 }] : []),
+    ...writers.map(w => ({ name: 'llm-fallback', base: w.base, key: w.key, model: w.model, tokens: 600 })),
+  ];
+  const usedBy: string[] = [];
   const verdicts = await Promise.all(sentences.map(async (s) => {
     const cited = passages.filter(p => s.citations.includes(p.id));
     const scope = cited.length ? cited : passages;
     let v: Verdict | null = null, verifyError = '';
-    try {
-      const text = zeusUrl
-        ? await chat(zeusUrl, Deno.env.get('OLO_ZEUS_API_KEY') || '', zeusModel, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), 200, VERIFY_TIMEOUT_MS)
-        : await chat(llmBase, llmKey, llmModel, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), 600, VERIFY_TIMEOUT_MS);
-      v = parseVerdict(text);
-    } catch (e) { v = null; verifyError = String((e as Error).message || e).slice(0, 80); }
+    for (const ver of verifiers) {
+      try {
+        v = parseVerdict(await chat(ver.base, ver.key, ver.model, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), ver.tokens, VERIFY_TIMEOUT_MS));
+        if (v) { usedBy.push(ver.name); break; }
+        verifyError = `${ver.name} gave unreadable output`;
+      } catch (e) { verifyError = String((e as Error).message || e).slice(0, 80); }
+    }
     const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
     return { text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked };
   }));
+  const counts = usedBy.reduce((m, n) => m.set(n, (m.get(n) || 0) + 1), new Map<string, number>());
+  const verifier = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || (zeusUrl ? `zeus:${zeusModel}` : 'llm-fallback');
 
   await logIt(passages.length);
   // a question the Commons could not answer is a gap worth filling; the RPC exists once sql/001 has been rerun, so a failure here is ignored
@@ -153,7 +183,7 @@ Deno.serve(async (req) => {
 
   return new Response(JSON.stringify({
     q, answer: covered ? sentences.map(s => s.text).join(' ') : NOT_COVERED_TEXT, covered, sentences: verdicts, summary: summarise(verdicts),
-    passages: provenance, verifier, model: llmModel,
+    passages: provenance, verifier, model: writer.model, mode: writer === writers[0] ? 'written' : 'written-fallback',
     attribution: 'Olo Commons by Helius Network. Each passage carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api',
   }), { headers: H });
 });

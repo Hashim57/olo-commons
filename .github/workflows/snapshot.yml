@@ -1,0 +1,37 @@
+# Offline snapshot of Olo Commons, every six hours (and on demand).
+# Builds snapshot/commons.json from the keyless export and force-pushes it as the only file on the
+# "snapshot" branch (no history kept, so the repository does not grow), then asks jsDelivr to refresh.
+# Pages and apps keep this file on the device and search it when the network or the database is down.
+name: Commons snapshot
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: snapshot
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the snapshot
+        run: python3 scripts/build_snapshot.py --out "$RUNNER_TEMP/snap/commons.json"
+      - name: Publish on the snapshot branch
+        run: |
+          cd "$RUNNER_TEMP/snap"
+          printf '# Olo Commons offline snapshot\n\nBuilt by .github/workflows/snapshot.yml on main. Each atom carries its own licence; the compilation is CC BY-SA 4.0.\n' > README.md
+          git init -q -b snapshot
+          git config user.name "olo-snapshot"
+          git config user.email "olo-snapshot@heliusnetwork.app"
+          git add commons.json README.md
+          git commit -q -m "snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" snapshot:snapshot
+      - name: Refresh the jsDelivr copy
+        run: curl -fsS "https://purge.jsdelivr.net/gh/${{ github.repository }}@snapshot/commons.json" || echo "purge request failed; jsDelivr refreshes on its own within 12 hours"

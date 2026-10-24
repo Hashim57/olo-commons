@@ -96,8 +96,47 @@ export function checkEvidence(v: Verdict, passages: Passage[]): Verdict & { evid
 }
 
 /** One line for the page: how many sentences each verdict got. */
-export function summarise(verdicts: { label: Label }[]): { supported: number; contradicted: number; not_covered: number } {
+export function summarise(verdicts: ({ label: Label } | { verdict: Label })[]): { supported: number; contradicted: number; not_covered: number } {
   const s = { supported: 0, contradicted: 0, not_covered: 0 };
-  for (const v of verdicts) s[v.label]++;
+  for (const v of verdicts) {
+    const l = 'label' in v ? v.label : v.verdict;
+    if (l in s) s[l]++;
+  }
   return s;
+}
+
+const STOP = new Set(['the', 'and', 'for', 'are', 'was', 'were', 'what', 'when', 'where', 'who', 'why', 'how', 'does', 'did', 'this', 'that', 'with', 'from', 'into', 'about', 'which', 'there', 'their', 'have', 'has', 'had', 'been', 'being', 'can', 'could', 'would', 'should', 'made', 'make', 'many', 'much', 'some', 'any', 'all', 'not', 'but', 'you', 'your', 'its', 'our', 'one', 'two', 'tell', 'explain', 'please', 'is', 'of', 'in', 'on', 'to', 'a', 'an']);
+const words = (t: string) => (t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(w => w.length >= 3 && !STOP.has(w));
+
+/**
+ * The answer when no writing model can be reached: the passages' own sentences
+ * that share the most content words with the question, one per passage, at
+ * most three. Each sentence is a verbatim quote of its passage, so it is
+ * "supported" by construction and its evidence is itself; the response marks
+ * the whole answer as extractive so nobody mistakes it for a written one.
+ */
+export function extractiveAnswer(q: string, passages: Passage[], max = 3): { text: string; citations: string[]; verdict: Label; evidence: { passage: string; quote: string }[]; rationale: string; evidence_checked: boolean }[] {
+  const qw = new Set(words(q));
+  if (!qw.size) return [];
+  const need = qw.size === 1 ? 1 : 2;
+  const picks: { p: Passage; s: string; score: number; order: number }[] = [];
+  passages.forEach((p, order) => {
+    // Question words already in the title are context: they count toward relevance, weigh less.
+    const inTitle = new Set(words(p.title || '').filter(w => qw.has(w)));
+    let best: { s: string; score: number } | null = null;
+    for (const s of p.text.split(/(?<=[.!?])(?<!\b[A-Z]\.)(?<!\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|No|vs|etc|e\.g|i\.e)\.)\s+(?=["'(\[]?[\p{Lu}0-9])/u)) {
+      const t = s.trim();
+      if (t.length < 40 || t.length > 320) continue;
+      const hit = new Set(words(t).filter(w => qw.has(w)));
+      if (!hit.size || new Set([...hit, ...inTitle]).size < need) continue;
+      const score = [...hit].reduce((n, w) => n + (inTitle.has(w) ? 0.4 : 1), 0);
+      if (!best || score > best.score) best = { s: t, score };
+    }
+    if (best) picks.push({ p, ...best, order });
+  });
+  picks.sort((a, b) => b.score - a.score || a.order - b.order);
+  return picks.slice(0, max).map(({ p, s }) => ({
+    text: s, citations: [p.id], verdict: 'supported' as Label,
+    evidence: [{ passage: p.id, quote: s }], rationale: 'Quoted word for word from the passage.', evidence_checked: true,
+  }));
 }

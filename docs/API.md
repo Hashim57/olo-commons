@@ -103,3 +103,15 @@ Page with `p_after` = the `next_after` you received (`p_limit` up to 500; start 
 ## Using it in an assistant
 
 Call the API first, pass the `results` to the model as context, and ask it to cite with `citation`. Respect each result's `licence`.
+
+## Bulk export without a key
+
+`GET https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query?export=1&after=1970-01-01&limit=500` returns the same pages as the `olo_export` RPC (atoms in creation order, `next_after` for the next page) with no key, cacheable for five minutes. The offline snapshot is built from it.
+
+## Offline snapshot
+
+`https://cdn.jsdelivr.net/gh/Hashim57/olo-commons@snapshot/commons.json` (second source: `https://raw.githubusercontent.com/Hashim57/olo-commons/snapshot/commons.json`), rebuilt every six hours: `{"v":1,"built_at","count","licence_note","fields":["id","title","text","url","source","licence","published_at"],"atoms":[[...]]}`. Each atom keeps its own licence; the compilation is CC BY-SA 4.0.
+
+## When no model can be reached
+
+olo-answer then returns `mode: "extractive"`, `verifier: "extractive"` and a `notice`: the passages' own sentences that best match the question, each with its passage as evidence. A written answer carries `mode: "written"` (main provider) or `"written-fallback"` (the Cloudflare writer).

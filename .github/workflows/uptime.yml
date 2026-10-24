@@ -1,0 +1,44 @@
+# Uptime watch for Olo, the Commons and Zeus. Every 15 minutes (GitHub may run it a few minutes late).
+# Opens one issue labelled "outage" when something is down (GitHub emails the owner), comments on it
+# while it stays down, and closes it when everything is back. A real answer is asked once an hour.
+name: Uptime
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  issues: write
+  contents: read
+concurrency:
+  group: uptime
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check
+        id: check
+        env:
+          ZEUS_HEALTH_URL: ${{ vars.ZEUS_HEALTH_URL }}
+          OLO_WEB_URL: ${{ vars.OLO_WEB_URL }}
+        run: |
+          DEEP=""; [ "$(date -u +%M)" -lt 15 ] && DEEP="--deep"
+          set +e
+          python3 scripts/uptime.py $DEEP > report.md; echo "code=$?" >> "$GITHUB_OUTPUT"
+          cat report.md
+      - name: Open, update or close the outage issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create outage --color B60205 --description "Opened and closed by the Uptime workflow" 2>/dev/null || true
+          OPEN="$(gh issue list --label outage --state open --json number --jq '.[0].number' || true)"
+          if [ "${{ steps.check.outputs.code }}" != "0" ]; then
+            if [ -n "$OPEN" ]; then gh issue comment "$OPEN" --body-file report.md
+            else gh issue create --title "Outage: $(grep '^Down:' report.md | cut -c7- | head -c 120)" --label outage --body-file report.md; fi
+          elif [ -n "$OPEN" ]; then
+            gh issue close "$OPEN" --comment "Everything is back up.
+
+          $(cat report.md)"
+          fi

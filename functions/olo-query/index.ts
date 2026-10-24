@@ -43,6 +43,20 @@ Deno.serve(async (req) => {
   if (req.method === 'POST') { const b = await req.json().catch(() => ({})); q = String(b.q || ''); k = Number(b.k) || 8; mode = String(b.mode || 'hybrid'); status = b.status === true || b.status === 1; }
   else { const u = new URL(req.url); q = u.searchParams.get('q') || ''; k = Number(u.searchParams.get('k')) || 8; mode = u.searchParams.get('mode') || 'hybrid'; status = u.searchParams.has('status'); }
 
+  // Bulk export without a key: the same pages olo_export() already gives anyone with the public anon key,
+  // so the offline snapshot (and anyone mirroring the Commons) needs no key in a URL or a CI secret.
+  // GET ?export=1&after=<timestamp>&limit=<1..500>. Read-only, bounded, cacheable for five minutes.
+  if (req.method === 'GET' && new URL(req.url).searchParams.has('export')) {
+    const u = new URL(req.url);
+    const after = u.searchParams.get('after') || '1970-01-01';
+    if (isNaN(Date.parse(after))) return new Response(JSON.stringify({ error: 'after must be a timestamp' }), { status: 400, headers: H });
+    const limit = Math.max(1, Math.min(Number(u.searchParams.get('limit')) || 500, 500));
+    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+    const { data, error } = await sb.rpc('olo_export', { p_after: new Date(after).toISOString(), p_limit: limit });
+    if (error) return new Response(JSON.stringify({ error: 'export_unavailable' }), { status: 503, headers: H });
+    return new Response(JSON.stringify(data), { headers: { ...H, 'Cache-Control': 'public, max-age=300' } });
+  }
+
   // Health of the Commons in one call: the same public figures as olo_stats()
   // (readable with the anon key already) plus the last twelve ingest runs, so a
   // status page or a monitor needs no key in its URL. Read-only, cacheable for a minute.
