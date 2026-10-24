@@ -48,11 +48,15 @@ def call(port, path, method="GET", body=None, token=None):
 def test_gate_requires_token_forces_model_and_forwards():
     up_port, gate_port = free_port(), free_port()
     up = ThreadingHTTPServer(("127.0.0.1", up_port), Upstream); start(up)
-    gate = ThreadingHTTPServer(("127.0.0.1", gate_port), zeus_gate.make_handler(TOKEN, "http://127.0.0.1:%d" % up_port)); start(gate)
+    best = zeus_gate.load_best(os.path.join(os.path.dirname(__file__), "..", "BEST.json"))
+    assert best and best["version"].startswith("v") and 0 < best["label_accuracy"] <= 1
+    gate = ThreadingHTTPServer(("127.0.0.1", gate_port), zeus_gate.make_handler(TOKEN, "http://127.0.0.1:%d" % up_port, best)); start(gate)
     try:
         assert call(gate_port, "/v1/models")[0] == 401
         assert call(gate_port, "/v1/models", token="wrong" * 8)[0] == 401
-        assert call(gate_port, "/v1/models", token=TOKEN) == (200, {"data": [{"id": "default_model"}]})
+        code, models = call(gate_port, "/v1/models", token=TOKEN)
+        assert code == 200 and models["data"] == [{"id": "default_model"}] and models["zeus"]["label_accuracy"] == best["label_accuracy"]
+        assert zeus_gate.load_best("/nonexistent/BEST.json") is None
         assert call(gate_port, "/v1/anything", token=TOKEN)[0] == 404
         assert call(gate_port, "/v1/completions", "POST", {"x": 1}, TOKEN)[0] == 404
         code, out = call(gate_port, "/v1/chat/completions", "POST", {"model": "evil/other-model", "messages": [{"role": "user", "content": "hi"}], "max_tokens": 9999, "stream": True}, TOKEN)

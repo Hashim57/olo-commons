@@ -32,7 +32,19 @@ def load_token(path):
     return t
 
 
-def make_handler(token, upstream):
+def load_best(path):
+    """The measured scores of the version serving (zeus/BEST.json), published on GET /v1/models
+    so a caller can show a true number ("this version was right 83.5% of the time on its test")."""
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8") as f:
+            b = json.load(f)
+        keep = ("version", "date", "base", "label_accuracy", "evidence_hit", "json_valid", "eval_n", "f1", "promoted_at")
+        return {k: b[k] for k in keep if k in b}
+    except (OSError, ValueError):
+        return None
+
+
+def make_handler(token, upstream, best=None):
     class Gate(BaseHTTPRequestHandler):
         server_version = "zeus-gate/1"
 
@@ -60,7 +72,7 @@ def make_handler(token, upstream):
                 return self._send(404, {"error": "not_found"})
             if not self._authed():
                 return
-            self._forward("GET", "/v1/models", None)
+            self._forward("GET", "/v1/models", None, decorate=best)
 
         def do_POST(self):
             if self.path.split("?")[0] != "/v1/chat/completions":
@@ -82,11 +94,20 @@ def make_handler(token, upstream):
             body["max_tokens"] = min(int(body.get("max_tokens") or 200), 400)
             self._forward("POST", "/v1/chat/completions", json.dumps(body).encode())
 
-        def _forward(self, method, path, data):
+        def _forward(self, method, path, data, decorate=None):
             req = urllib.request.Request(upstream + path, data=data, method=method, headers={"Content-Type": "application/json"})
             try:
                 with urllib.request.urlopen(req, timeout=UPSTREAM_TIMEOUT) as r:
-                    self._send(r.status, r.read())
+                    body = r.read()
+                    if decorate:
+                        try:
+                            j = json.loads(body)
+                            if isinstance(j, dict):
+                                j["zeus"] = decorate
+                                body = json.dumps(j).encode()
+                        except ValueError:
+                            pass
+                    self._send(r.status, body)
             except urllib.error.HTTPError as e:
                 self._send(e.code, e.read() or b"{}")
             except Exception as e:  # upstream down or slow: say so, do not hang
@@ -100,9 +121,10 @@ def main():
     ap.add_argument("--token-file", default="~/.zeus-gate-token")
     ap.add_argument("--listen", type=int, default=8009)
     ap.add_argument("--upstream", type=int, default=8008)
+    ap.add_argument("--best", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "BEST.json"))
     a = ap.parse_args()
     token = load_token(a.token_file)
-    srv = ThreadingHTTPServer(("127.0.0.1", a.listen), make_handler(token, "http://127.0.0.1:%d" % a.upstream))
+    srv = ThreadingHTTPServer(("127.0.0.1", a.listen), make_handler(token, "http://127.0.0.1:%d" % a.upstream, load_best(a.best)))
     print("zeus-gate listening on 127.0.0.1:%d, forwarding to 127.0.0.1:%d" % (a.listen, a.upstream), flush=True)
     srv.serve_forever()
 
