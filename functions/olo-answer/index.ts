@@ -30,7 +30,7 @@
 // time-limited so a slow provider cannot hold the function open.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { fuse } from './rank.ts';
+import { citation, fuse } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
   { const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : []; }
   const results = fuse(semantic, keyword, k);
   const passages: Passage[] = labelPassages(results);
-  const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at, match: r.match }));
+  const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, summary: r.summary || null, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at, similarity: typeof r.similarity === 'number' ? r.similarity : null, match: r.match, citation: citation(r) }));
 
   const logIt = (results_n: number) => sb.from('olo_query_log').insert({ ip_hash: ipHash, q_len: q.length, results: results_n, client: 'answer' + (keyed ? ':keyed' : '') }).then(() => {}, () => {});
 

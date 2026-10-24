@@ -44,7 +44,7 @@ Response:
     { "text": "It is the oldest digital library.", "citations": ["p1"], "verdict": "supported", "evidence": [{ "passage": "p1", "quote": "the oldest digital library" }], "rationale": "...", "evidence_checked": true }
   ],
   "summary": { "supported": 2, "contradicted": 0, "not_covered": 0 },
-  "passages": [ { "id": "p1", "atom": "uuid", "title": "Project Gutenberg", "url": "https://en.wikipedia.org/wiki/Project_Gutenberg", "source": "Wikipedia", "source_slug": "wikipedia", "licence": "CC BY-SA 4.0", "published_at": null, "retrieved_at": "...", "match": "both" } ],
+  "passages": [ { "id": "p1", "atom": "uuid", "title": "Project Gutenberg", "url": "https://en.wikipedia.org/wiki/Project_Gutenberg", "source": "Wikipedia", "source_slug": "wikipedia", "licence": "CC BY-SA 4.0", "published_at": null, "retrieved_at": "...", "summary": "...", "similarity": 0.83, "match": "both", "citation": "Project Gutenberg (Wikipedia, CC BY-SA 4.0). https://en.wikipedia.org/wiki/Project_Gutenberg" } ],
   "verifier": "llm-fallback", "model": "qwen/qwen3-32b",
   "attribution": "..." }
 ```
