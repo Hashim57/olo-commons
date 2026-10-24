@@ -1,0 +1,99 @@
+# Olo for macOS (apps/macos): compiled, tested and packaged on GitHub's Mac
+# runners, so nothing is built on your own Mac.
+#
+# Every push that touches apps/macos: the OloKit unit tests, the app's tests, and
+# an unsigned universal build kept as an artifact for 30 days.
+#
+# Run by hand with "app_store" ticked: archives with your Apple Distribution
+# certificate and uploads the build to App Store Connect. It needs these
+# repository secrets (Settings > Secrets and variables > Actions); see
+# apps/macos/APP_STORE.md for how to make each one:
+#   APPLE_TEAM_ID, MAC_DIST_CERT_P12 (base64), MAC_INSTALLER_CERT_P12 (base64),
+#   MAC_CERT_PASSWORD, MAC_PROVISIONING_PROFILE (base64),
+#   ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8 (base64)
+# Secrets are read from the environment only, never written to the repository or the log.
+
+name: macOS app
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/macos/**", ".github/workflows/macos-app.yml"]
+  pull_request:
+    paths: ["apps/macos/**", ".github/workflows/macos-app.yml"]
+  workflow_dispatch:
+    inputs:
+      app_store:
+        description: "Archive, sign and upload to App Store Connect"
+        type: boolean
+        default: false
+      build_number:
+        description: "Build number (must be higher than the last upload)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test and build
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version && swift --version
+      - name: OloKit unit tests
+        run: swift test --package-path apps/macos/OloKit
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd apps/macos && xcodegen generate
+      - name: App tests
+        working-directory: apps/macos
+        run: |
+          set -o pipefail
+          xcodebuild -project Olo.xcodeproj -scheme Olo -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO test | tail -n 80
+      - name: Universal release build (unsigned)
+        working-directory: apps/macos
+        run: |
+          set -o pipefail
+          xcodebuild -project Olo.xcodeproj -scheme Olo -configuration Release -derivedDataPath build \
+            -destination 'generic/platform=macOS' ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build | tail -n 40
+          ditto -c -k --keepParent build/Build/Products/Release/Olo.app Olo-macOS-unsigned.zip
+          ls -la Olo-macOS-unsigned.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Olo-macOS-unsigned
+          path: apps/macos/Olo-macOS-unsigned.zip
+          retention-days: 30
+
+  app-store:
+    name: Archive and upload to App Store Connect
+    if: github.event_name == 'workflow_dispatch' && inputs.app_store
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      MAC_DIST_CERT_P12: ${{ secrets.MAC_DIST_CERT_P12 }}
+      MAC_INSTALLER_CERT_P12: ${{ secrets.MAC_INSTALLER_CERT_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+      MAC_PROVISIONING_PROFILE: ${{ secrets.MAC_PROVISIONING_PROFILE }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive, sign and upload
+        run: |
+          brew install xcodegen
+          bash apps/macos/scripts/app_store.sh
