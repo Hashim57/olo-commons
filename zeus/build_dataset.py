@@ -36,6 +36,22 @@ def fetch_atoms(url, key, max_atoms):
     return atoms[:max_atoms]
 
 
+def fetch_atoms_keyless(export_url, max_atoms):
+    """The same pages through olo-query's keyless export (GET ?export=1), so a cloud job needs no key."""
+    atoms, after = [], "1970-01-01T00:00:00Z"
+    while len(atoms) < max_atoms:
+        r = requests.get(export_url, params={"export": 1, "after": after, "limit": 500}, timeout=60)
+        r.raise_for_status()
+        page, nxt = export_page(r.json())
+        if not page:
+            break
+        atoms.extend(page)
+        if not nxt or nxt == after or len(page) < 500:
+            break
+        after = nxt
+    return atoms[:max_atoms]
+
+
 def export_page(body):
     """olo_export returns {"atoms": [...], "next_after": ts, "licence_note": ...}.
     Older builds returned a bare list. Accept both; return (atoms, next_after)."""
@@ -240,9 +256,11 @@ def main():
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     args = ap.parse_args()
-    if not args.anon_key:
-        sys.exit("anon key required (--anon-key or SUPABASE_ANON_KEY); it is the public read key, not a secret")
-    atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
+    # With the public anon key, read through PostgREST; without it, through the keyless export.
+    if args.anon_key:
+        atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
+    else:
+        atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", args.max_atoms)
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     os.makedirs(args.out, exist_ok=True)
     for split in ("train", "eval"):

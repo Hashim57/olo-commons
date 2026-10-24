@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""After a cloud run: add the measured row to zeus/STATUS.md (after the last row of the table) and
+run promote.py. Only measured numbers go in; nothing is estimated.
+
+  python3 zeus/cloud/record.py v6
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ZEUS = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+import recipe  # noqa: E402
+
+ROW = re.compile(r"^\| \d{4}-\d{2}-\d{2} \| v\d+ \|")
+
+
+def add_row(status_path, row, version):
+    lines = open(status_path, encoding="utf-8").read().split("\n")
+    if any(re.match(rf"^\| \d{{4}}-\d{{2}}-\d{{2}} \| {version} \|", l) for l in lines):
+        return False  # already recorded
+    last = max((i for i, l in enumerate(lines) if ROW.match(l)), default=None)
+    if last is None:
+        lines += ["", row]
+    else:
+        lines.insert(last + 1, row)
+    open(status_path, "w", encoding="utf-8").write("\n".join(lines))
+    return True
+
+
+def main():
+    v = sys.argv[1]
+    out = os.path.join(ZEUS, "out", f"zeus-{v}")
+    ev = json.load(open(os.path.join(out, "eval.json")))
+    s = json.load(open(os.path.join(out, "train_summary.json")))
+    row = recipe.status_row(datetime.now(timezone.utc).date().isoformat(), v, s.get("base") or ev.get("base"), f"{s.get('train_examples'):,}", ev, s.get("minutes"), s.get("gpu"))
+    print("STATUS row added" if add_row(os.path.join(ZEUS, "STATUS.md"), row, v) else "STATUS row already there")
+    subprocess.run([sys.executable, os.path.join(ZEUS, "promote.py")], check=True)
+
+
+if __name__ == "__main__":
+    main()

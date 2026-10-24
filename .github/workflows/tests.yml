@@ -47,8 +47,8 @@ jobs:
           python-version: '3.12'
       - name: Syntax-check every script
         run: |
-          python3 -m py_compile zeus/*.py zeus/tests/*.py zeus/mac/*.py
-          for f in zeus/train_mac.sh zeus/serve_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh zeus/mac/zeus-serve.sh zeus/mac/install-serve.sh zeus/cloudflare/setup.sh zeus/cloudflare/publish.sh; do bash -n "$f"; done
+          python3 -m py_compile zeus/*.py zeus/tests/*.py zeus/mac/*.py zeus/cloud/*.py
+          for f in zeus/train_mac.sh zeus/serve_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh zeus/mac/zeus-serve.sh zeus/mac/install-serve.sh zeus/cloudflare/setup.sh zeus/cloudflare/publish.sh zeus/cloud/publish_ci.sh; do bash -n "$f"; done
       - name: Unit tests
         run: |
           python3 -m pip install --quiet pytest requests numpy

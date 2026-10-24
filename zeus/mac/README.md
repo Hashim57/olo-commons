@@ -1,3 +1,7 @@
+# Retired: Zeus no longer runs on a Mac
+
+Training moved to a cloud GPU (`zeus/cloud/`) and serving to Cloudflare (`zeus/cloudflare/`) because training on a laptop slowed it down. The files here are kept for reference; `zeus/cloud/README.md` says how to remove the agents from a Mac.
+
 # Hands-free Zeus training on a Mac
 
 The daily cloud run cannot type into a Terminal on the Mac, so training is
