@@ -12,6 +12,8 @@ if [ "$(uname -m)" != "arm64" ]; then echo "MLX needs Apple Silicon; use zeus/tr
 pip -q install --upgrade pip
 pip -q install mlx-lm requests
 ANON="${SUPABASE_ANON_KEY:-$(curl -fsSL https://heliusnetwork.app/assets/config.js | sed -n "s/.*SUPABASE_ANON_KEY: *'\([^']*\)'.*/\1/p" | head -1)}"
+# A gold line with a quote that is not in its passage would teach the wrong thing; refuse to train on one.
+python3 zeus/validate_gold.py
 python3 zeus/build_dataset.py --anon-key "$ANON"
 # sysctl lives in /usr/sbin, which launchd's PATH leaves out; call it by full path.
 SYSCTL="$(command -v sysctl || echo /usr/sbin/sysctl)"

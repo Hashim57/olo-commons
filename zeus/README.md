@@ -40,6 +40,7 @@ Rule-made contradictions are a start, not the finish. The improvement task's sta
 ## Files
 
 - `build_dataset.py`: export from the Commons, make examples, write `data/train.jsonl`, `data/eval.jsonl` and `data/meta.json` (counts, including `gold` and `train_total`; the eval split is frozen by atom id, so new data never leaks into it). Unit tests: `python3 -m pytest zeus/tests` (no network).
+- `validate_gold.py`: refuses a gold file with a bad line (missing keys, a label outside the three, an evidence quote that is not an exact substring of its passage, evidence on a not_covered example, a passage without provenance). Run by CI, by `train_mac.sh` before every build, and by `python3 -m pytest zeus/tests`.
 - `train_lora.py`: QLoRA fine-tune with TRL. One GPU, about 40 minutes for 5k examples on a 7B at 4-bit.
 - `eval.py`: label accuracy, evidence hit rate (did the quoted span come from the right passage), and JSON validity, for any model path or adapter.
 - `serve.py`: a minimal OpenAI-compatible endpoint for the adapter, so helius-olo.io can call Zeus the same way it calls any model.
