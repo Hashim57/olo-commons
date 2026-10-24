@@ -16,7 +16,8 @@
 // Secrets (Supabase project secrets, never in code):
 //   OLO_LLM_API_KEY    key for an OpenAI-compatible chat API (required; without it the function answers 503)
 //   OLO_LLM_BASE_URL   default https://api.groq.com/openai/v1
-//   OLO_LLM_MODEL      default qwen/qwen3-32b (Apache 2.0 weights)
+//   OLO_LLM_MODEL      default openai/gpt-oss-120b (Apache 2.0 weights, a production model on Groq;
+//                      qwen/qwen3-32b was retired there on 17 July 2026 and answers 404)
 //   OLO_ZEUS_URL       optional: an OpenAI-compatible endpoint serving a Zeus adapter (zeus/serve.py).
 //                      When unset, the same hosted model verifies with the Zeus prompt and the
 //                      response says so (verifier: "llm-fallback"), never pretending Zeus ran.
@@ -51,7 +52,7 @@ async function chat(baseUrl: string, apiKey: string, model: string, system: stri
     body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, max_tokens: maxTokens }),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!r.ok) throw new Error(`model ${r.status}`);
+  if (!r.ok) throw new Error(r.status === 404 ? `model ${r.status}: ${model} is not offered at ${baseUrl}; set OLO_LLM_MODEL to one the provider lists` : `model ${r.status}`);
   const j = await r.json();
   const text = j?.choices?.[0]?.message?.content;
   if (typeof text !== 'string') throw new Error('model returned no text');
@@ -73,7 +74,7 @@ Deno.serve(async (req) => {
   const llmKey = Deno.env.get('OLO_LLM_API_KEY') || '';
   if (!llmKey) return new Response(JSON.stringify({ error: 'answering_not_configured', hint: 'set OLO_LLM_API_KEY' }), { status: 503, headers: H });
   const llmBase = Deno.env.get('OLO_LLM_BASE_URL') || 'https://api.groq.com/openai/v1';
-  const llmModel = Deno.env.get('OLO_LLM_MODEL') || 'qwen/qwen3-32b';
+  const llmModel = Deno.env.get('OLO_LLM_MODEL') || 'openai/gpt-oss-120b';
   const zeusUrl = Deno.env.get('OLO_ZEUS_URL') || '';
   const zeusModel = Deno.env.get('OLO_ZEUS_MODEL') || 'default_model';
 
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
   // draft
   let answer: string;
   try { answer = await chat(llmBase, llmKey, llmModel, ANSWER_SYSTEM, renderAnswerPrompt(q, passages), 400, LLM_TIMEOUT_MS); }
-  catch (e) { await logIt(passages.length); return new Response(JSON.stringify({ error: 'model_unavailable', detail: String((e as Error).message || e).slice(0, 120) }), { status: 502, headers: H }); }
+  catch (e) { await logIt(passages.length); return new Response(JSON.stringify({ error: 'model_unavailable', detail: String((e as Error).message || e).slice(0, 200) }), { status: 502, headers: H }); }
 
   const covered = !answer.includes(NOT_COVERED_TEXT);
   const sentences = covered ? splitSentences(answer).slice(0, MAX_SENTENCES) : [];
