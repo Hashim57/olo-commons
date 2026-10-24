@@ -20,7 +20,8 @@
 //   OLO_ZEUS_URL       optional: an OpenAI-compatible endpoint serving a Zeus adapter (zeus/serve.py).
 //                      When unset, the same hosted model verifies with the Zeus prompt and the
 //                      response says so (verifier: "llm-fallback"), never pretending Zeus ran.
-//   OLO_ZEUS_MODEL     model name to send to OLO_ZEUS_URL (default zeus)
+//   OLO_ZEUS_MODEL     model name to send to OLO_ZEUS_URL (default default_model, which makes
+//                      mlx_lm.server, started by zeus/serve_mac.sh, answer with the adapter it loaded)
 //   OLO_API_KEYS, OLO_SALT   as in olo-query
 //
 // Limits: the same rate limit as olo-query (120 an hour per hashed address,
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
   const llmBase = Deno.env.get('OLO_LLM_BASE_URL') || 'https://api.groq.com/openai/v1';
   const llmModel = Deno.env.get('OLO_LLM_MODEL') || 'qwen/qwen3-32b';
   const zeusUrl = Deno.env.get('OLO_ZEUS_URL') || '';
-  const zeusModel = Deno.env.get('OLO_ZEUS_MODEL') || 'zeus';
+  const zeusModel = Deno.env.get('OLO_ZEUS_MODEL') || 'default_model';
 
   const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 

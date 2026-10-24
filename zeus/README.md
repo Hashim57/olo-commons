@@ -46,6 +46,9 @@ Rule-made contradictions are a start, not the finish. The improvement task's sta
 - `train_lora.py`: QLoRA fine-tune with TRL. One GPU, about 40 minutes for 5k examples on a 7B at 4-bit.
 - `eval.py`: label accuracy, evidence hit rate (did the quoted span come from the right passage), and JSON validity, for any model path or adapter.
 - `serve.py`: a minimal OpenAI-compatible endpoint for the adapter, so helius-olo.io can call Zeus the same way it calls any model.
+- `promote.py`: writes `BEST.json`, the version that serves, chosen by measured score only (label accuracy, then evidence hit, then the newer version) and never replaced by a worse one. The Olo page and `serve_mac.sh` read it.
+- `serve_mac.sh`: serves the `BEST.json` version (or a given one) with `mlx_lm.server` on the Mac as an OpenAI-compatible API; `olo-answer` calls it when `OLO_ZEUS_URL` points at it.
+- `publish.py`: fuses an adapter into its base with `mlx_lm.fuse`, writes a model card generated from `eval.json`, `train_summary.json` and the STATUS row (no hand-typed numbers), and uploads to Hugging Face when asked (`--upload <repo>`, needs `HF_TOKEN` in the environment).
 - `STATUS.md`: what the latest build scored and what changed. Updated by every run, human or scheduled.
 
 ## Run it
@@ -68,3 +71,11 @@ It builds the dataset, picks the 7B or 1.5B base by how much memory the Mac has,
 ## Hands-free training (how the daily run trains)
 
 The scheduled cloud run cannot type on the Mac, so it asks for training through the repository: `python3 zeus/request_training.py --reason "..."` writes `zeus/TRAIN_REQUEST.json` with the next version; the run commits and pushes it. A launchd agent on the Mac (`zeus/mac/`, installed once with `bash zeus/mac/install.sh`) polls every 30 minutes, trains the requested version on the Mac GPU, commits `eval.json` and `train_summary.json` (or `FAILED.txt` with the log tail), removes the request and pushes. The next cloud run reads whatever landed under `zeus/out/` and writes the STATUS row, or records the failure and fixes the cause. A pending request is never overwritten; a version that already has results is never trained twice.
+
+## Serving and publishing (how Zeus becomes a model people can use)
+
+Three steps, each honest about what was measured:
+
+1. `python3 zeus/promote.py` chooses the version that serves and writes `zeus/BEST.json` (the daily run does this after recording a STATUS row). A new version is promoted only when its measured scores are at least as good as the current best.
+2. `bash zeus/serve_mac.sh` serves that version on the Mac (`mlx_lm.server`, port 8008 by default). Point `OLO_ZEUS_URL` at it (through a tunnel such as cloudflared when the function runs in the cloud) and `olo-answer` verifies with Zeus and says so in every response (`verifier: "zeus:default_model"`); without it the hosted model verifies with the Zeus prompt and the response says `llm-fallback`.
+3. `python3 zeus/publish.py --version v5` fuses the adapter into the base and writes a model card from the measured files; add `--upload <repo>` to put it on Hugging Face. `--card-only` just writes the card and runs anywhere.

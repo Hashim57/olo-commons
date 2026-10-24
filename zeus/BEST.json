@@ -1,0 +1,22 @@
+{
+  "version": "v5",
+  "date": "2026-10-24",
+  "base": "mlx-community/Qwen2.5-1.5B-Instruct-4bit",
+  "train_examples": "3,882 (10 gold; includes near-miss not_covered)",
+  "label_accuracy": 0.835,
+  "evidence_hit": 0.81,
+  "json_valid": 0.98,
+  "eval_n": 200,
+  "f1": {
+    "supported": 0.848,
+    "contradicted": 0.7,
+    "not_covered": 0.938
+  },
+  "promoted_at": "2026-10-24T14:59:44+00:00",
+  "measured_versions": [
+    "v0",
+    "v2",
+    "v4",
+    "v5"
+  ]
+}
