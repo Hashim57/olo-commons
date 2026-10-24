@@ -31,6 +31,19 @@ Response:
 }
 ```
 
+## Status
+
+`GET ?status=1` (or `POST {"status": true}`) returns the health of the Commons without any key:
+
+```json
+{ "ok": true, "at": "2026-10-24T12:00:00Z",
+  "stats": { "atoms": 1200, "links": 4100, "sources": 8, "atoms_24h": 90, "last_run": "...", "by_source": [ { "slug": "wikipedia", "atoms": 310, "last_run_at": "..." } ] },
+  "runs": [ { "started_at": "...", "finished_at": "...", "fetched": 8, "added": 6, "skipped": 2, "failed": 0, "linked": 20, "note": "cron" } ],
+  "runs_unfinished": 0, "runs_with_failures": 0 }
+```
+
+`stats` is exactly `olo_stats()` (below); `runs` is the last twelve rows of `olo_ingest_runs`, newest first. Both are readable with the anon key already, so this exposes nothing new; it just needs no key in the URL. Cacheable for a minute.
+
 Limits: 120 requests per hour per address; 3,000 with a partner key sent as `x-olo-key`. Helius Citizens (heliusnetwork.app/citizen) get a key on their profile; partner keys are also issued by hand. A 429 carries `Retry-After`.
 
 ## Direct SQL functions (anon key)

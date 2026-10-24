@@ -5,6 +5,7 @@
 //
 //   POST /functions/v1/olo-query   { "q": "how do coral reefs recover", "k": 8 }
 //   GET  /functions/v1/olo-query?q=...&k=8
+//   GET  /functions/v1/olo-query?status=1      the Commons' health, no key needed
 //
 // Returns atoms with full provenance (source, URL, licence, retrieved_at,
 // content hash) so the caller can cite. Meaning search (embedding computed in
@@ -36,9 +37,23 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('', { status: 204, headers: H });
   if (req.method !== 'GET' && req.method !== 'POST') return new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: H });
 
-  let q = '', k = 8, mode = 'hybrid';
-  if (req.method === 'POST') { const b = await req.json().catch(() => ({})); q = String(b.q || ''); k = Number(b.k) || 8; mode = String(b.mode || 'hybrid'); }
-  else { const u = new URL(req.url); q = u.searchParams.get('q') || ''; k = Number(u.searchParams.get('k')) || 8; mode = u.searchParams.get('mode') || 'hybrid'; }
+  let q = '', k = 8, mode = 'hybrid', status = false;
+  if (req.method === 'POST') { const b = await req.json().catch(() => ({})); q = String(b.q || ''); k = Number(b.k) || 8; mode = String(b.mode || 'hybrid'); status = b.status === true || b.status === 1; }
+  else { const u = new URL(req.url); q = u.searchParams.get('q') || ''; k = Number(u.searchParams.get('k')) || 8; mode = u.searchParams.get('mode') || 'hybrid'; status = u.searchParams.has('status'); }
+
+  // Health of the Commons in one call: the same public figures as olo_stats()
+  // (readable with the anon key already) plus the last twelve ingest runs, so a
+  // status page or a monitor needs no key in its URL. Read-only, cacheable for a minute.
+  if (status) {
+    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+    const [{ data: stats, error: se }, { data: runs, error: re }] = await Promise.all([
+      sb.rpc('olo_stats'),
+      sb.from('olo_ingest_runs').select('id, started_at, finished_at, fetched, added, skipped, failed, linked, note').order('started_at', { ascending: false }).limit(12),
+    ]);
+    if (se || re) return new Response(JSON.stringify({ error: 'status_unavailable' }), { status: 503, headers: H });
+    const open = (runs || []).filter((r: any) => !r.finished_at).length, failing = (runs || []).filter((r: any) => (r.failed || 0) > 0).length;
+    return new Response(JSON.stringify({ ok: true, at: new Date().toISOString(), stats, runs: runs || [], runs_unfinished: open, runs_with_failures: failing }), { headers: { ...H, 'Cache-Control': 'public, max-age=60' } });
+  }
   q = q.replace(/\s+/g, ' ').trim().slice(0, MAX_Q); k = Math.max(1, Math.min(k, 20));
   if (!['hybrid', 'semantic', 'keyword'].includes(mode)) mode = 'hybrid';
   if (q.length < 2) return new Response(JSON.stringify({ error: 'q is required (2 to 400 characters)' }), { status: 400, headers: H });
