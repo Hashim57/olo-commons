@@ -36,6 +36,15 @@ fi
 cd "$REPO" || exit 1
 git fetch -q origin main >> "$LOG" 2>&1 || { log "fetch failed (offline?)"; exit 0; }
 
+# A newly promoted version (zeus/BEST.json on origin/main) restarts the serving agent, if installed.
+WANT="$(git show origin/main:zeus/BEST.json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)"
+HAVE="$(cat "$HOME/zeus-serving.version" 2>/dev/null || true)"
+if [ -n "$WANT" ] && [ "$WANT" != "$HAVE" ] && launchctl print "gui/$(id -u)/com.helius.zeus-serve" >/dev/null 2>&1 && [ -f "zeus/out/zeus-$WANT/adapters.safetensors" ]; then
+  git checkout -q main && (git pull -q --ff-only origin main >> "$LOG" 2>&1 || true)
+  log "BEST.json now says $WANT (serving $HAVE): restarting zeus-serve"
+  launchctl kickstart -k "gui/$(id -u)/com.helius.zeus-serve" >> "$LOG" 2>&1 || true
+fi
+
 # Nothing requested: stay quiet.
 git cat-file -e "origin/main:$REQ" 2>/dev/null || exit 0
 

@@ -18,3 +18,11 @@ Needs push access stored in the keychain (one `git push` from Terminal does it).
 Logs: `~/zeus-agent.log` (agent) and `~/zeus-train-<version>.log` (training).
 To train by hand without waiting, commit a request file yourself, or run
 `bash zeus/train_mac.sh vN` as before.
+
+## Serving Zeus to the cloud from the same Mac
+
+`bash zeus/mac/install-serve.sh` installs a second launchd agent, `com.helius.zeus-serve`, that stays up while you are logged in and runs three parts: `mlx_lm.server` with the promoted adapter from `zeus/BEST.json` on 127.0.0.1:8008; `zeus_gate.py` on 127.0.0.1:8009, which forwards only `POST /v1/chat/completions` and `GET /v1/models`, requires `Authorization: Bearer <token>` (the token is made once into `~/.zeus-gate-token`, never committed), caps bodies and forces the model name so a caller can never make the server load another model; and a `cloudflared` quick tunnel in front of the gate. The public URL lands in `~/zeus-serve.url`.
+
+If the Supabase CLI is logged in on the Mac, the agent sets the project secrets `OLO_ZEUS_URL` and `OLO_ZEUS_API_KEY` on every start, so `olo-answer` verifies with Zeus and says so (`verifier: "zeus:default_model"`). Otherwise set them by hand from `~/zeus-serve.url` and `~/.zeus-gate-token`. A quick tunnel gets a new URL each start; the agent handles that. When the Mac is off or asleep, `olo-answer` falls back to the hosted model with the Zeus prompt and labels it `llm-fallback`; nothing breaks.
+
+When a new version is promoted (`zeus/BEST.json` changes on main and its weights are on this Mac), the training agent restarts the serving agent so the better model takes over within 30 minutes. Logs: `~/zeus-serve.log`, `~/zeus-model.log`, `~/zeus-gate.log`, `~/zeus-tunnel.log`. Check from anywhere: `curl -s -H "Authorization: Bearer $(cat ~/.zeus-gate-token)" "$(cat ~/zeus-serve.url)/models"`.

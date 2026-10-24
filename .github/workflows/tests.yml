@@ -47,8 +47,8 @@ jobs:
           python-version: '3.12'
       - name: Syntax-check every script
         run: |
-          python3 -m py_compile zeus/*.py zeus/tests/*.py
-          bash -n zeus/train_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh
+          python3 -m py_compile zeus/*.py zeus/tests/*.py zeus/mac/*.py
+          bash -n zeus/train_mac.sh zeus/serve_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh zeus/mac/zeus-serve.sh zeus/mac/install-serve.sh
       - name: Unit tests
         run: |
           python3 -m pip install --quiet pytest requests
