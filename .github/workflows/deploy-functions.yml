@@ -26,7 +26,7 @@ on:
     inputs:
       functions:
         description: 'Space-separated function names to deploy'
-        default: 'olo-ingest olo-query'
+        default: 'olo-ingest olo-query olo-answer'
         required: true
 
 permissions:
@@ -51,7 +51,8 @@ jobs:
         run: |
           npx --yes esbuild functions/olo-ingest/index.ts --format=esm --log-level=error --outfile=/tmp/ingest.js
           npx --yes esbuild functions/olo-query/index.ts --format=esm --log-level=error --outfile=/tmp/query.js
-          deno test tests/
+          npx --yes esbuild functions/olo-answer/index.ts --format=esm --log-level=error --outfile=/tmp/answer.js
+          deno test --allow-read tests/
 
   deploy:
     name: Deploy (waits for approval)
@@ -73,7 +74,7 @@ jobs:
           else
             changed=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- functions/ 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ' || true)
             # A force push or a new branch has no usable "before" commit: deploy both.
-            [ -n "$changed" ] || changed="olo-ingest olo-query"
+            [ -n "$changed" ] || changed="olo-ingest olo-query olo-answer"
             echo "list=$changed" >> "$GITHUB_OUTPUT"
           fi
       - name: Lay the repo out the way the CLI expects (supabase/functions/<name>)

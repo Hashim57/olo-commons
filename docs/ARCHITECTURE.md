@@ -24,3 +24,7 @@
 **Trust.** Row Level Security gives clients read-only access to knowledge and no access to the queue or query log. Projects and proposals are the only client-writable tables, and a trigger stops projects approving themselves. Nothing personal is stored: queries are counted, not kept.
 
 **Why a graph.** Links are cheap to compute at insert time and expensive to compute later. They give the page something true to show (the Commons thickening), give the API a way to expand a result to its neighbours, and give researchers a dataset (see `examples/graph-export.mjs`).
+
+**Answer path.** `olo-answer` retrieves the same way as `olo-query`, asks a hosted open-weight model for two to four sentences that each cite passage ids, splits the answer into sentences and sends each one with its cited passages to the verifier under the Zeus prompt (`zeus/train_lora.py` SYSTEM). The verifier is a served Zeus adapter when `OLO_ZEUS_URL` is set, otherwise the drafting model, and the response says which. A quote that is not found in its passage downgrades the verdict to not covered. When nothing covers the question, its topic words go to `olo_gaps`.
+
+**Gap filling.** Each ingest run first takes the most-asked open gap and searches the sources that have a search API (Wikipedia, Spanish Wikipedia, Wikidata, arXiv, PubMed) for it, spending up to a third of the run's budget, then marks the gap filled when atoms were added. The random walk through every source follows. So the Commons grows toward what people ask.

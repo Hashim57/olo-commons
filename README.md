@@ -15,6 +15,7 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 - `sql/001_olo_commons.sql`: the schema for Postgres with pgvector. Sources registry, atoms, links, queue, run log, daily snapshots, projects, read-only API functions, Row Level Security, scheduled jobs.
 - `functions/olo-ingest`: the hourly ingester (Supabase Edge Function, Deno). One discovery routine per source, using that source's own public API. Embeds with `gte-small` inside Supabase; no external AI key.
 - `functions/olo-query`: the read API. Meaning search merged with keyword search, provenance on every result, rate limiting by hashed address, CORS for known origins.
+- `functions/olo-answer`: the answer API. Retrieves like olo-query, drafts two to four cited sentences with a hosted open-weight model, and has every sentence checked (supported, contradicted, not covered, with quoted evidence) by Zeus when a served adapter is configured, otherwise by the drafting model under the Zeus prompt, and says which. Uncovered questions become gaps the ingester fills next.
 - `docs/API.md`: how to call it.
 - `SECURITY.md`: what is enforced and how to report a problem.
 
@@ -22,7 +23,7 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 
 1. Create a Supabase project. In the SQL editor run `sql/001_olo_commons.sql`. Store your service-role key in Vault as `service_role_key` (the schedule uses it).
 2. `supabase functions deploy olo-ingest --no-verify-jwt` and `supabase functions deploy olo-query --no-verify-jwt`. (This repository also ships `.github/workflows/deploy-functions.yml`, which deploys both after a human approves the run; see the comments at the top of that file for the two-step setup.)
-3. Optional secrets: `OLO_API_KEYS` (comma-separated partner keys for a higher rate limit), `OLO_SALT` (for address hashing).
+3. Optional secrets: `OLO_API_KEYS` (comma-separated partner keys for a higher rate limit), `OLO_SALT` (for address hashing). For answers: `OLO_LLM_API_KEY` (an OpenAI-compatible provider key; without it olo-answer returns 503), `OLO_LLM_BASE_URL` (default Groq), `OLO_LLM_MODEL` (default `qwen/qwen3-32b`), and `OLO_ZEUS_URL` once a Zeus adapter is served.
 4. Trigger the first ingest by hand: `select public.run_olo_ingest();`. From then on it runs at 15 past every hour.
 
 ## Zeus: the verification model

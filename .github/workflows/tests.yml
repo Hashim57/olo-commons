@@ -33,8 +33,9 @@ jobs:
         run: |
           npx --yes esbuild functions/olo-ingest/index.ts --format=esm --log-level=error --outfile=/tmp/ingest.js
           npx --yes esbuild functions/olo-query/index.ts --format=esm --log-level=error --outfile=/tmp/query.js
+          npx --yes esbuild functions/olo-answer/index.ts --format=esm --log-level=error --outfile=/tmp/answer.js
       - name: Unit tests
-        run: deno test tests/
+        run: deno test --allow-read tests/
 
   zeus:
     name: Zeus (Python)

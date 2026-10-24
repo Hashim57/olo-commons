@@ -31,6 +31,26 @@ Response:
 }
 ```
 
+## Answer: a checked answer in one call
+
+`POST https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-answer` with `{ "q": "<question>", "k": 8 }` (or `GET ?q=...`). Olo retrieves passages exactly as the query call does, drafts two to four sentences with a hosted open-weight model (every sentence cites the passages it rests on), then has every sentence checked by the verifier: supported, contradicted or not covered, with the quoted evidence. Nothing is asserted that the passages cannot show: a verdict whose quote is not found in its passage is downgraded to not covered.
+
+```json
+{ "q": "...", "covered": true,
+  "answer": "Project Gutenberg was founded in 1971 by Michael S. Hart. It is the oldest digital library.",
+  "sentences": [
+    { "text": "Project Gutenberg was founded in 1971 by Michael S. Hart.", "citations": ["p1"], "verdict": "supported",
+      "evidence": [{ "passage": "p1", "quote": "founded in 1971 by American writer Michael S. Hart" }], "rationale": "The passage states it directly.", "evidence_checked": true },
+    { "text": "It is the oldest digital library.", "citations": ["p1"], "verdict": "supported", "evidence": [{ "passage": "p1", "quote": "the oldest digital library" }], "rationale": "...", "evidence_checked": true }
+  ],
+  "summary": { "supported": 2, "contradicted": 0, "not_covered": 0 },
+  "passages": [ { "id": "p1", "atom": "uuid", "title": "Project Gutenberg", "url": "https://en.wikipedia.org/wiki/Project_Gutenberg", "source": "Wikipedia", "source_slug": "wikipedia", "licence": "CC BY-SA 4.0", "published_at": null, "retrieved_at": "...", "match": "both" } ],
+  "verifier": "llm-fallback", "model": "qwen/qwen3-32b",
+  "attribution": "..." }
+```
+
+`verifier` says what checked the sentences: `zeus:<model>` when a served Zeus adapter did (`OLO_ZEUS_URL` set), or `llm-fallback` when the drafting model ran the Zeus prompt instead. The page shows this, so nobody mistakes the fallback for Zeus. When the Commons has nothing on the question, `covered` is false, `answer` is "The Commons does not cover this yet." and the topic words of the question (never the question itself) are recorded as a gap for the ingester to fill (see Gaps below). Same limits as the query call; the two share one counter. A `503 answering_not_configured` means the project has no model key yet; a `502 model_unavailable` means the provider did not answer in time.
+
 ## Status
 
 `GET ?status=1` (or `POST {"status": true}`) returns the health of the Commons without any key:
@@ -71,6 +91,10 @@ curl -s -X POST "$SUPABASE_URL/rest/v1/rpc/olo_search_text" \
 ```
 
 Page with `p_after` = the `next_after` you received (`p_limit` up to 500; start at `1970-01-01`). `next_after` is null when there is nothing after `p_after`. `olo_links_export(p_after, p_limit)` does the same for links (`from`, `to`, `relation`, `weight`, `created_at`; up to 2,000 per page). `examples/graph-export.mjs` walks both to the end.
+
+### Gaps
+
+`olo_gaps_recent(p_k)` returns what Olo is learning from being used: `open` (topics people asked about that the Commons could not cover, with how often they were asked), `filled` (topics the ingester has since read sources for, with how many atoms it added), and the counters `open_count`, `filled_24h`, `atoms_added_24h`. A topic is a bag of at most six lower-case content words from the question, such as `founded gutenberg project`; the question itself is never stored. The table `olo_gaps` is readable too.
 
 ### Stats
 
