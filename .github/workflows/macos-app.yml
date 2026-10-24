@@ -57,16 +57,19 @@ jobs:
       - name: App tests
         working-directory: apps/macos
         run: |
-          set -o pipefail
+          set +e
           xcodebuild -project Olo.xcodeproj -scheme Olo -destination 'platform=macOS' \
-            CODE_SIGNING_ALLOWED=NO test | tail -n 80
+            CODE_SIGNING_ALLOWED=NO test > test.log 2>&1
+          code=$?
+          grep -E "error:|failed|Test Case .* (passed|failed)|Executed|TEST (SUCCEEDED|FAILED)" test.log | grep -v "^ *cd " | head -n 150
+          exit $code
       - name: Universal release build (unsigned)
         working-directory: apps/macos
         run: |
           set -o pipefail
           xcodebuild -project Olo.xcodeproj -scheme Olo -configuration Release -derivedDataPath build \
             -destination 'generic/platform=macOS' ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build | tail -n 40
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build > build.log 2>&1 || { grep -E "error:" build.log | head -n 100; exit 1; }
           ditto -c -k --keepParent build/Build/Products/Release/Olo.app Olo-macOS-unsigned.zip
           ls -la Olo-macOS-unsigned.zip
       - uses: actions/upload-artifact@v4
