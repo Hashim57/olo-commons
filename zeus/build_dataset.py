@@ -206,6 +206,7 @@ def build(atoms, eval_share, seed=7, near_miss=True):
     # frozen eval split stays byte-identical to earlier builds and scores stay
     # comparable across versions.
     hard_rng = random.Random(seed + 1)
+    order_rng = random.Random(seed + 3)
     usable = [a for a in atoms if sentences(a.get("summary") or a.get("content") or "")]
     titles = [a.get("title", "") for a in usable if a.get("title")]
     out = {"train": [], "eval": []}
@@ -215,14 +216,22 @@ def build(atoms, eval_share, seed=7, near_miss=True):
         sents = sentences(a.get("summary") or a.get("content") or "")
         claim = rng.choice(sents)
         others = rng.sample([o for o in usable if o["id"] != a["id"]], k=min(2, len(usable) - 1))
+        # The true passage used to come first in every example, and eval2 showed Zeus had learnt
+        # that (41 percent when it comes last, v8). Train passages are shuffled with their own
+        # generator; the frozen eval split keeps the old order so its scores stay comparable.
+        def ordered(ps):
+            if split == "train":
+                ps = list(ps)
+                order_rng.shuffle(ps)
+            return ps
         # supported
-        out[split].append({"claim": claim, "passages": [passage(a)] + [passage(o) for o in others], "label": "supported",
+        out[split].append({"claim": claim, "passages": ordered([passage(a)] + [passage(o) for o in others]), "label": "supported",
                            "evidence": [{"passage": a["id"][:8], "quote": claim[:160]}],
                            "rationale": "The passage states the claim directly.", "atom_id": a["id"]})
         # contradicted
         c = contradict(claim, rng, [t for t in titles if t != a.get("title")])
         if c:
-            out[split].append({"claim": c[0], "passages": [passage(a)] + [passage(o) for o in others], "label": "contradicted",
+            out[split].append({"claim": c[0], "passages": ordered([passage(a)] + [passage(o) for o in others]), "label": "contradicted",
                                "evidence": [{"passage": a["id"][:8], "quote": claim[:160]}],
                                "rationale": f"The passage gives a different value ({c[1]}).", "atom_id": a["id"]})
         # not covered

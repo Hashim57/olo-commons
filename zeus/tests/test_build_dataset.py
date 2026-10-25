@@ -177,3 +177,15 @@ def test_eval2_uses_only_eval_atoms_with_the_hard_patterns():
     # the frozen split is untouched by the extra generator
     assert build(atoms, 0.3)["eval"] == build(atoms, 0.3)["eval"]
     assert build_eval2(atoms, 0.3) == ev2
+
+
+def test_train_passages_are_shuffled_but_eval_order_is_frozen():
+    from build_dataset import build
+    atoms = [{"id": f"{i:08x}-0000-0000-0000-000000000000", "title": f"Place {i}", "url": f"https://x/{i}", "source": "wikipedia",
+              "summary": f"Harbour{i} is a harbour town founded by settlers in 19{50 + i % 40}. Its port is larger than the port of Harbour{i + 2}."} for i in range(80)]
+    d = build(atoms, 0.3)
+    train_sup = [ex for ex in d["train"] if ex["label"] == "supported"]
+    first = sum(1 for ex in train_sup if ex["passages"][0]["id"] == ex["atom_id"][:8])
+    assert 0 < first < len(train_sup), "train passages should be shuffled"
+    assert all(ex["passages"][0]["id"] == ex["atom_id"][:8] for ex in d["eval"] if ex["label"] == "supported")
+    assert build(atoms, 0.3)["train"] == d["train"]
