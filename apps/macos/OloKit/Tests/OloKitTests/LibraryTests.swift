@@ -5,12 +5,12 @@ import XCTest
 /// decoded the way the Mac receives them.
 final class MemoryTests: XCTestCase {
     func testListDecodesWithStatusAndCap() throws {
-        let data = Data(#"""
+        let data = Data(##"""
         {"result":{"data":{"json":{"memories":[
           {"id":"m1","category":"profile","content":"I run a small design studio in Anguilla.","status":"approved","conversationId":12,"projectId":null,"uses":3,"lastUsedAt":"2026-10-20T10:00:00.000Z","createdAt":"2026-10-01T10:00:00.000Z"},
           {"id":"m2","category":"preference","content":"Prefers British spelling and short answers.","status":"proposed","conversationId":15,"projectId":null,"uses":0,"lastUsedAt":null,"createdAt":"2026-10-24T10:00:00.000Z"}
         ],"enabled":true,"cap":200}}}}
-        """#.utf8)
+        """##.utf8)
         let list = try TRPC.decode(MemoryList.self, data: data, status: 200)
         XCTAssertEqual(list.memories.count, 2)
         XCTAssertEqual(list.proposed.map(\.id), ["m2"])
@@ -21,7 +21,7 @@ final class MemoryTests: XCTestCase {
     }
 
     func testOlderServerWithoutStatusCountsAsApproved() throws {
-        let data = Data(#"{"result":{"data":{"json":{"memories":[{"id":"m1","category":"fact","content":"x","uses":0,"createdAt":"2026-10-01T10:00:00Z"}],"enabled":false}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"memories":[{"id":"m1","category":"fact","content":"x","uses":0,"createdAt":"2026-10-01T10:00:00Z"}],"enabled":false}}}}"##.utf8)
         let list = try TRPC.decode(MemoryList.self, data: data, status: 200)
         XCTAssertFalse(list.memories[0].isProposed)
         XCTAssertFalse(list.enabled)
@@ -82,7 +82,7 @@ final class ArtifactTests: XCTestCase {
     }
 
     func testLibraryRowDecodes() throws {
-        let data = Data(#"{"result":{"data":{"json":[{"id":"art_9","userId":"u","conversationId":4,"projectId":null,"kind":"markdown","language":"markdown","title":"Notes","filename":"notes","code":"# Notes","validated":true,"repaired":false,"issues":[],"version":2,"createdAt":"2026-10-24T10:00:00Z","updatedAt":"2026-10-24T11:00:00Z"}]}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":[{"id":"art_9","userId":"u","conversationId":4,"projectId":null,"kind":"markdown","language":"markdown","title":"Notes","filename":"notes","code":"# Notes","validated":true,"repaired":false,"issues":[],"version":2,"createdAt":"2026-10-24T10:00:00Z","updatedAt":"2026-10-24T11:00:00Z"}]}}}"##.utf8)
         let list = try TRPC.decode([Artifact].self, data: data, status: 200)
         XCTAssertEqual(list[0].conversationId, 4)
         XCTAssertEqual(list[0].version, 2)
@@ -102,7 +102,7 @@ final class ArtifactTests: XCTestCase {
     }
 
     func testShareDecodesAndBuildsTheLink() throws {
-        let data = Data(#"{"result":{"data":{"json":{"token":"abc12345def67890","userId":"u","subjectType":"conversation","subjectId":"42","access":"view","label":null,"revoked":false,"expiresAt":null,"viewCount":0,"createdAt":"2026-10-25T09:00:00Z"}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"token":"abc12345def67890","userId":"u","subjectType":"conversation","subjectId":"42","access":"view","label":null,"revoked":false,"expiresAt":null,"viewCount":0,"createdAt":"2026-10-25T09:00:00Z"}}}}"##.utf8)
         let share = try TRPC.decode(Share.self, data: data, status: 200)
         XCTAssertEqual(share.url().absoluteString, "https://helius-olo.io/s/abc12345def67890")
         XCTAssertEqual(share.subjectId, "42")
@@ -121,12 +121,12 @@ final class LibraryModelTests: XCTestCase {
     }
 
     func testSearchHitsAndProjectsDecode() throws {
-        let hits = Data(#"{"result":{"data":{"json":[{"conversationId":7,"conversationTitle":"Sargassum","messageId":31,"role":"assistant","snippet":"...biofuel feedstock...","createdAt":"2026-10-20T10:00:00Z"}]}}}"#.utf8)
+        let hits = Data(##"{"result":{"data":{"json":[{"conversationId":7,"conversationTitle":"Sargassum","messageId":31,"role":"assistant","snippet":"...biofuel feedstock...","createdAt":"2026-10-20T10:00:00Z"}]}}}"##.utf8)
         let list = try TRPC.decode([SearchHit].self, data: hits, status: 200)
         XCTAssertEqual(list[0].conversationId, 7)
         XCTAssertEqual(list[0].id, 31)
 
-        let projects = Data(#"{"result":{"data":{"json":[{"id":2,"userId":"u","name":"Anguilla planning","description":null,"instructions":"Use UK spelling.","kind":"research","color":"#5ec8a6","isArchived":false,"createdAt":"2026-10-01T10:00:00Z","updatedAt":"2026-10-02T10:00:00Z"}]}}}"#.utf8)
+        let projects = Data(##"{"result":{"data":{"json":[{"id":2,"userId":"u","name":"Anguilla planning","description":null,"instructions":"Use UK spelling.","kind":"research","color":"#5ec8a6","isArchived":false,"createdAt":"2026-10-01T10:00:00Z","updatedAt":"2026-10-02T10:00:00Z"}]}}}"##.utf8)
         let p = try TRPC.decode([Project].self, data: projects, status: 200)
         XCTAssertEqual(p[0].name, "Anguilla planning")
         XCTAssertEqual(p[0].kind, "research")
@@ -137,7 +137,7 @@ final class LibraryModelTests: XCTestCase {
     }
 
     func testNudgesDecode() throws {
-        let data = Data(#"{"result":{"data":{"json":[{"id":"n1","userId":"u","kind":"thread_idle","subjectId":"42","title":"You left a thread open","body":"Pick it up?","suggestion":"Open it","status":"sent","createdAt":"2026-10-25T08:00:00Z"}]}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":[{"id":"n1","userId":"u","kind":"thread_idle","subjectId":"42","title":"You left a thread open","body":"Pick it up?","suggestion":"Open it","status":"sent","createdAt":"2026-10-25T08:00:00Z"}]}}}"##.utf8)
         let n = try TRPC.decode([Nudge].self, data: data, status: 200)
         XCTAssertEqual(n[0].conversationId, 42)
         XCTAssertEqual(n[0].suggestion, "Open it")
@@ -155,7 +155,7 @@ final class PassageTests: XCTestCase {
     }
 
     func testEditResultDecodes() throws {
-        let data = Data(#"{"result":{"data":{"json":{"content":"The whole answer, edited.","replacement":"edited."}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"content":"The whole answer, edited.","replacement":"edited."}}}}"##.utf8)
         let r = try TRPC.decode(EditPassageResult.self, data: data, status: 200)
         XCTAssertEqual(r.replacement, "edited.")
     }
@@ -174,7 +174,7 @@ final class PassageTests: XCTestCase {
 
 final class MonitorTests: XCTestCase {
     func testMonitorsDecode() throws {
-        let data = Data(#"{"result":{"data":{"json":[{"id":"mon_1","userId":"u","workspaceId":null,"claimId":"c1","claim":"The UK bank rate is 4%.","baselineVerdict":"supported","baselineConfidence":0.8,"intervalDays":3,"active":true,"lastChecked":"2026-10-24T10:00:00Z","nextCheck":"2026-10-27T10:00:00Z","changedAt":"2026-10-24T10:00:00Z","changeNote":"The sources now contradict this. It was supported."}]}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":[{"id":"mon_1","userId":"u","workspaceId":null,"claimId":"c1","claim":"The UK bank rate is 4%.","baselineVerdict":"supported","baselineConfidence":0.8,"intervalDays":3,"active":true,"lastChecked":"2026-10-24T10:00:00Z","nextCheck":"2026-10-27T10:00:00Z","changedAt":"2026-10-24T10:00:00Z","changeNote":"The sources now contradict this. It was supported."}]}}}"##.utf8)
         let m = try TRPC.decode([Monitor].self, data: data, status: 200)
         XCTAssertTrue(m[0].hasChanged)
         XCTAssertEqual(m[0].intervalLine, "every 3 days")
@@ -182,7 +182,7 @@ final class MonitorTests: XCTestCase {
     }
 
     func testCheckNowSummary() throws {
-        let data = Data(#"{"result":{"data":{"json":{"checked":2,"changed":[{"monitorId":"mon_1","claim":"x","from":"supported","to":"contradicted","note":"The sources now contradict this."}],"notified":1}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"checked":2,"changed":[{"monitorId":"mon_1","claim":"x","from":"supported","to":"contradicted","note":"The sources now contradict this."}],"notified":1}}}}"##.utf8)
         let r = try TRPC.decode(MonitorCheck.self, data: data, status: 200)
         XCTAssertEqual(r.summary, "1 of 2 changed. The sources now contradict this.")
         XCTAssertEqual(MonitorCheck(checked: 0).summary, "Nothing to check right now.")
@@ -190,9 +190,9 @@ final class MonitorTests: XCTestCase {
     }
 
     func testHookMayBeNull() throws {
-        let none = Data(#"{"result":{"data":{"json":null}}}"#.utf8)
+        let none = Data(##"{"result":{"data":{"json":null}}}"##.utf8)
         XCTAssertNil(try TRPC.decode(MonitorHook?.self, data: none, status: 200))
-        let some = Data(#"{"result":{"data":{"json":{"token":"tok","fires":2,"lastFired":null,"createdAt":"2026-10-01T00:00:00Z","url":"/api/monitors/hook/tok"}}}}"#.utf8)
+        let some = Data(##"{"result":{"data":{"json":{"token":"tok","fires":2,"lastFired":null,"createdAt":"2026-10-01T00:00:00Z","url":"/api/monitors/hook/tok"}}}}"##.utf8)
         let hook = try XCTUnwrap(try TRPC.decode(MonitorHook?.self, data: some, status: 200))
         XCTAssertEqual(hook.fullURL().absoluteString, "https://helius-olo.io/api/monitors/hook/tok")
     }
@@ -205,12 +205,12 @@ final class MonitorTests: XCTestCase {
 
 final class ZeusGraphTests: XCTestCase {
     func testGraphDecodesAndPlaces() throws {
-        let data = Data(#"""
+        let data = Data(##"""
         {"result":{"data":{"json":{"nodes":[
           {"id":"c1","contributedBy":null,"claim":"Water boils at 100 C at sea level.","verdict":"supported","confidence":0.95,"supporting":4,"contradicting":0,"volatility":"stable","verifiedAt":"2026-10-01T00:00:00Z","expiresAt":null,"hitCount":3,"evidence":[{"url":"https://a.org/x","domain":"a.org","title":"A","provider":"tavily","stance":"supports"}]},
           {"id":"c2","contributedBy":null,"claim":"B","verdict":"contradicted","confidence":0.6,"supporting":0,"contradicting":2,"volatility":"slow","verifiedAt":"2026-10-01T00:00:00Z","expiresAt":null,"hitCount":0,"evidence":[]}
         ],"conflicts":[{"a":"c1","b":"c2","similarity":0.9}],"sources":[{"domain":"a.org","reputation":0.8,"total":5}],"stats":{"claims":2,"evidence":1,"conflicts":1,"recalled":3,"saved":3}}}}}
-        """#.utf8)
+        """##.utf8)
         let g = try TRPC.decode(ZeusGraph.self, data: data, status: 200)
         XCTAssertEqual(g.nodes.count, 2)
         XCTAssertEqual(g.nodes[0].evidence[0].domain, "a.org")
@@ -228,24 +228,24 @@ final class ZeusGraphTests: XCTestCase {
     }
 
     func testEmptyGraph() throws {
-        let data = Data(#"{"result":{"data":{"json":{"nodes":[],"conflicts":[],"sources":[],"stats":{"claims":0,"evidence":0,"conflicts":0,"recalled":0,"saved":0}}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"nodes":[],"conflicts":[],"sources":[],"stats":{"claims":0,"evidence":0,"conflicts":0,"recalled":0,"saved":0}}}}}"##.utf8)
         XCTAssertTrue(try TRPC.decode(ZeusGraph.self, data: data, status: 200).isEmpty)
     }
 }
 
 final class SkillsAndConnectorsTests: XCTestCase {
     func testSkillsDecode() throws {
-        let data = Data(#"{"result":{"data":{"json":[{"id":"s1","userId":"u","name":"Board paper","description":"Writes board papers.","instructions":"Use headings.","triggers":["board"],"visibility":"private","status":"pending_review","flags":[{"rule":"External link","severity":"review","excerpt":"http"}],"uses":2,"createdAt":"2026-10-01T00:00:00Z"}]}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":[{"id":"s1","userId":"u","name":"Board paper","description":"Writes board papers.","instructions":"Use headings.","triggers":["board"],"visibility":"private","status":"pending_review","flags":[{"rule":"External link","severity":"review","excerpt":"http"}],"uses":2,"createdAt":"2026-10-01T00:00:00Z"}]}}}"##.utf8)
         let s = try TRPC.decode([Skill].self, data: data, status: 200)
         XCTAssertEqual(s[0].statusLabel, "Waiting for review")
         XCTAssertFalse(s[0].isActive)
         XCTAssertEqual(s[0].flags[0].severity, "review")
-        let created = Data(#"{"result":{"data":{"json":{"skill":{"id":"s2","name":"N","description":"d","instructions":"i","triggers":[],"visibility":"private","status":"active","flags":[],"uses":0,"createdAt":""},"message":"Saved."}}}}"#.utf8)
+        let created = Data(##"{"result":{"data":{"json":{"skill":{"id":"s2","name":"N","description":"d","instructions":"i","triggers":[],"visibility":"private","status":"active","flags":[],"uses":0,"createdAt":""},"message":"Saved."}}}}"##.utf8)
         XCTAssertEqual(try TRPC.decode(SkillCreated.self, data: created, status: 200).message, "Saved.")
     }
 
     func testConnectorsDecode() throws {
-        let data = Data(#"{"result":{"data":{"json":{"available":true,"googleConfigured":true,"connections":[{"provider":"google","account":"me@example.com","scopes":["https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/calendar.readonly"],"brokenReason":null,"lastUsedAt":null,"createdAt":"2026-10-01T00:00:00Z"}]}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"available":true,"googleConfigured":true,"connections":[{"provider":"google","account":"me@example.com","scopes":["https://www.googleapis.com/auth/gmail.readonly","https://www.googleapis.com/auth/calendar.readonly"],"brokenReason":null,"lastUsedAt":null,"createdAt":"2026-10-01T00:00:00Z"}]}}}}"##.utf8)
         let c = try TRPC.decode(ConnectorList.self, data: data, status: 200)
         XCTAssertEqual(c.google?.account, "me@example.com")
         XCTAssertEqual(c.google?.scopesLine, "Gmail and Calendar, read only")
@@ -255,7 +255,7 @@ final class SkillsAndConnectorsTests: XCTestCase {
 
 final class ComputeTests: XCTestCase {
     func testJobDecodesAndSummarises() throws {
-        let data = Data(#"{"result":{"data":{"json":{"id":"job_1","userId":"u","conversationId":null,"prompt":"Analyse X","status":"running","progress":0.4,"stages":[{"id":"plan","label":"Planning","status":"done"},{"id":"run","label":"Reading sources","status":"running","detail":"3 of 8"}],"result":null,"error":null,"cancelRequested":false,"createdAt":"2026-10-25T09:00:00Z","updatedAt":"2026-10-25T09:01:00Z"}}}}"#.utf8)
+        let data = Data(##"{"result":{"data":{"json":{"id":"job_1","userId":"u","conversationId":null,"prompt":"Analyse X","status":"running","progress":0.4,"stages":[{"id":"plan","label":"Planning","status":"done"},{"id":"run","label":"Reading sources","status":"running","detail":"3 of 8"}],"result":null,"error":null,"cancelRequested":false,"createdAt":"2026-10-25T09:00:00Z","updatedAt":"2026-10-25T09:01:00Z"}}}}"##.utf8)
         let j = try TRPC.decode(ComputeJob.self, data: data, status: 200)
         XCTAssertTrue(j.isRunning)
         XCTAssertEqual(j.fraction, 0.4, accuracy: 0.001)
@@ -377,7 +377,7 @@ final class ExportAndFooterTests: XCTestCase {
         XCTAssertEqual(s[0].urlOk, false)
         XCTAssertEqual(s[0].domain, "reddit.com")
         XCTAssertNil(s[1].downRankedLabel)
-        let v = try JSONDecoder().decode(AnswerVerification.self, from: Data(#"{"claims":[{"claim":"A","claimId":"c1","verdict":"supported","citedBy":[1],"rationale":"","recalled":true}],"supported":1,"unsupported":0,"contradicted":0,"score":1,"references":[{"text":"x","doi":null,"exists":true,"title":"T","note":null}],"freshnessNote":"Old."}"#.utf8))
+        let v = try JSONDecoder().decode(AnswerVerification.self, from: Data(##"{"claims":[{"claim":"A","claimId":"c1","verdict":"supported","citedBy":[1],"rationale":"","recalled":true}],"supported":1,"unsupported":0,"contradicted":0,"score":1,"references":[{"text":"x","doi":null,"exists":true,"title":"T","note":null}],"freshnessNote":"Old."}"##.utf8))
         XCTAssertEqual(v.claims[0].claimId, "c1")
         XCTAssertEqual(v.claims[0].recalled, true)
         XCTAssertEqual(v.references?.count, 1)
@@ -386,7 +386,7 @@ final class ExportAndFooterTests: XCTestCase {
     }
 
     func testTurnsSavedByOlderVersionsStillDecode() throws {
-        let old = Data(#"{"id":"6E1C7A2B-2B6D-4F0E-9E3C-5A1F2B3C4D5E","role":"assistant","text":"Hi","sources":[],"notices":[],"followUps":[],"attachments":[],"createdAt":"2026-10-24T10:00:00Z"}"#.utf8)
+        let old = Data(##"{"id":"6E1C7A2B-2B6D-4F0E-9E3C-5A1F2B3C4D5E","role":"assistant","text":"Hi","sources":[],"notices":[],"followUps":[],"attachments":[],"createdAt":"2026-10-24T10:00:00Z"}"##.utf8)
         let d = JSONDecoder(); d.dateDecodingStrategy = .iso8601
         let t = try d.decode(Turn.self, from: old)
         XCTAssertEqual(t.text, "Hi")
