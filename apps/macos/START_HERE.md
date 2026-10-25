@@ -23,7 +23,7 @@ appstoreconnect.apple.com > **Apps** > **+** > **New App**: platform **macOS**, 
 
 ## 5. Archive and upload
 
-Version 1.1.0, build 2 are already set in the project. For each later upload raise the Build number by one.
+Version 1.2.0, build 3 are already set in the project. The first upload with subscriptions must be submitted together with the subscriptions themselves (APP_STORE.md, section "Subscriptions in App Store Connect"). For each later upload raise the Build number by one.
 
 ### Archive
 
