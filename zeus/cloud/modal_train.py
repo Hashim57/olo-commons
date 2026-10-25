@@ -153,12 +153,25 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     answers, _ = run(evals)
     report = {"model": f"zeus/out/zeus-{version}", "base": base, **score(evals, answers)}
 
+    out = os.path.join(work, "out")
+    model.save_pretrained(os.path.join(out, "peft"))
+    cfg_path = os.path.join(out, "peft", "adapter_config.json")
+    cfg = recipe.peft_config_for_cloudflare(json.load(open(cfg_path)))
+    json.dump(cfg, open(cfg_path, "w"), indent=2)
+    summary = {"base": base, "framework": "peft-cloud", "gpu": GPU, "train_examples": len(rows), "eval_examples": len(evals), "epochs": iters_epochs,
+               "steps": steps, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
+    json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
+    json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
+
     external = {}
     # Held-out VitaminC dev (Wikipedia revisions, human-written claims): the first number to trust once the rule-made split saturates.
     vit = load(os.path.join(data, "imported", "vitaminc-eval.jsonl"))
     if vit:
-        a, _ = run(vit)
-        external["vitaminc_dev"] = {"n": len(vit), **score(vit, a), "note": "held out, never trained on; human-written claims over Wikipedia revisions"}
+        try:
+            a, _ = run(vit)
+            external["vitaminc_dev"] = {"n": len(vit), **score(vit, a), "note": "held out, never trained on; human-written claims over Wikipedia revisions"}
+        except Exception as e:
+            external["vitaminc_dev"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     # LLM-AggreFact (Tang et al. 2024): the public two-label grounding benchmark, so Zeus can be set beside published checkers.
     # supported -> 1, contradicted or not covered -> 0; balanced accuracy per dataset. Documents over the prompt budget are cut (count reported).
     if aggrefact_n > 0:
@@ -187,17 +200,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
         except Exception as e:  # the benchmark is a bonus measurement; a download failure must not lose the training run
             external["llm_aggrefact"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
 
-    out = os.path.join(work, "out")
-    model.save_pretrained(os.path.join(out, "peft"))
-    cfg_path = os.path.join(out, "peft", "adapter_config.json")
-    cfg = recipe.peft_config_for_cloudflare(json.load(open(cfg_path)))
-    json.dump(cfg, open(cfg_path, "w"), indent=2)
-    summary = {"base": base, "framework": "peft-cloud", "gpu": GPU, "train_examples": len(rows), "eval_examples": n, "epochs": iters_epochs,
-               "steps": steps, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
-    json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
-    json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
     json.dump(external, open(os.path.join(out, "eval-external.json"), "w"), indent=2)
-    print(json.dumps(report), flush=True)
     print(json.dumps(external), flush=True)
     return _tar([(out, "out")])
 
