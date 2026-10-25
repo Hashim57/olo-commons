@@ -86,7 +86,8 @@ jobs:
           git commit -q -m "zeus: ${{ steps.fb.outputs.new }} gold lines from reviewed feedback" && git pull -q --rebase && git push -q || echo "nothing to commit"
       - name: Not due today
         if: steps.v.outputs.due != '1'
-        run: echo "Training not due: ${{ steps.v.outputs.reason }}"
+        run: |
+          echo "Training not due. ${{ steps.v.outputs.reason }}"
       - name: Check the cloud account is set up
         if: steps.v.outputs.due == '1'
         env:
