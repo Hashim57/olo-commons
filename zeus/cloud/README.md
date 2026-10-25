@@ -27,7 +27,7 @@ One more optional secret makes the feedback export work: `SUPABASE_SERVICE_ROLE_
 | `CLOUDFLARE_API_TOKEN` | Cloudflare dashboard > My Profile > API Tokens > Create Token > "Edit Cloudflare Workers" template, plus Account > Workers AI > Edit |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dashboard, right-hand side of the Workers & Pages page |
 | `ZEUS_KEY` | the Zeus Worker key (`cat ~/.zeus-cf-token` on the Mac) |
-| `HF_TOKEN` | only if the run log says Mistral is gated for you: huggingface.co > Settings > Access Tokens (read), after accepting the model's terms |
+| `HF_TOKEN` | huggingface.co > Settings > Access Tokens (read). Needed for the LLM-AggreFact sample in the scorecard (a gated dataset: open huggingface.co/datasets/lytang/LLM-AggreFact once and accept its terms), and if Mistral is gated for you |
 
 and this repository variable (Variables tab): `ZEUS_URL` = `https://zeus.<your-subdomain>.workers.dev/v1`.
 
