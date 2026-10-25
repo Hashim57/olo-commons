@@ -21,6 +21,7 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
+                        if conversation?.turns.isEmpty ?? true { NewConversationEmptyState() }
                         ForEach(conversation?.turns ?? []) { turn in
                             TurnView(turn: turn, status: turn.id == conversation?.turns.last?.id ? status : nil, compact: false) { follow in
                                 model.ask(follow, in: conversationId)
@@ -55,11 +56,13 @@ struct ChatView: View {
         .onChange(of: model.requestAttachFiles) {
             if model.requestAttachFiles { model.requestAttachFiles = false; pickFiles() }
         }
+        .onChange(of: model.focusComposer) { composerFocused = true }
         .onAppear { composerFocused = true }
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            QuotaBanner()
             if !attachments.isEmpty { AttachmentChips(attachments: $attachments) }
             HStack(alignment: .bottom, spacing: 10) {
                 Button(action: pickFiles) { Image(systemName: "paperclip") }
@@ -182,7 +185,7 @@ struct TurnView: View {
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 if turn.text.isEmpty {
-                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(status ?? "Thinking").foregroundStyle(.secondary) }
+                    HStack(spacing: 10) { HeliusAtomView(mode: .loader, size: 56); Text(status ?? "Thinking").foregroundStyle(.secondary) }
                 } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons {
                     answerText(checked: v)
                 } else {

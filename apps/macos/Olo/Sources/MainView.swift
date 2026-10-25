@@ -30,6 +30,8 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $model.showSignIn) { SignInView() }
+        .sheet(isPresented: $model.showSubscribe) { SubscribeView(store: model.purchases) }
+        .sheet(isPresented: $model.showTerms) { TermsGateView() }
         .overlay(alignment: .top) {
             if let b = model.banner {
                 Text(b).font(.callout).padding(10).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -104,7 +106,8 @@ struct EmptyState: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "text.bubble").font(.system(size: 44)).foregroundStyle(.tint)
+            HeliusAtomView(mode: .idle, size: 180)
+            HeliusAtomCaption()
             Text("Ask Olo").font(.largeTitle.weight(.semibold))
             Text("Answers from sources you can open, with every sentence checked.\nPress Option+Space in any app to ask without leaving it.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)

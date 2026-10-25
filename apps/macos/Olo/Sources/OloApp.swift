@@ -37,6 +37,9 @@ struct OloCommands: Commands {
     let model: AppModel
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Subscribe...") { model.openSubscribe() }
+        }
         CommandGroup(replacing: .newItem) {
             Button("New Conversation") { model.newConversation(); model.showMainWindow() }
                 .keyboardShortcut("n")

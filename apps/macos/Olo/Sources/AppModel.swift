@@ -33,6 +33,13 @@ final class AppModel {
     var banner: String?
     var showSignIn = false
     var requestAttachFiles = false
+    // Terms and plan (see AppModel+Billing.swift for the behaviour).
+    var entitlement: Entitlement?
+    var showSubscribe = false
+    var showTerms = !LegalStore().accepted()
+    var termsAccepted: LegalAcceptance? = LegalStore().acceptance
+    var focusComposer = 0
+    let purchases = StoreController.shared
 
     @ObservationIgnored var openMainWindowAction: (() -> Void)?
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
@@ -67,6 +74,7 @@ final class AppModel {
             await commons.refreshIfStale()
             await flushPending()
         }
+        await bootstrapBilling()
     }
 
     private func onlineAgain() async {
@@ -116,6 +124,7 @@ final class AppModel {
             await sendTrainingConsent(consent)
         }
         await refreshConversations()
+        await refreshEntitlement()
     }
 
     /// Whether this person's conversations may be used to improve Olo and train Zeus.
@@ -144,6 +153,7 @@ final class AppModel {
         api.token = nil
         Keychain.write("session", nil)
         user = nil
+        entitlement = nil
         UserDefaults.standard.removeObject(forKey: "user.v1")
         conversations.removeAll { $0.serverId != nil }
         persist()
@@ -314,11 +324,11 @@ final class AppModel {
         } catch is CancellationError {
             updateTurn(cid, tid) { $0.notices.append("Stopped.") }
         } catch let f as OloAPI.StreamFailure where f.isQuota {
+            let notice = await quotaRefused()
             updateTurn(cid, tid) { t in
                 t.text = t.text.isEmpty ? f.message : t.text
-                t.notices.append("Sign in with your email to keep going on the same account as the web and iPhone.")
+                t.notices.append(notice)
             }
-            showSignIn = user?.isAnonymous ?? true
         } catch {
             if Task.isCancelled { updateTurn(cid, tid) { $0.notices.append("Stopped.") }; return }
             await fallBack(question: question, content: composed.content, attachments: attached, cid: cid, tid: tid, error: error)

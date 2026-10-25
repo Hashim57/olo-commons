@@ -9,8 +9,8 @@ options:
   createIntermediateGroups: true
 settings:
   base:
-    MARKETING_VERSION: "1.1.0"
-    CURRENT_PROJECT_VERSION: "2"
+    MARKETING_VERSION: "1.2.0"
+    CURRENT_PROJECT_VERSION: "3"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: ""
 packages:
@@ -84,5 +84,8 @@ schemes:
       targets:
         Olo: all
         OloTests: [test]
+    run:
+      # Local StoreKit testing: the two subscriptions without App Store Connect (Olo/Olo.storekit).
+      storeKitConfiguration: Olo/Olo.storekit
     test:
       targets: [OloTests]

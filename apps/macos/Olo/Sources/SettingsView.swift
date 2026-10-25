@@ -184,6 +184,7 @@ struct AccountSettings: View {
                 Text(model.user == nil ? "Not signed in. Olo gives you free messages to start; sign in to use your account." : "Using free messages on this Mac.")
                 Button("Sign In...") { model.showSignIn = true; model.showMainWindow() }
             }
+            AccountPlanSection(store: model.purchases)
             Section("Training") {
                 Toggle(ConsentText.label, isOn: Binding(get: { model.trainingConsent }, set: { model.trainingConsent = $0 }))
                 Text(ConsentText.paragraph).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
