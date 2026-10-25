@@ -55,7 +55,8 @@ async function chat(baseUrl: string, apiKey: string, model: string, system: stri
   const extra = /gpt-oss/i.test(model) ? { reasoning_effort: 'low' } : {};
   const r = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
+    // A named User-Agent: Cloudflare's bot check refuses runtime defaults with "403 error code: 1010".
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'OloCommons/1.0 (+https://heliusnetwork.app/olo)', ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}) },
     body: JSON.stringify({ model, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], temperature: 0, max_tokens: maxTokens, ...extra }),
     signal: AbortSignal.timeout(timeoutMs),
   });

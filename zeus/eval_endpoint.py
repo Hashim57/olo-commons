@@ -33,7 +33,8 @@ def ask(url, key, model, ex, timeout=60, tries=3, errors=None):
     last = None
     for attempt in range(tries):
         req = urllib.request.Request(url.rstrip("/") + "/chat/completions", data=body, method="POST",
-                                     headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
+                                     # A real User-Agent: Cloudflare's bot check answers "403 error code: 1010" to Python's default one.
+                                     headers={"Content-Type": "application/json", "Authorization": "Bearer " + key, "User-Agent": "OloZeusEval/1.0 (+https://heliusnetwork.app/olo)"})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())["choices"][0]["message"]["content"]

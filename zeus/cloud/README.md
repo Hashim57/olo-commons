@@ -2,6 +2,12 @@
 
 Nothing of Zeus runs on anyone's computer. Training and measuring run on a GPU rented by the second from Modal (modal.com), started by GitHub Actions; serving runs on Cloudflare Workers AI (`zeus/cloudflare/`).
 
+## Every day, by itself
+
+The workflow runs at 03:23 UTC every day. It turns reviewed feedback flags into gold lines (docs/FEEDBACK.md), rebuilds the dataset, and trains a new version only when there is something new to learn from: new feedback, a tenth more data, or a week since the last version (`zeus/cloud/due.py`). Each trained version is measured on the frozen split, on held-out VitaminC dev and on a 600-item LLM-AggreFact sample, written to `docs/ZEUS_SCORECARD.md`, promoted only if not worse, and published to the Worker. Run it by hand from the Actions tab to train regardless.
+
+One more optional secret makes the feedback export work: `SUPABASE_SERVICE_ROLE_KEY` (Supabase dashboard, Project Settings, API keys, service_role). Without it the daily run still trains on the rule-made data and the hand-written gold.
+
 ## How a version is made
 
 1. A training request (`zeus/TRAIN_REQUEST.json`, written by the daily run) is pushed, or someone starts **Zeus training (cloud)** by hand in GitHub Actions with a version number.

@@ -45,9 +45,17 @@ def candidates(out_dir, rows):
             ev = json.load(open(p, encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        ext_path = os.path.join(out_dir, f"zeus-{v}", "eval-external.json")
+        held_out = None
+        if os.path.exists(ext_path):
+            try:
+                vit = (json.load(open(ext_path, encoding="utf-8")).get("vitaminc_dev") or {})
+                held_out = float(vit["label_accuracy"]) if "label_accuracy" in vit else None
+            except (OSError, ValueError, TypeError):
+                held_out = None
         out.append({"version": v, "date": row["date"], "base": ev.get("base") or row["base"], "train_examples": row["train_examples"],
                     "label_accuracy": float(ev.get("label_accuracy", row["label_accuracy"])), "evidence_hit": float(ev.get("evidence_hit", row["evidence_hit"])),
-                    "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1")})
+                    "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1"), "held_out_accuracy": held_out})
     return out
 
 
@@ -56,7 +64,9 @@ def cloudflare_servable(c):
 
 
 def rank_key(c):
-    return (c["label_accuracy"], c["evidence_hit"], int(c["version"][1:]))
+    """The frozen split first, rounded to two places because a 7B model saturates it (0.99 and 0.995 tie);
+    then the held-out VitaminC accuracy, which a saturated split cannot give; then evidence hit; then the newer version."""
+    return (round(c["label_accuracy"], 2), c.get("held_out_accuracy") if c.get("held_out_accuracy") is not None else -1.0, c["evidence_hit"], int(c["version"][1:]))
 
 
 def choose(cands, current=None, force=False):

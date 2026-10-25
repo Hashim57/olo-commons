@@ -1,25 +1,41 @@
 # Zeus training in the cloud: a GPU on Modal, never anyone's computer.
-# Starts when a training request (zeus/TRAIN_REQUEST.json) is pushed, or by hand with a version.
-# Trains, measures on the frozen eval split, records the STATUS row, promotes only if better, and
-# publishes the promoted Cloudflare version to the zeus Worker. Without the Modal secrets it stops
-# with a message and changes nothing.
+#
+# Runs every day at 03:23 UTC. Each run: turns accepted feedback flags into gold lines
+# (zeus/feedback_to_gold.py, when the Supabase service key secret is set), rebuilds the
+# dataset, and trains a new version only when there is something new to learn from
+# (zeus/cloud/due.py: new feedback, a tenth more data, or a week since the last version;
+# about $1.50 of GPU time a run). It also starts when a training request
+# (zeus/TRAIN_REQUEST.json) is pushed, or by hand with a version.
+#
+# A trained version is measured on the frozen split, on held-out VitaminC dev and on an
+# LLM-AggreFact sample, recorded in STATUS.md and docs/ZEUS_SCORECARD.md, promoted only
+# if not worse, and published to the zeus Worker when it is the best servable version.
+# Without the Modal secrets it stops with a message and changes nothing.
 #
 # Repository secrets: MODAL_TOKEN_ID, MODAL_TOKEN_SECRET (modal.com > Settings > API tokens),
 # HF_TOKEN (only if Hugging Face gates Mistral for you), CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,
-# ZEUS_KEY (the Worker key, ~/.zeus-cf-token). Repository variable: ZEUS_URL (https://zeus.<you>.workers.dev/v1).
+# ZEUS_KEY (the Worker key, ~/.zeus-cf-token), SUPABASE_SERVICE_ROLE_KEY (feedback export only;
+# optional). Repository variable: ZEUS_URL (https://zeus.<you>.workers.dev/v1).
 name: Zeus training (cloud)
 on:
+  schedule:
+    - cron: '23 3 * * *'
   push:
     branches: [main]
     paths: ['zeus/TRAIN_REQUEST.json']
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to train, e.g. v6'
-        required: true
+        description: 'Version to train, e.g. v7 (blank: the next one)'
+        required: false
+        default: ''
       epochs:
         description: 'Passes over the training set'
         default: '1'
+      force:
+        description: 'Train even if nothing is new'
+        type: boolean
+        default: true
 permissions:
   contents: write
 concurrency:
@@ -34,59 +50,90 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Which version
+      - name: Python packages
+        run: python3 -m pip install --quiet modal==1.5.5 requests numpy
+      - name: Feedback flags accepted by a reviewer become gold lines
+        id: fb
+        env:
+          SUPABASE_URL: https://bfldflbkebyapfagsxnr.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          before="$(cat zeus/data/gold/feedback-*.jsonl 2>/dev/null | wc -l | tr -d ' ')"
+          NEXT="v$(python3 -c 'import sys; sys.path.insert(0,"zeus"); from request_training import highest_version; print(highest_version()+1)')"
+          python3 zeus/feedback_to_gold.py --version "$NEXT" || echo "::warning::feedback export failed; continuing without it"
+          after="$(cat zeus/data/gold/feedback-*.jsonl 2>/dev/null | wc -l | tr -d ' ')"
+          echo "new=$((after - before))" >> "$GITHUB_OUTPUT"
+          python3 zeus/validate_gold.py
+      - name: Build the dataset and decide whether training is due
         id: v
         run: |
+          python3 zeus/build_dataset.py || python3 zeus/build_dataset.py --snapshot
           V="${{ github.event.inputs.version }}"
           if [ -z "$V" ] && [ -f zeus/TRAIN_REQUEST.json ]; then V="$(python3 -c 'import json; print(json.load(open("zeus/TRAIN_REQUEST.json"))["version"])')"; fi
-          case "$V" in v[0-9]|v[0-9][0-9]|v[0-9][0-9][0-9]) ;; *) echo "no valid version requested"; exit 1 ;; esac
-          if [ -f "zeus/out/zeus-$V/eval.json" ]; then echo "$V already has results"; echo "skip=1" >> "$GITHUB_OUTPUT"; fi
-          echo "v=$V" >> "$GITHUB_OUTPUT"
+          FORCE=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.force }}" != "false" ]; then FORCE="--force"; fi
+          if [ -n "$V" ] || [ "${{ github.event_name }}" = "push" ]; then FORCE="--force"; fi
+          python3 zeus/cloud/due.py --new-feedback "${{ steps.fb.outputs.new }}" $FORCE
+          if [ -n "$V" ]; then echo "version=$V" >> "$GITHUB_OUTPUT"; fi
+          V="${V:-$(grep '^version=' "$GITHUB_OUTPUT" | tail -1 | cut -d= -f2)}"
+          case "$V" in v[0-9]|v[0-9][0-9]|v[0-9][0-9][0-9]) ;; *) echo "no valid version"; exit 1 ;; esac
+          if [ -f "zeus/out/zeus-$V/eval.json" ]; then echo "$V already has results"; echo "due=0" >> "$GITHUB_OUTPUT"; fi
+      - name: Commit new gold lines even when training is not due
+        if: steps.fb.outputs.new != '0'
+        run: |
+          git config user.name "zeus-cloud"; git config user.email "zeus-cloud@heliusnetwork.app"
+          git add zeus/data/gold/feedback-*.jsonl
+          git commit -q -m "zeus: ${{ steps.fb.outputs.new }} gold lines from reviewed feedback" && git pull -q --rebase && git push -q || echo "nothing to commit"
+      - name: Not due today
+        if: steps.v.outputs.due != '1'
+        run: echo "Training not due: ${{ steps.v.outputs.reason }}"
       - name: Check the cloud account is set up
-        if: steps.v.outputs.skip != '1'
+        if: steps.v.outputs.due == '1'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
         run: |
           if [ -z "$MODAL_TOKEN_ID" ]; then echo "::warning::MODAL_TOKEN_ID is not set; add the Modal secrets to train in the cloud (zeus/cloud/README.md). Nothing was changed."; exit 1; fi
       - name: Train and measure on a cloud GPU
-        if: steps.v.outputs.skip != '1'
+        if: steps.v.outputs.due == '1'
         env:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          python3 -m pip install --quiet modal==1.5.5 requests numpy
-          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.v }}" --epochs "${{ github.event.inputs.epochs || '1' }}"
-      - name: Record, promote, commit
-        if: steps.v.outputs.skip != '1'
+          echo "Training ${{ steps.v.outputs.version }}: ${{ steps.v.outputs.reason }}"
+          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}"
+      - name: Record, promote, scorecard, commit
+        if: steps.v.outputs.due == '1'
         run: |
-          V="${{ steps.v.outputs.v }}"
+          V="${{ steps.v.outputs.version }}"
           python3 zeus/cloud/record.py "$V"
           git config user.name "zeus-cloud"; git config user.email "zeus-cloud@heliusnetwork.app"
-          git add -f "zeus/out/zeus-$V/eval.json" "zeus/out/zeus-$V/train_summary.json" zeus/STATUS.md zeus/BEST.json
+          git add -f "zeus/out/zeus-$V/eval.json" "zeus/out/zeus-$V/train_summary.json" zeus/STATUS.md zeus/BEST.json docs/ZEUS_SCORECARD.md
+          git add -f "zeus/out/zeus-$V/eval-external.json" 2>/dev/null || true
           git rm -q --cached zeus/TRAIN_REQUEST.json 2>/dev/null || true
-          git commit -q -m "zeus: $V trained and measured in the cloud" && git push -q || echo "nothing to commit"
+          git commit -q -m "zeus: $V trained and measured in the cloud (${{ steps.v.outputs.reason }})" && git pull -q --rebase && git push -q || echo "nothing to commit"
       - name: Keep the adapter
-        if: steps.v.outputs.skip != '1'
+        if: steps.v.outputs.due == '1'
         uses: actions/upload-artifact@v4
         with:
-          name: zeus-${{ steps.v.outputs.v }}-peft
-          path: zeus/out/zeus-${{ steps.v.outputs.v }}-peft
+          name: zeus-${{ steps.v.outputs.version }}-peft
+          path: zeus/out/zeus-${{ steps.v.outputs.version }}-peft
           retention-days: 90
       - name: Publish to Cloudflare when it is the best servable version
-        if: steps.v.outputs.skip != '1'
+        if: steps.v.outputs.due == '1'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ZEUS_URL: ${{ vars.ZEUS_URL }}
           ZEUS_KEY: ${{ secrets.ZEUS_KEY }}
         run: |
-          V="${{ steps.v.outputs.v }}"
+          V="${{ steps.v.outputs.version }}"
           CF="$(python3 -c 'import json; print((json.load(open("zeus/BEST.json")).get("cloudflare") or {}).get("version",""))')"
           if [ "$CF" != "$V" ]; then echo "$V is not the best Cloudflare-servable version ($CF is); not publishing"; exit 0; fi
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::warning::CLOUDFLARE_API_TOKEN not set; $V is measured and promoted but not uploaded"; exit 0; fi
           bash zeus/cloud/publish_ci.sh "$V"
           if [ -f "zeus/out/zeus-$V/eval-cloudflare.json" ]; then
-            git add -f "zeus/out/zeus-$V/eval-cloudflare.json"
+            python3 zeus/cloud/scorecard.py "$V" || true
+            git add -f "zeus/out/zeus-$V/eval-cloudflare.json" docs/ZEUS_SCORECARD.md
             git commit -q -m "zeus: $V served on Cloudflare, measured there" && git pull -q --rebase && git push -q
           fi

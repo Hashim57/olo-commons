@@ -1,0 +1,24 @@
+# Weekly: load the Crossref Retraction Watch records that match the Commons and hide the
+# atoms whose paper was retracted (docs/TRUST.md). Needs the SUPABASE_SERVICE_ROLE_KEY
+# secret; without it the script prints what it would do and changes nothing.
+name: Retraction check
+on:
+  schedule:
+    - cron: '41 4 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install --quiet requests
+      - env:
+          SUPABASE_URL: https://bfldflbkebyapfagsxnr.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python3 scripts/retractions.py

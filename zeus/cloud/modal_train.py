@@ -32,7 +32,7 @@ REPO = os.path.dirname(ZEUS)
 app = modal.App("zeus-train")
 image = (
     modal.Image.debian_slim(python_version="3.11")
-    .pip_install("torch==2.5.1", "transformers==4.46.3", "peft==0.13.2", "accelerate==1.1.1", "safetensors==0.4.5", "sentencepiece==0.2.0")
+    .pip_install("torch==2.5.1", "transformers==4.46.3", "peft==0.13.2", "accelerate==1.1.1", "safetensors==0.4.5", "sentencepiece==0.2.0", "datasets==3.1.0")
 )
 cache = modal.Volume.from_name("zeus-hf-cache", create_if_missing=True)
 GPU = os.environ.get("ZEUS_GPU", "A100-40GB")
@@ -47,7 +47,7 @@ def _tar(paths):
 
 
 @app.function(image=image, gpu=GPU, timeout=4 * 3600, volumes={"/cache": cache})
-def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200) -> bytes:
+def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600) -> bytes:
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -133,20 +133,59 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                     break
     minutes = round((time.time() - t0) / 60, 1)
 
-    # measure on the frozen eval split, greedy, as served
+    # measure, greedy, as served: the frozen eval split, then the held-out sets nobody trained on
     model.eval()
     tok.padding_side = "left"
-    answers = []
-    for i in range(0, len(evals), 8):
-        group = evals[i:i + 8]
-        prompts = [tok.apply_chat_template(recipe.prompt_messages(ex), add_generation_prompt=True, tokenize=False) for ex in group]
-        enc = tok(prompts, return_tensors="pt", padding=True, add_special_tokens=False).to("cuda")
-        with torch.no_grad():
-            gen = model.generate(**enc, max_new_tokens=200, do_sample=False, pad_token_id=tok.pad_token_id)
-        for g in gen:
-            answers.append(tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True))
-    n = len(evals)
+
+    def run(examples, max_prompt_tokens=3500):
+        answers, cut = [], 0
+        for i in range(0, len(examples), 8):
+            group = examples[i:i + 8]
+            prompts = [tok.apply_chat_template(recipe.prompt_messages(ex), add_generation_prompt=True, tokenize=False) for ex in group]
+            enc = tok(prompts, return_tensors="pt", padding=True, truncation=True, max_length=max_prompt_tokens, add_special_tokens=False).to("cuda")
+            cut += sum(1 for p in prompts if len(tok(p, add_special_tokens=False)["input_ids"]) > max_prompt_tokens)
+            with torch.no_grad():
+                gen = model.generate(**enc, max_new_tokens=200, do_sample=False, pad_token_id=tok.pad_token_id)
+            for g in gen:
+                answers.append(parse(tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True)))
+        return answers, cut
+
+    answers, _ = run(evals)
     report = {"model": f"zeus/out/zeus-{version}", "base": base, **score(evals, answers)}
+
+    external = {}
+    # Held-out VitaminC dev (Wikipedia revisions, human-written claims): the first number to trust once the rule-made split saturates.
+    vit = load(os.path.join(data, "imported", "vitaminc-eval.jsonl"))
+    if vit:
+        a, _ = run(vit)
+        external["vitaminc_dev"] = {"n": len(vit), **score(vit, a), "note": "held out, never trained on; human-written claims over Wikipedia revisions"}
+    # LLM-AggreFact (Tang et al. 2024): the public two-label grounding benchmark, so Zeus can be set beside published checkers.
+    # supported -> 1, contradicted or not covered -> 0; balanced accuracy per dataset. Documents over the prompt budget are cut (count reported).
+    if aggrefact_n > 0:
+        try:
+            from datasets import load_dataset
+            ds = load_dataset("lytang/LLM-AggreFact", split="test")
+            rng = random.Random(0)
+            idx = list(range(len(ds)))
+            rng.shuffle(idx)
+            rows = [ds[i] for i in idx[:aggrefact_n]]
+            exs = [{"claim": r["claim"], "passages": [{"id": "p1", "source": r.get("dataset", "doc"), "text": str(r["doc"])[:12000]}], "label": "supported" if int(r["label"]) == 1 else "not_covered", "evidence": [], "rationale": ""} for r in rows]
+            a, cut = run(exs)
+            per = {}
+            for r, ex, ans in zip(rows, exs, a):
+                d = per.setdefault(r.get("dataset", "all"), {"tp": 0, "fn": 0, "tn": 0, "fp": 0})
+                pred_sup = bool(ans) and ans.get("label") == "supported"
+                truth = int(r["label"]) == 1
+                d["tp" if truth and pred_sup else "fn" if truth else "fp" if pred_sup else "tn"] += 1
+            def bacc(d):
+                tpr = d["tp"] / (d["tp"] + d["fn"]) if d["tp"] + d["fn"] else 0
+                tnr = d["tn"] / (d["tn"] + d["fp"]) if d["tn"] + d["fp"] else 0
+                return round(100 * (tpr + tnr) / 2, 1)
+            tot = {k: sum(d[k] for d in per.values()) for k in ("tp", "fn", "tn", "fp")}
+            external["llm_aggrefact"] = {"n": len(exs), "balanced_accuracy": bacc(tot), "per_dataset": {k: {"n": sum(d.values()), "balanced_accuracy": bacc(d)} for k, d in sorted(per.items())}, "truncated_docs": cut,
+                                        "mapping": "supported=1; contradicted or not_covered=0", "sample": f"random {len(exs)} of the test split, seed 0", "cite": "Tang, Laban, Durrett 2024, arXiv:2404.10774"}
+        except Exception as e:  # the benchmark is a bonus measurement; a download failure must not lose the training run
+            external["llm_aggrefact"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
 
     out = os.path.join(work, "out")
     model.save_pretrained(os.path.join(out, "peft"))
@@ -157,24 +196,28 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                "steps": steps, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
+    json.dump(external, open(os.path.join(out, "eval-external.json"), "w"), indent=2)
     print(json.dumps(report), flush=True)
+    print(json.dumps(external), flush=True)
     return _tar([(out, "out")])
 
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 1500):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 1500, aggrefact_n: int = 600):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)
     if import_n > 0:
         subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--n", str(import_n)], check=False)
+        # the held-out dev split (never trained on: build_dataset skips *-eval.jsonl)
+        subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--split", "dev", "--n", "300", "--out", "zeus/data/imported/vitaminc-eval.jsonl"], check=False)
     subprocess.run([py, "zeus/build_dataset.py"], check=True)
     # Only what training needs: the splits, gold and imported sets, and the helpers (not the corpus cache).
     parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl") if os.path.exists(f"zeus/data/{f}")]
     parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported") if os.path.isdir(f"zeus/data/{d}")]
     parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
     payload = _tar(parts)
-    result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit)
+    result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n)
     tmp = os.path.join(REPO, "zeus", "out", f".cloud-{version}")
     os.makedirs(tmp, exist_ok=True)
     tarfile.open(fileobj=io.BytesIO(result), mode="r:gz").extractall(tmp)
@@ -182,8 +225,9 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
     peft = dest + "-peft"
     os.makedirs(dest, exist_ok=True)
     os.makedirs(peft, exist_ok=True)
-    for f in ("eval.json", "train_summary.json"):
-        os.replace(os.path.join(tmp, "out", f), os.path.join(dest, f))
+    for f in ("eval.json", "train_summary.json", "eval-external.json"):
+        if os.path.exists(os.path.join(tmp, "out", f)):
+            os.replace(os.path.join(tmp, "out", f), os.path.join(dest, f))
     for f in os.listdir(os.path.join(tmp, "out", "peft")):
         os.replace(os.path.join(tmp, "out", "peft", f), os.path.join(peft, f))
     print(open(os.path.join(dest, "eval.json")).read())
