@@ -141,3 +141,16 @@ def test_near_miss_goes_to_train_only_and_keeps_eval_frozen():
         assert all(p["id"] != ex["atom_id"][:8] for p in ex["passages"])
     # the plain train examples keep their order; near misses are only inserted between them
     assert [x for x in hard["train"] if x.get("kind") != "near_miss"] == plain["train"]
+
+
+def test_snapshot_rows_become_atoms_with_the_same_ids():
+    snap = {"v": 1, "fields": ["id", "title", "text", "url", "source", "licence", "published_at"],
+            "atoms": [["0b33889b-f1c3-4711-8ed4-96477ffee3ea", "George Washington Watts", "American manufacturer. He founded Watts Hospital in Durham.", "https://en.wikipedia.org/wiki/George_Washington_Watts", "wikipedia", "CC BY-SA 4.0", "2026-10-21"],
+                      ["ffffffff-0000-0000-0000-000000000000", "No text", "", "https://example.org", "arxiv", "CC0", None]]}
+    atoms = bd.atoms_from_snapshot(snap)
+    assert len(atoms) == 1  # the row without text is dropped
+    a = atoms[0]
+    assert a["id"] == "0b33889b-f1c3-4711-8ed4-96477ffee3ea" and a["summary"].startswith("American manufacturer") and a["source"] == "wikipedia"
+    # the split depends only on the id, so a snapshot build keeps the frozen eval split
+    assert bd.stable_split(a["id"], 0.1) == bd.stable_split("0b33889b-f1c3-4711-8ed4-96477ffee3ea", 0.1)
+    assert bd.passage(a)["text"] == a["summary"]

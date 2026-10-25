@@ -10,6 +10,14 @@ so atoms never move between splits as the Commons grows.
 Usage:
   python zeus/build_dataset.py --supabase-url https://X.supabase.co --anon-key KEY \
       [--out zeus/data] [--max-atoms 5000] [--eval-share 0.1]
+  python zeus/build_dataset.py --snapshot commons.json      # offline, from the snapshot branch
+
+The offline snapshot (git show origin/snapshot:commons.json, also served by
+jsDelivr) holds each atom's id, title, text (the summary, at most 600
+characters), url, source, licence and date. Built from it, the examples use the
+same atom ids and so the same frozen eval split, but shorter passages than a
+live build, and meta.json says "from": "snapshot" so the counts are not mistaken
+for a live build. The cloud training job always builds from the live export.
 """
 import argparse, hashlib, json, os, random, re, sys
 from datetime import datetime, timezone
@@ -50,6 +58,20 @@ def fetch_atoms_keyless(export_url, max_atoms):
             break
         after = nxt
     return atoms[:max_atoms]
+
+
+def atoms_from_snapshot(snap):
+    """Atoms (the export's shape) from the offline snapshot's compact rows: {"fields": [...], "atoms": [[...], ...]}.
+    text becomes summary; there is no content and no created_at."""
+    fields = snap.get("fields") or []
+    out = []
+    for row in snap.get("atoms") or []:
+        a = dict(zip(fields, row))
+        if not a.get("id") or not a.get("text"):
+            continue
+        out.append({"id": a["id"], "title": a.get("title") or "", "summary": a["text"], "content": "", "url": a.get("url") or "",
+                    "source": a.get("source") or "", "licence": a.get("licence"), "published_at": a.get("published_at")})
+    return out
 
 
 def export_page(body):
@@ -255,9 +277,14 @@ def main():
     ap.add_argument("--max-atoms", type=int, default=5000)
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
+    ap.add_argument("--snapshot", help="build offline from a copy of the snapshot branch's commons.json instead of the live Commons")
     args = ap.parse_args()
-    # With the public anon key, read through PostgREST; without it, through the keyless export.
-    if args.anon_key:
+    # With the public anon key, read through PostgREST; without it, through the keyless export;
+    # with --snapshot, from the offline file (no network).
+    if args.snapshot:
+        with open(args.snapshot, encoding="utf-8") as f:
+            atoms = atoms_from_snapshot(json.load(f))[: args.max_atoms]
+    elif args.anon_key:
         atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
     else:
         atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", args.max_atoms)
@@ -273,7 +300,8 @@ def main():
     meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]),
             "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
             "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
-            "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss")}
+            "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss"),
+            "from": "snapshot" if args.snapshot else "live"}
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta))

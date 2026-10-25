@@ -39,7 +39,7 @@ Rule-made contradictions are a start, not the finish. The improvement task's sta
 
 ## Files
 
-- `build_dataset.py`: export from the Commons, make examples, write `data/train.jsonl`, `data/eval.jsonl` and `data/meta.json` (counts, including `gold` and `train_total`; the eval split is frozen by atom id, so new data never leaks into it). Unit tests: `python3 -m pytest zeus/tests` (no network).
+- `build_dataset.py`: export from the Commons (or, with `--snapshot commons.json`, read the offline snapshot from the `snapshot` branch: same atom ids and eval split, shorter passages, `meta.json` marked `"from": "snapshot"`), make examples, write `data/train.jsonl`, `data/eval.jsonl` and `data/meta.json` (counts, including `gold` and `train_total`; the eval split is frozen by atom id, so new data never leaks into it). Unit tests: `python3 -m pytest zeus/tests` (no network).
 - `import_corpora.py`: converts open fact-checking corpora into the task format under `data/imported/` (gitignored). VitaminC (CC BY-SA 3.0) is the one imported today; SciFact (non-commercial) and Climate-FEVER (no stated licence) are deliberately not. `train_mac.sh` imports `IMPORT_N` lines (default 1,500) before every build; `IMPORT_N=0` turns it off. See `DATA_CARD.md`.
 - `DATA_CARD.md`: what Zeus trains on, from where, under which licence.
 - `validate_gold.py`: refuses a gold file with a bad line (missing keys, a label outside the three, an evidence quote that is not an exact substring of its passage, evidence on a not_covered example, a passage without provenance). Run by CI, by `train_mac.sh` before every build, and by `python3 -m pytest zeus/tests`.
