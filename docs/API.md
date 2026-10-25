@@ -74,9 +74,36 @@ Since the trust update (sql/002 and the October 2026 functions) the response als
 
 Limits: 120 requests per hour per address; 3,000 with a partner key sent as `x-olo-key`. Helius Citizens (heliusnetwork.app/citizen) get a key on their profile; partner keys are also issued by hand. A 429 carries `Retry-After`.
 
+## The Olo brain: shared questions
+
+`https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-brain-ask` (needs `sql/003_brain_questions.sql`; details and review in docs/BRAIN.md). Headers as for olo-answer: `apikey` and `Authorization: Bearer` with the anon key, or the service key from the olo-web server.
+
+`POST` `{ "question": "1 to 500 characters", "client": "web" | "ios" | "macos", "atoms": ["<atom uuid>", ... up to 12], "answered": true }`
+
+```json
+{ "status": "published", "id": 412 }
+{ "status": "held", "id": 413, "reason": "personal" }
+{ "status": "skipped", "id": 412, "reason": "already counted today" }
+```
+
+- The server scrubs personal details before anything is stored: email addresses become `[email]`, phone numbers (UK and international) `[phone]`, URLs keep only their domain, runs of six or more digits `[number]`, UK postcodes `[postcode]`, national insurance numbers `[id]`, IBAN-like strings `[account]`, `@handles` `[handle]`, and a name after "my name is", "I am", "I'm" or "call me" `[name]`.
+- `held` (never shown, reviewed by a person, deleted after 30 days): still personal after scrubbing (an address, a named relative, "my passport number", three or more kinds of detail in one question), crisis or self-harm wording, slurs or threats, or fewer than 8 characters. `reason` is one of `personal`, `crisis`, `abuse`, `too_short`, or `under review`.
+- The same question (case, punctuation and spacing ignored) is stored once; each new ask adds one to `asks`. The same address asking it again the same day is `skipped`.
+- `atoms`: only Commons atom ids (UUIDs) are kept; anything else is dropped. When `answered` is false and the question is published, its topic words are recorded in `olo_gaps` (see Gaps below) so the ingester reads sources on it.
+- 30 questions an hour per address (429 with `Retry-After` and `{ "status": "skipped", "reason": "rate_limited" }`). The service key gets 3,000 an hour, because olo-web calls from one server address for all its users.
+- 400 for a malformed body, 503 when `sql/003` has not been run.
+
+`GET ?recent=200` (1 to 500, newest first, published only):
+
+```json
+{ "questions": [ { "id": 412, "text": "How old is the universe?", "client": "ios", "asks": 3, "created_at": "2026-10-25T12:00:00Z", "atoms": ["78e2be27-fed2-467a-bf47-debf10c93b49"] } ] }
+```
+
+`GET ?stats=1` returns `{ "published": 380, "held": 12, "today": 41 }` (`today`: asks since midnight UTC, held ones included). Both GETs are cacheable for 30 seconds. The same data is available as the SQL functions `olo_brain_recent(p_limit)` and `olo_brain_stats()` with the anon key; the table itself is not readable.
+
 ## Direct SQL functions (anon key)
 
-Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
+Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
 
 Call shape (PostgREST): `POST https://bfldflbkebyapfagsxnr.supabase.co/rest/v1/rpc/<function>` with headers `apikey: <anon key>`, `Authorization: Bearer <anon key>`, `Content-Type: application/json` and the arguments as a JSON object using the parameter names above.
 

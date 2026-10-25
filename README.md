@@ -20,7 +20,8 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 - `functions/olo-query`: the read API. Meaning search merged with keyword search, provenance on every result, rate limiting by hashed address, CORS for known origins.
 - `functions/olo-answer`: the answer API. Retrieves like olo-query, drafts two to four cited sentences with a hosted open-weight model, and has every sentence checked (supported, contradicted, not covered, with quoted evidence) by Zeus when a served adapter is configured, otherwise by the drafting model under the Zeus prompt, and says which. Uncovered questions become gaps the ingester fills next.
 - `functions/olo-feedback`: sentence flags from the apps, bounded and rate limited, reviewed before they teach Zeus.
-- `docs/API.md`: how to call it. `docs/TRUST.md`, `docs/FEEDBACK.md`, `docs/ZEUS_SCORECARD.md`, `docs/WEBOCTA.md`.
+- `functions/olo-brain-ask`: questions people choose to share, scrubbed of personal details, shown as orbs in the public Olo brain (docs/BRAIN.md); unanswered ones feed the gap list.
+- `docs/API.md`: how to call it. `docs/TRUST.md`, `docs/FEEDBACK.md`, `docs/BRAIN.md`, `docs/ZEUS_SCORECARD.md`, `docs/WEBOCTA.md`.
 - `SECURITY.md`: what is enforced and how to report a problem.
 
 ## Run your own

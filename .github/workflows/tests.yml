@@ -29,11 +29,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Bundle both functions (catches syntax and import errors)
+      - name: Bundle every function (catches syntax and import errors)
         run: |
           npx --yes esbuild functions/olo-ingest/index.ts --format=esm --log-level=error --outfile=/tmp/ingest.js
           npx --yes esbuild functions/olo-query/index.ts --format=esm --log-level=error --outfile=/tmp/query.js
           npx --yes esbuild functions/olo-answer/index.ts --format=esm --log-level=error --outfile=/tmp/answer.js
+          npx --yes esbuild functions/olo-feedback/index.ts --format=esm --log-level=error --outfile=/tmp/feedback.js
+          npx --yes esbuild functions/olo-brain-ask/index.ts --format=esm --log-level=error --outfile=/tmp/brain-ask.js
       - name: Unit tests
         run: deno test --allow-read tests/
 

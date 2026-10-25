@@ -11,7 +11,7 @@
 #     SUPABASE_ACCESS_TOKEN   a personal access token from supabase.com/dashboard/account/tokens
 #   The project ref is public (it is in every API URL) and lives below as a variable.
 #
-# SQL changes (sql/001_olo_commons.sql) are not deployed here on purpose: they need
+# SQL changes (sql/001 to sql/003) are not deployed here on purpose: they need
 # the database password and are safer run by hand in the SQL editor.
 
 name: Deploy Edge Functions
@@ -26,7 +26,7 @@ on:
     inputs:
       functions:
         description: 'Space-separated function names to deploy'
-        default: 'olo-ingest olo-query olo-answer'
+        default: 'olo-ingest olo-query olo-answer olo-feedback olo-brain-ask'
         required: true
 
 permissions:
@@ -52,6 +52,8 @@ jobs:
           npx --yes esbuild functions/olo-ingest/index.ts --format=esm --log-level=error --outfile=/tmp/ingest.js
           npx --yes esbuild functions/olo-query/index.ts --format=esm --log-level=error --outfile=/tmp/query.js
           npx --yes esbuild functions/olo-answer/index.ts --format=esm --log-level=error --outfile=/tmp/answer.js
+          npx --yes esbuild functions/olo-feedback/index.ts --format=esm --log-level=error --outfile=/tmp/feedback.js
+          npx --yes esbuild functions/olo-brain-ask/index.ts --format=esm --log-level=error --outfile=/tmp/brain-ask.js
           deno test --allow-read tests/
 
   deploy:
@@ -73,8 +75,8 @@ jobs:
             echo "list=${{ github.event.inputs.functions }}" >> "$GITHUB_OUTPUT"
           else
             changed=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- functions/ 2>/dev/null | cut -d/ -f2 | sort -u | tr '\n' ' ' || true)
-            # A force push or a new branch has no usable "before" commit: deploy both.
-            [ -n "$changed" ] || changed="olo-ingest olo-query olo-answer"
+            # A force push or a new branch has no usable "before" commit: deploy every function.
+            [ -n "$changed" ] || changed="olo-ingest olo-query olo-answer olo-feedback olo-brain-ask"
             echo "list=$changed" >> "$GITHUB_OUTPUT"
           fi
       - name: Lay the repo out the way the CLI expects (supabase/functions/<name>)
