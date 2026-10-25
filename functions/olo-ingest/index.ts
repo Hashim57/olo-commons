@@ -21,16 +21,20 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { clean } from './text.ts';
 import { ckanCandidates, OPEN_LICENCES } from './ckan.ts';
 import { errorNote, type RunError } from './runlog.ts';
-import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikiSearchTitles, type Candidate } from './sources.ts';
+import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
+import { permalink, planRecheck } from './recheck.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
 const EMBED_CHARS = 1500;      // characters fed to the embedding model
 const LINK_K = 5;              // neighbours linked per new atom
 const MIN_LINK = 0.72;         // cosine similarity needed to make a link
+const AGREE = 0.85;            // similarity at which a neighbour from another source counts as agreement (sql/002 olo_rescore_atom)
+const DAILY_CAP = 400;         // new atoms per source per day: a flood from one source is a sign something is wrong, not of knowledge
+const RECHECK_N = 3;           // atoms re-read at their source per run (oldest observed first)
 
 // The registry row a connector is called with, so a connector can read its own api_base.
-type Source = { id: string; slug: string; api_base?: string | null; trust: number; licence?: string | null; atoms?: number | null };
+type Source = { id: string; slug: string; kind?: string | null; api_base?: string | null; trust: number; licence?: string | null; atoms?: number | null };
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
@@ -55,7 +59,7 @@ async function wikiByTitles(lang: string, titles: string[], n: number): Promise<
 }
 async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
   if (!ids.length) return [];
-  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=labels|descriptions|sitelinks&languages=en&format=json`);
+  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en&format=json`);
   return wikidataCandidates(e, ids, n);
 }
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
@@ -96,6 +100,18 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const r: any = await get(`https://gutendex.com/books?page=${1 + Math.floor(Math.random() * 60)}`);
     return pick(gutenbergCandidates(r.results || []), n);
   },
+  // Wikinews: random articles in the main namespace, with the intro and the page's latest revision id.
+  async wikinews(n) {
+    const r: any = await get(`https://en.wikinews.org/w/api.php?action=query&generator=random&grnnamespace=0&grnlimit=${Math.min(n * 2, 20)}&prop=extracts|info&exintro=1&explaintext=1&exlimit=${Math.min(n * 2, 20)}&inprop=url&format=json`);
+    return wikinewsCandidates(r, n);
+  },
+  // OpenAlex: a random sample of open-access works with abstracts. The optional OPENALEX_KEY raises the daily budget; the mailto puts us in the polite pool.
+  async openalex(n, src) {
+    const api = (src.api_base || 'https://api.openalex.org').replace(/\/+$/, '');
+    const key = Deno.env.get('OPENALEX_KEY') || '';
+    const r: any = await get(`${api}/works?filter=has_abstract:true,is_oa:true,is_retracted:false,type:article&sample=${Math.min(n * 2, 25)}&seed=${Math.floor(Math.random() * 1e6)}&per-page=${Math.min(n * 2, 25)}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com${key ? `&api_key=${encodeURIComponent(key)}` : ''}`);
+    return openalexCandidates(r?.results || [], n);
+  },
   async pubmed(n) {
     const terms = ['review[pt] AND open access[filter]', 'public health[MeSH] AND review[pt]', 'nutrition[MeSH] AND review[pt]', 'exercise[MeSH] AND review[pt]', 'climate change[MeSH]', 'vaccination[MeSH] AND review[pt]'];
     const term = terms[Math.floor(Math.random() * terms.length)];
@@ -111,6 +127,8 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async wikidata(topic, n) { const r: any = await get(searchUrl('wikidata', topic, n * 2)!); return wikidataByIds(wikidataSearchIds(r), n); },
   async arxiv(topic, n) { const xml: string = await get(searchUrl('arxiv', topic, n)!, 'application/atom+xml'); return arxivCandidates(xml); },
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
+  async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
+  async openalex(topic, n) { const r: any = await get(searchUrl('openalex', topic, n)!); return openalexCandidates(r?.results || [], n); },
 };
 
 function quality(c: Candidate, trust: number) {
@@ -165,10 +183,50 @@ Deno.serve(async (req) => {
   const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats }).eq('id', run?.id);
   let cutShort = false;
 
+  // How many atoms a source added today; a source over the daily cap is skipped until tomorrow.
+  const addedToday = new Map<string, number>();
+  async function overCap(src: Source) {
+    if (!addedToday.has(src.id)) {
+      const { count: n } = await sb.from('olo_atoms').select('id', { count: 'exact', head: true }).eq('source_id', src.id).gte('created_at', new Date().toISOString().slice(0, 10));
+      addedToday.set(src.id, n || 0);
+    }
+    return (addedToday.get(src.id) || 0) >= DAILY_CAP;
+  }
+
+  // Insert one atom with provenance and trust, link it, and score it and the neighbours that now agree with it.
+  // Returns the new id, or null when it was a duplicate or could not be stored.
+  async function store(src: Source, c: Candidate, title: string, summary: string, content: string, hash: string): Promise<string | null> {
+    const emb: number[] = await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
+    const row = { source_id: src.id, external_id: c.external_id || null, url: c.url, title, summary: summary || null, content: content || null, lang: c.lang || 'en', licence: c.licence || src.licence, authors: c.authors || null, published_at: c.published_at || null, content_hash: hash, quality: quality({ ...c, summary, content }, src.trust), tokens: Math.round((title + summary + content).length / 4), embedding: emb,
+      // sql/002: time and provenance. A fact is assumed to hold from its publication date; observed_at is now.
+      valid_from: c.published_at || null, source_revision: c.source_revision || null, doi: c.doi || null, pmid: c.pmid || null, observed_at: new Date().toISOString() };
+    const { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
+    if (error || !atom) {
+      // Older schema (sql/002 not run yet): store without the new columns rather than lose the atom.
+      if (error && /column|schema cache/i.test(error.message || '')) {
+        const { valid_from: _v, source_revision: _r, doi: _d, pmid: _p, observed_at: _o, ...legacy } = row;
+        const again = await sb.from('olo_atoms').insert(legacy).select('id').single();
+        if (again.error || !again.data) return null;
+        return again.data.id;
+      }
+      return null;
+    }
+    const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K });
+    const near = (nb || []).filter((x: any) => x.sim >= MIN_LINK);
+    const links = near.flatMap((x: any) => [{ from_atom: atom.id, to_atom: x.id, relation: 'similar', weight: x.sim }, { from_atom: x.id, to_atom: atom.id, relation: 'similar', weight: x.sim }]);
+    if (links.length) { const { error: le } = await sb.from('olo_links').upsert(links, { onConflict: 'from_atom,to_atom,relation', ignoreDuplicates: true }); if (!le) stats.linked += links.length; }
+    // Score: this atom, and the close neighbours whose agreement count may have risen (sql/002; ignored on the older schema).
+    await sb.rpc('olo_rescore_atom', { p_id: atom.id }).then(() => {}, () => {});
+    for (const x of near.filter((x: any) => x.sim >= AGREE).slice(0, 5)) await sb.rpc('olo_rescore_atom', { p_id: x.id }).then(() => {}, () => {});
+    addedToday.set(src.id, (addedToday.get(src.id) || 0) + 1);
+    return atom.id;
+  }
+
   // Insert candidates for one source: clean, hash, refuse duplicates, embed, insert, link. Returns how many were added.
   async function ingest(src: Source, cands: Candidate[]): Promise<number> {
     stats.fetched += cands.length;
     let addedHere = 0;
+    if (cands.length && await overCap(src)) { errors.push({ slug: src.slug, message: `daily cap of ${DAILY_CAP} atoms reached; skipped ${cands.length}` }); stats.skipped += cands.length; return 0; }
     for (const c of cands) {
       if (outOfTime()) { cutShort = true; break; }
       try {
@@ -177,19 +235,55 @@ Deno.serve(async (req) => {
         const hash = await sha256(title + '\n' + summary + '\n' + content);
         const { data: dup } = await sb.from('olo_atoms').select('id').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
         if (dup && dup.length) { stats.skipped++; continue; }
-        const emb: number[] = await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
-        const row = { source_id: src.id, external_id: c.external_id || null, url: c.url, title, summary: summary || null, content: content || null, lang: c.lang || 'en', licence: c.licence || src.licence, authors: c.authors || null, published_at: c.published_at || null, content_hash: hash, quality: quality({ ...c, summary, content }, src.trust), tokens: Math.round((title + summary + content).length / 4), embedding: emb };
-        const { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
-        if (error || !atom) { stats.failed++; continue; }
+        const id = await store(src, c, title, summary, content, hash);
+        if (!id) { stats.failed++; continue; }
         stats.added++; addedHere++;
-        const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K });
-        const links = (nb || []).filter((x: any) => x.sim >= MIN_LINK).flatMap((x: any) => [{ from_atom: atom.id, to_atom: x.id, relation: 'similar', weight: x.sim }, { from_atom: x.id, to_atom: atom.id, relation: 'similar', weight: x.sim }]);
-        if (links.length) { const { error: le } = await sb.from('olo_links').upsert(links, { onConflict: 'from_atom,to_atom,relation', ignoreDuplicates: true }); if (!le) stats.linked += links.length; }
         await checkpoint();
       } catch (e) { fail(src.slug, e); }
     }
     if (addedHere) { src.atoms = (src.atoms || 0) + addedHere; await sb.from('olo_sources').update({ atoms: src.atoms }).eq('id', src.id); }
     return addedHere;
+  }
+
+  // Re-check: read the oldest-observed Wikipedia and Wikidata atoms at their source again. Unchanged: observed_at moves
+  // forward. Changed text: the old atom becomes history (status superseded, its url the permalink of its revision,
+  // valid_to today) and the new text is stored as a new atom that points back. Nothing is ever overwritten or deleted.
+  let recheckNote = '';
+  async function recheck(src: Source) {
+    const { data: batch } = await sb.rpc('olo_recheck_batch', { p_slug: src.slug, p_n: RECHECK_N });
+    if (!Array.isArray(batch) || !batch.length) return;
+    let same = 0, changed = 0;
+    for (const old of batch) {
+      if (outOfTime()) { cutShort = true; break; }
+      try {
+        let c: Candidate | null = null;
+        if (src.slug === 'wikipedia' || src.slug === 'wikipedia_es') {
+          const lang = src.slug === 'wikipedia_es' ? 'es' : 'en';
+          const title = decodeURIComponent(String(old.url).split('/wiki/')[1] || old.title).replace(/_/g, ' ');
+          c = wikiCandidate(await get(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`), lang);
+        } else if (src.slug === 'wikidata') {
+          c = (await wikidataByIds([String(old.external_id)], 1))[0] || null;
+        }
+        if (!c) continue;  // gone or no longer an article: left as is, re-tried in a week
+        const title = clean(c.title).slice(0, 300), summary = clean(c.summary || '').slice(0, 1000), content = clean(c.content || '').slice(0, MAX_CONTENT);
+        const hash = await sha256(title + '\n' + summary + '\n' + content);
+        const plan = planRecheck(old, { hash, revision: c.source_revision });
+        if (plan.action === 'same') {
+          same++;
+          await sb.from('olo_atoms').update({ observed_at: new Date().toISOString(), source_revision: c.source_revision || old.source_revision || null }).eq('id', old.id);
+          continue;
+        }
+        // changed: the old row keeps its text under a permalink; the new text takes the live url
+        const oldUrl = permalink(src.slug, String(old.url), old.source_revision ? String(old.source_revision) : null);
+        const moved = await sb.from('olo_atoms').update({ url: oldUrl }).eq('id', old.id);
+        if (moved.error) { fail(src.slug + ' (recheck)', moved.error.message); continue; }
+        const id = await store(src, { ...c, url: String(old.url) }, title, summary, content, hash);
+        if (!id) { await sb.from('olo_atoms').update({ url: String(old.url) }).eq('id', old.id); continue; }
+        await sb.rpc('olo_supersede', { p_old: old.id, p_new: id });
+        changed++; stats.added++;
+      } catch (e) { fail(src.slug + ' (recheck)', e); }
+    }
+    if (same || changed) recheckNote += ` (${src.slug} re-check: ${same} unchanged, ${changed} updated)`;
   }
 
   // 1. Gap filling: the most-asked open topic, searched across the sources that can search.
@@ -213,7 +307,15 @@ Deno.serve(async (req) => {
     }
   }
 
-  // 2. The random walk through every enabled source, as before.
+  // 2. Re-checks at the source (sql/002): a few atoms per run, so every Wikipedia and Wikidata atom is re-read within weeks.
+  if (budget >= 6) {
+    for (const src of (sources || []).filter((s: Source) => ['wikipedia', 'wikipedia_es', 'wikidata'].includes(s.slug))) {
+      if (outOfTime()) { cutShort = true; break; }
+      await recheck(src);
+    }
+  }
+
+  // 3. The random walk through every enabled source, as before.
   const perSource = Math.max(1, Math.floor(budget / Math.max(1, (sources || []).length)));
   for (const src of sources || []) {
     if (outOfTime()) { cutShort = true; break; }
@@ -225,7 +327,7 @@ Deno.serve(async (req) => {
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });

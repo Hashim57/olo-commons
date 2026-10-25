@@ -25,7 +25,8 @@ import urllib.error
 import urllib.request
 
 EXPORT = os.environ.get("OLO_EXPORT_URL", "https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query")
-FIELDS = ["id", "title", "text", "url", "source", "licence", "published_at"]
+# v1 fields first (every reader finds them by name), then the trust and time fields added by sql/002.
+FIELDS = ["id", "title", "text", "url", "source", "licence", "published_at", "status", "credibility", "valid_from", "valid_to", "observed_at"]
 TEXT_MAX = 600
 
 
@@ -57,7 +58,13 @@ def compact(a):
     content = (a.get("content") or "").strip()
     text = summary if len(summary) >= 200 or not content else (summary + " " + content).strip()
     text = " ".join(text.split())[:TEXT_MAX]
-    return [a.get("id"), (a.get("title") or "").strip()[:300], text, a.get("url") or "", a.get("source") or "", a.get("licence") or "", a.get("published_at")]
+    return [a.get("id"), (a.get("title") or "").strip()[:300], text, a.get("url") or "", a.get("source") or "", a.get("licence") or "", a.get("published_at"),
+            a.get("status") or "candidate", a.get("credibility"), a.get("valid_from"), a.get("valid_to"), (a.get("observed_at") or "")[:10] or None]
+
+
+def current(a):
+    """Only facts that still stand go offline: superseded and retracted atoms stay in the export as history."""
+    return (a.get("status") or "candidate") not in ("superseded", "retracted")
 
 
 def main():
@@ -70,7 +77,7 @@ def main():
         d = page(after)
         batch = d.get("atoms") or []
         note = d.get("licence_note") or note
-        atoms += [compact(x) for x in batch if x.get("url") and (x.get("summary") or x.get("content"))]
+        atoms += [compact(x) for x in batch if x.get("url") and (x.get("summary") or x.get("content")) and current(x)]
         if len(batch) < 500 or not d.get("next_after"):
             break
         after = d["next_after"]
