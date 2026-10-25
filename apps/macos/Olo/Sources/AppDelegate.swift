@@ -31,6 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch link {
                 case .ask(let q): QuickAskController.shared.show(question: q)
                 case .conversation(let id): AppModel.shared.openServerConversation(id); AppModel.shared.showMainWindow()
+                case .connected:
+                    // Back from a connector's consent page in the browser: show the panel, which polls for the account.
+                    AppModel.shared.panel = .connectors
+                    AppModel.shared.showMainWindow()
                 case .home: AppModel.shared.showMainWindow()
                 }
             }
@@ -82,4 +86,8 @@ enum Prefs {
     static let showUnverified = "showUnverified"
     /// "Use my conversations to improve Olo and train Zeus": off until the person ticks it.
     static let trainingConsent = "trainingConsent"
+    /// "Challenge me": Olo disagrees first when the evidence points the other way. Off until ticked.
+    static let challengeMode = "challengeMode"
+    /// Dictation: on-device recognition only (the recogniser refuses when the language needs the server).
+    static let dictationOnDeviceOnly = "dictationOnDeviceOnly"
 }

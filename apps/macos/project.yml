@@ -36,6 +36,8 @@ targets:
         LSMinimumSystemVersion: "14.0"
         NSHumanReadableCopyright: "2026 Helius Network"
         ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Olo listens only while you dictate a question.
+        NSSpeechRecognitionUsageDescription: Olo turns what you say into the text of your question.
         CFBundleURLTypes:
           - CFBundleURLName: io.helius-olo.desktop
             CFBundleURLSchemes: [olo]
@@ -58,6 +60,7 @@ targets:
         com.apple.security.network.client: true
         com.apple.security.files.user-selected.read-only: true
         com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.device.audio-input: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.helius-olo.desktop

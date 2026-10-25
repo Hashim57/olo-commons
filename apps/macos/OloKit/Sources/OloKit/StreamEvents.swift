@@ -17,7 +17,15 @@ public enum StreamEvent: Equatable, Sendable {
     case answerComplete(conversationId: Int?, messageId: Int?)
     case done(conversationId: Int?, messageId: Int?)
     case error(message: String, detail: String?, code: String?)
-    /// Anything this version does not use (artifacts, memories, builds): ignored, never an error.
+    /// A checked, downloadable file produced by the answer; a later copy with the same id replaces the earlier one.
+    case artifact(Artifact)
+    /// DOIs and quoted paper titles in the answer, each looked up in Crossref; after the answer.
+    case references([ReferenceCheck])
+    /// What Olo remembered about the person that shaped this reply.
+    case memories([UsedMemory])
+    /// The build outran the live window and was queued as a background build (or could not be).
+    case truncated(jobId: String?, message: String)
+    /// Anything this version does not use (citations report, suggestions): ignored, never an error.
     case other(String)
 
     /// Parses one line; nil for blank or malformed lines (skipped, as the web client does).
@@ -62,6 +70,17 @@ public enum StreamEvent: Equatable, Sendable {
         case "error":
             return .error(message: value["message"]?.stringValue ?? "The model call failed.",
                           detail: value["detail"]?.stringValue, code: value["code"]?.stringValue)
+        case "artifact":
+            // An artifact without an id (or an empty object) is nothing to show: skipped, not an error.
+            guard let a = value["artifact"]?.decoded(as: Artifact.self) else { return .other(type) }
+            return .artifact(a)
+        case "references":
+            return .references(value["references"]?.decoded(as: [ReferenceCheck].self) ?? [])
+        case "memories":
+            return .memories(value["memories"]?.decoded(as: [UsedMemory].self) ?? [])
+        case "truncated":
+            return .truncated(jobId: value["jobId"]?.stringValue,
+                              message: value["message"]?.stringValue ?? "The build was too large to finish here.")
         default:
             return .other(type)
         }
@@ -101,6 +120,9 @@ public struct StreamOutcome: Equatable, Sendable {
     public var answeredBy: AnsweredBy?
     public var notices: [String] = []
     public var followUps: [String] = []
+    public var artifacts: [Artifact] = []
+    public var references: [ReferenceCheck] = []
+    public var memories: [UsedMemory] = []
     public var status: String?
     /// The server said the answer is saved. A stream can end without this when the host
     /// closes long connections; the app then fetches the saved copy instead of losing it.
@@ -132,6 +154,12 @@ public struct StreamOutcome: Equatable, Sendable {
             if let c { conversationId = c }
             if let m { messageId = m }
         case .error: error = event
+        case .artifact(let a):
+            // The server re-sends a repaired copy with the same id; it replaces the first.
+            if let i = artifacts.firstIndex(where: { $0.id == a.id }) { artifacts[i] = a } else { artifacts.append(a) }
+        case .references(let r): references = r
+        case .memories(let m): memories = m
+        case .truncated(_, let m): notices.append(m)
         case .other: break
         }
     }

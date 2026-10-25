@@ -20,14 +20,52 @@ public struct Turn: Codable, Equatable, Identifiable, Sendable {
     public var writer: String?
     public var provider: String?
     public var verifier: String?
+    /// Files the answer produced (added in 1.3; missing in conversations saved earlier, so decoded with a default).
+    public var artifacts: [Artifact]
+    /// References checked in Crossref, when the stream sent them beside the verification.
+    public var references: [ReferenceCheck]
+    /// What Olo remembered about the person that shaped this reply.
+    public var memories: [UsedMemory]
 
     public init(role: Role, text: String, origin: AnswerOrigin? = nil, verification: AnswerVerification? = nil, sources: [Source] = [],
                 notices: [String] = [], followUps: [String] = [], attachments: [String] = [], serverMessageId: Int? = nil,
-                createdAt: Date = Date(), id: UUID = UUID(), writer: String? = nil, provider: String? = nil, verifier: String? = nil) {
+                createdAt: Date = Date(), id: UUID = UUID(), writer: String? = nil, provider: String? = nil, verifier: String? = nil,
+                artifacts: [Artifact] = [], references: [ReferenceCheck] = [], memories: [UsedMemory] = []) {
         self.id = id; self.role = role; self.text = text; self.origin = origin; self.verification = verification; self.sources = sources
         self.notices = notices; self.followUps = followUps; self.attachments = attachments; self.serverMessageId = serverMessageId; self.createdAt = createdAt
         self.writer = writer; self.provider = provider; self.verifier = verifier
+        self.artifacts = artifacts; self.references = references; self.memories = memories
     }
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, text, origin, verification, sources, notices, followUps, attachments, serverMessageId, createdAt
+        case writer, provider, verifier, artifacts, references, memories
+    }
+
+    /// Reads turns saved by every version of the app: anything missing takes its default.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decode(UUID.self, forKey: .id)) ?? UUID()
+        role = (try? c.decode(Role.self, forKey: .role)) ?? .assistant
+        text = (try? c.decode(String.self, forKey: .text)) ?? ""
+        origin = try? c.decodeIfPresent(AnswerOrigin.self, forKey: .origin)
+        verification = try? c.decodeIfPresent(AnswerVerification.self, forKey: .verification)
+        sources = (try? c.decode([Source].self, forKey: .sources)) ?? []
+        notices = (try? c.decode([String].self, forKey: .notices)) ?? []
+        followUps = (try? c.decode([String].self, forKey: .followUps)) ?? []
+        attachments = (try? c.decode([String].self, forKey: .attachments)) ?? []
+        serverMessageId = try? c.decodeIfPresent(Int.self, forKey: .serverMessageId)
+        createdAt = (try? c.decode(Date.self, forKey: .createdAt)) ?? Date()
+        writer = try? c.decodeIfPresent(String.self, forKey: .writer)
+        provider = try? c.decodeIfPresent(String.self, forKey: .provider)
+        verifier = try? c.decodeIfPresent(String.self, forKey: .verifier)
+        artifacts = (try? c.decode([Artifact].self, forKey: .artifacts)) ?? []
+        references = (try? c.decode([ReferenceCheck].self, forKey: .references)) ?? []
+        memories = (try? c.decode([UsedMemory].self, forKey: .memories)) ?? []
+    }
+
+    /// The references line's source: those sent with the stream, else those saved inside the verification.
+    public var allReferences: [ReferenceCheck] { references.isEmpty ? (verification?.references ?? []) : references }
 
     /// A stored helius-olo.io message as a turn.
     public init(message m: Message) {
@@ -59,10 +97,15 @@ public struct LocalConversation: Codable, Equatable, Identifiable, Sendable {
     public var updatedAt: Date
     public var turns: [Turn]
     public var isPinned: Bool
+    /// The server's folder for the thread, when it is in one (optional, so 1.2 files still decode).
+    public var folder: String?
 
-    public init(serverId: Int? = nil, title: String, updatedAt: Date = Date(), turns: [Turn] = [], isPinned: Bool = false, id: UUID = UUID()) {
-        self.id = id; self.serverId = serverId; self.title = title; self.updatedAt = updatedAt; self.turns = turns; self.isPinned = isPinned
+    public init(serverId: Int? = nil, title: String, updatedAt: Date = Date(), turns: [Turn] = [], isPinned: Bool = false, folder: String? = nil, id: UUID = UUID()) {
+        self.id = id; self.serverId = serverId; self.title = title; self.updatedAt = updatedAt; self.turns = turns; self.isPinned = isPinned; self.folder = folder
     }
+
+    /// The role and text of every turn, for the context gauge.
+    public var gaugeTurns: [(role: String, text: String)] { turns.map { (role: $0.role.rawValue, text: $0.text) } }
 
     public static func title(for question: String) -> String {
         let one = question.split(whereSeparator: \.isNewline).first.map(String.init) ?? question

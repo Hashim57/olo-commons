@@ -10,6 +10,8 @@ struct ChatView: View {
     @State private var searchWeb = UserDefaults.standard.bool(forKey: Prefs.searchWebByDefault)
     @State private var useFolders = UserDefaults.standard.bool(forKey: Prefs.useFoldersByDefault)
     @State private var dropTargeted = false
+    @State private var dictation = DictationController()
+    @AppStorage(Prefs.challengeMode) private var challenge = false
     @FocusState private var composerFocused: Bool
 
     private var conversation: LocalConversation? { model.conversation(conversationId) }
@@ -23,7 +25,7 @@ struct ChatView: View {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         if conversation?.turns.isEmpty ?? true { NewConversationEmptyState() }
                         ForEach(conversation?.turns ?? []) { turn in
-                            TurnView(turn: turn, status: turn.id == conversation?.turns.last?.id ? status : nil, compact: false) { follow in
+                            TurnView(turn: turn, status: turn.id == conversation?.turns.last?.id ? status : nil, compact: false, conversationId: conversationId) { follow in
                                 model.ask(follow, in: conversationId)
                             }
                             .id(turn.id)
@@ -42,6 +44,9 @@ struct ChatView: View {
             composer
         }
         .navigationTitle(conversation?.title ?? "Olo")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) { ExportMenu(conversationId: conversationId) }
+        }
         .dropDestination(for: URL.self) { urls, _ in
             attach(urls)
             return true
@@ -62,11 +67,16 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
+            NudgeBanner()
             QuotaBanner()
             if !attachments.isEmpty { AttachmentChips(attachments: $attachments) }
             HStack(alignment: .bottom, spacing: 10) {
                 Button(action: pickFiles) { Image(systemName: "paperclip") }
                     .buttonStyle(.borderless).help("Attach files (Cmd+O), or drop them here")
+                Button(action: toggleDictation) {
+                    Image(systemName: dictation.listening ? "mic.fill" : "mic").foregroundStyle(dictation.listening ? Color.red : Color.primary)
+                }
+                .buttonStyle(.borderless).help(dictation.listening ? "Stop dictation" : "Dictate a question")
                 TextField(model.isOnline ? "Ask Olo" : "Ask Olo (offline: answered from this Mac)", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1...8)
@@ -89,13 +99,29 @@ struct ChatView: View {
                     Toggle(isOn: $useFolders) { Label("Use my folders", systemImage: "folder") }
                         .help("Adds the best matching passages from the folders you chose in Settings")
                 }
+                Toggle(isOn: $challenge) { Label("Challenge me", systemImage: "exclamationmark.bubble") }
+                    .help("Olo disagrees first when the evidence points the other way")
                 Spacer()
                 if let s = status { Text(s).font(.caption).foregroundStyle(.secondary) }
+                ContextGaugeView(reading: gauge)
             }
             .toggleStyle(.checkbox)
             .font(.caption)
+            if let p = dictation.problem { Text(p).font(.caption).foregroundStyle(.orange) }
         }
         .padding(14)
+    }
+
+    private var gauge: ContextGauge.Reading {
+        let turns = (conversation?.turns ?? []).map { (role: $0.role == .user ? "user" : "assistant", text: $0.text) }
+        return ContextGauge.reading(turns: turns, draft: draft)
+    }
+
+    private func toggleDictation() {
+        let before = draft
+        dictation.toggle { text, _ in
+            draft = before.isEmpty ? text : before + " " + text
+        }
     }
 
     private func send() {
@@ -161,7 +187,11 @@ struct TurnView: View {
     let turn: Turn
     let status: String?
     let compact: Bool
+    var conversationId: UUID? = nil
     var onFollowUp: (String) -> Void = { _ in }
+    @Environment(AppModel.self) private var model
+    @State private var editing = false
+    @State private var fixing = false
     @State private var showChecks = false
     @State private var showUnverified = UserDefaults.standard.bool(forKey: Prefs.showUnverified)
     @State private var flagNote: String?
@@ -189,13 +219,26 @@ struct TurnView: View {
                 } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons {
                     answerText(checked: v)
                 } else {
-                    Text(markdown(turn.text)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    AnswerBody(content: turn.text, render: { Text(markdown($0)) })
                 }
                 ForEach(Array(turn.notices.enumerated()), id: \.offset) { _, n in
                     Label(n, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
                 }
                 if let v = turn.verification, !v.claims.isEmpty { verification(v) }
                 if !turn.sources.isEmpty { sources }
+                if let line = References.line(turn.references) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(line, systemImage: "books.vertical").font(.caption)
+                        ForEach(Array(References.flagged(turn.references).enumerated()), id: \.offset) { _, r in
+                            Text(r.text + (r.note.map { ": " + $0 } ?? "")).font(.caption2).foregroundStyle(.orange)
+                        }
+                    }
+                }
+                if !turn.memories.isEmpty {
+                    Text("Shaped by \(turn.memories.count) thing\(turn.memories.count == 1 ? "" : "s") you've told Olo")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .help(turn.memories.map(\.content).joined(separator: "\n"))
+                }
                 footer
                 if !compact, !turn.followUps.isEmpty {
                     HStack { ForEach(turn.followUps, id: \.self) { q in Button(q) { onFollowUp(q) }.buttonStyle(.bordered).controlSize(.small) } }
@@ -275,6 +318,22 @@ struct TurnView: View {
             }
             .buttonStyle(.plain)
             if let n = flagNote { Text(n).font(.caption2).foregroundStyle(.secondary) }
+            if !compact, let cid = conversationId, turn.serverMessageId != nil {
+                HStack(spacing: 10) {
+                    if v.contradicted + v.unsupported > 0 {
+                        Button(fixing ? "Fixing..." : "Fix flagged sentences") {
+                            fixing = true
+                            Task { await model.fixFlagged(cid: cid, tid: turn.id); fixing = false }
+                        }
+                        .disabled(fixing)
+                    }
+                    if v.claims.contains(where: { $0.claimId != nil }) {
+                        Button("Watch") { Task { await model.watch(turn) } }
+                            .help("Olo tells you if the evidence for these claims changes")
+                    }
+                }
+                .buttonStyle(.borderless).font(.caption)
+            }
             if showChecks {
                 ForEach(Array(v.claims.enumerated()), id: \.offset) { _, c in
                     VStack(alignment: .leading, spacing: 2) {
@@ -299,7 +358,11 @@ struct TurnView: View {
         VStack(alignment: .leading, spacing: 3) {
             ForEach(turn.sources, id: \.self) { s in
                 if let url = URL(string: s.url), LinkPolicy.isSafeExternal(url) {
-                    Link(destination: url) { Text("[\(s.index)] \(s.title)").lineLimit(1) }.font(.caption)
+                    HStack(spacing: 6) {
+                        Link(destination: url) { Text("[\(s.index)] \(s.title)").lineLimit(1) }.font(.caption)
+                        if let label = s.downRankedLabel { Text(label).font(.caption2).foregroundStyle(.orange) }
+                        if s.urlOk == false { Image(systemName: "link.badge.plus").font(.caption2).foregroundStyle(.secondary).help("This link did not answer when checked") }
+                    }
                 } else {
                     Text("[\(s.index)] \(s.title)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -328,6 +391,11 @@ struct TurnView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(turn.text, forType: .string)
                 } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).help("Copy")
+                if !compact, let cid = conversationId, turn.serverMessageId != nil {
+                    Button { editing = true } label: { Image(systemName: "pencil") }
+                        .buttonStyle(.borderless).help("Edit a passage")
+                        .sheet(isPresented: $editing) { EditPassageSheet(conversationId: cid, turn: turn) }
+                }
             }
             if let s = status, !turn.text.isEmpty { Text(s).font(.caption2).foregroundStyle(.secondary) }
         }

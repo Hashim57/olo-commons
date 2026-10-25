@@ -40,6 +40,20 @@ final class AppModel {
     var termsAccepted: LegalAcceptance? = LegalStore().acceptance
     var focusComposer = 0
     let purchases = StoreController.shared
+    // The library (see AppModel+Library.swift for the behaviour).
+    /// A panel shown in place of the conversation: Memory, Artifacts, Watching and so on.
+    var panel: LibraryPanel?
+    var projects: [Project] = []
+    /// New questions are scoped to this project (its instructions and files go with them).
+    var activeProjectId: Int?
+    /// Only conversations in this folder are listed; nil lists every one.
+    var folderFilter: String?
+    var nudges: [Nudge] = []
+    var jobs: [ComputeJob] = []
+    /// Artifacts from the library (library.artifacts), newest first.
+    var libraryArtifacts: [Artifact] = []
+    /// The conversation whose artifacts inspector is open.
+    var showArtifacts = false
 
     @ObservationIgnored var openMainWindowAction: (() -> Void)?
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
@@ -53,8 +67,8 @@ final class AppModel {
         pending = store.pending()
     }
 
-    private var offlineOnly: Bool { UserDefaults.standard.bool(forKey: Prefs.offlineOnly) }
-    private var canReachCloud: Bool { isOnline && !offlineOnly }
+    var offlineOnly: Bool { UserDefaults.standard.bool(forKey: Prefs.offlineOnly) }
+    var canReachCloud: Bool { isOnline && !offlineOnly }
 
     // MARK: Start-up
 
@@ -73,6 +87,7 @@ final class AppModel {
             await refreshConversations()
             await commons.refreshIfStale()
             await flushPending()
+            await refreshLibrary()
         }
         await bootstrapBilling()
     }
@@ -82,6 +97,7 @@ final class AppModel {
         await refreshConversations()
         await flushPending()
         await commons.refreshIfStale()
+        await refreshLibrary()
     }
 
     // MARK: Window
@@ -125,6 +141,7 @@ final class AppModel {
         }
         await refreshConversations()
         await refreshEntitlement()
+        await refreshLibrary()
     }
 
     /// Whether this person's conversations may be used to improve Olo and train Zeus.
@@ -156,6 +173,11 @@ final class AppModel {
         entitlement = nil
         UserDefaults.standard.removeObject(forKey: "user.v1")
         conversations.removeAll { $0.serverId != nil }
+        projects = []
+        activeProjectId = nil
+        nudges = []
+        jobs = []
+        libraryArtifacts = []
         persist()
     }
 
@@ -176,7 +198,7 @@ final class AppModel {
 
     // MARK: Conversations
 
-    private func persist() {
+    func persist() {
         store.saveConversations(conversations)
         store.savePending(pending)
     }
@@ -186,12 +208,12 @@ final class AppModel {
         return conversations.first { $0.id == id }
     }
 
-    private func update(_ id: UUID, _ change: (inout LocalConversation) -> Void) {
+    func update(_ id: UUID, _ change: (inout LocalConversation) -> Void) {
         guard let i = conversations.firstIndex(where: { $0.id == id }) else { return }
         change(&conversations[i])
     }
 
-    private func updateTurn(_ cid: UUID, _ tid: UUID, _ change: (inout Turn) -> Void) {
+    func updateTurn(_ cid: UUID, _ tid: UUID, _ change: (inout Turn) -> Void) {
         update(cid) { c in
             if let j = c.turns.firstIndex(where: { $0.id == tid }) { change(&c.turns[j]) }
         }
@@ -203,6 +225,7 @@ final class AppModel {
         let c = LocalConversation(title: "New conversation")
         conversations.insert(c, at: 0)
         selection = c.id
+        panel = nil
         return c.id
     }
 
@@ -224,9 +247,10 @@ final class AppModel {
                 if let i = byServer[r.id] {
                     conversations[i].title = r.title
                     conversations[i].isPinned = r.isPinned
+                    conversations[i].folder = r.folder
                     if updated > conversations[i].updatedAt { conversations[i].updatedAt = updated }
                 } else {
-                    conversations.append(LocalConversation(serverId: r.id, title: r.title, updatedAt: updated, isPinned: r.isPinned))
+                    conversations.append(LocalConversation(serverId: r.id, title: r.title, updatedAt: updated, isPinned: r.isPinned, folder: r.folder))
                 }
             }
             // Conversations deleted on another device go here too (unless something is being answered in them).
@@ -247,6 +271,7 @@ final class AppModel {
     /// Opens a conversation and fetches its messages (the saved copy shows at once).
     func open(_ id: UUID) {
         selection = id
+        panel = nil
         guard let c = conversation(id), let sid = c.serverId, canReachCloud, answering[id] == nil else { return }
         Task { await loadMessages(id, serverId: sid) }
     }
@@ -258,7 +283,7 @@ final class AppModel {
         open(c.id)
     }
 
-    private func loadMessages(_ id: UUID, serverId: Int) async {
+    func loadMessages(_ id: UUID, serverId: Int) async {
         guard let msgs = try? await api.messages(conversationId: serverId) else { return }
         update(id) { c in
             // Keep answers made on this Mac (offline or by the Commons) that the server does not have.
@@ -339,7 +364,9 @@ final class AppModel {
         let serverId = conversation(cid)?.serverId
         var outcome = StreamOutcome()
         do {
-            for try await event in api.ask(OloAPI.AskInput(conversationId: serverId, content: content, grounded: searchWeb)) {
+            let input = OloAPI.AskInput(conversationId: serverId, content: content, grounded: searchWeb,
+                                        projectId: activeProjectId, challenge: challengeMode)
+            for try await event in api.ask(input) {
                 try Task.checkCancellation()
                 outcome.apply(event)
                 switch event {
@@ -354,6 +381,14 @@ final class AppModel {
                 case .answerComplete(_, let mid):
                     updateTurn(cid, tid) { $0.serverMessageId = mid }
                     answering[cid] = "Checking each sentence"
+                case .artifact(let a):
+                    updateTurn(cid, tid) { t in
+                        if let i = t.artifacts.firstIndex(where: { $0.id == a.id }) { t.artifacts[i] = a } else { t.artifacts.append(a) }
+                    }
+                    answering[cid] = "Checking the file"
+                case .references(let r): updateTurn(cid, tid) { $0.references = r }
+                case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
+                case .truncated(_, let m): updateTurn(cid, tid) { $0.notices.append(m) }
                 case .error(let message, _, let code):
                     throw OloAPI.StreamFailure(message: message, code: code, httpStatus: code == "quota_exceeded" ? 402 : 500)
                 default: break

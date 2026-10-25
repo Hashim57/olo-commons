@@ -8,7 +8,8 @@ public final class OloAPI: @unchecked Sendable {
     public static let defaultBase = URL(string: "https://helius-olo.io")!
 
     public let base: URL
-    private let session: URLSession
+    /// Shared by the extensions in the other files of OloKit (streams for fixes, jobs).
+    let session: URLSession
     private let tokenLock = NSLock()
     private var _token: String?
 
@@ -105,9 +106,16 @@ public final class OloAPI: @unchecked Sendable {
         public var ghost: Bool = false
         public var autoTier: Bool = true
         public var computeMode: Bool = false
+        /// Scopes the question to a project: its instructions and files go with it.
+        public var projectId: Int?
+        /// "Challenge me": Olo disagrees first when the evidence points the other way, with no praise and no softening.
+        public var challenge: Bool = false
+        /// Redo the last exchange: the previous reply is dropped first.
+        public var regenerate: Bool = false
 
-        public init(conversationId: Int?, content: String, grounded: Bool = false, ghost: Bool = false) {
+        public init(conversationId: Int?, content: String, grounded: Bool = false, ghost: Bool = false, projectId: Int? = nil, challenge: Bool = false, regenerate: Bool = false) {
             self.conversationId = conversationId; self.content = content; self.grounded = grounded; self.ghost = ghost
+            self.projectId = projectId; self.challenge = challenge; self.regenerate = regenerate
         }
     }
 

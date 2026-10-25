@@ -45,7 +45,7 @@ public enum Abstain {
     }
 
     /// Sentences line by line, so list items and headings never run into the sentence after them.
-    static func sentences(of text: String) -> [String] {
+    public static func sentences(of text: String) -> [String] {
         var out: [String] = []
         for line in text.replacingOccurrences(of: "\r", with: "").split(separator: "\n", omittingEmptySubsequences: true) {
             out += Sentences.split(String(line))

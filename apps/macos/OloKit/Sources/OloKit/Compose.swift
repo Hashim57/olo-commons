@@ -58,8 +58,9 @@ public enum LinkPolicy {
         return scheme == "https" || scheme == "http" || scheme == "mailto"
     }
 
-    /// olo://ask?q=... opens Quick Ask with the question; olo://chat/42 opens a conversation.
-    public enum DeepLink: Equatable { case ask(String); case conversation(Int); case home }
+    /// olo://ask?q=... opens Quick Ask with the question; olo://chat/42 opens a conversation;
+    /// olo://connected is where the browser lands after a connector's consent page.
+    public enum DeepLink: Equatable { case ask(String); case conversation(Int); case connected; case home }
 
     public static func parse(_ url: URL) -> DeepLink? {
         guard url.scheme?.lowercased() == "olo" else { return nil }
@@ -72,6 +73,8 @@ public enum LinkPolicy {
         case "chat", "conversation":
             if let id = Int(url.lastPathComponent) { return .conversation(id) }
             return .home
+        case "connected":
+            return .connected
         default:
             return .home
         }

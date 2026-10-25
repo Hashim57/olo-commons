@@ -8,10 +8,12 @@ struct MainView: View {
     var body: some View {
         @Bindable var model = model
         NavigationSplitView {
-            Sidebar()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 360)
+            LibrarySidebar()
+                .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 380)
         } detail: {
-            if let id = model.selection, model.conversation(id) != nil {
+            if let panel = model.panel {
+                PanelHost(panel: panel).id(panel)
+            } else if let id = model.selection, model.conversation(id) != nil {
                 ChatView(conversationId: id).id(id)
             } else {
                 EmptyState()
@@ -43,66 +45,38 @@ struct MainView: View {
     }
 }
 
-struct Sidebar: View {
-    @Environment(AppModel.self) private var model
-    @State private var filter = ""
-
-    private var filtered: [LocalConversation] {
-        let f = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        return f.isEmpty ? model.conversations : model.conversations.filter { $0.title.lowercased().contains(f) }
-    }
-
-    var body: some View {
-        let selection = Binding<UUID?>(get: { model.selection }, set: { if let id = $0 { model.open(id) } else { model.selection = nil } })
-        List(selection: selection) {
-            let pinned = filtered.filter(\.isPinned)
-            if !pinned.isEmpty {
-                Section("Pinned") { ForEach(pinned) { row($0) } }
-            }
-            Section(model.user?.email ?? "Conversations") {
-                ForEach(filtered.filter { !$0.isPinned }) { row($0) }
-            }
-        }
-        .searchable(text: $filter, placement: .sidebar, prompt: "Search conversations")
-        .safeAreaInset(edge: .bottom) { AccountFooter() }
-        .refreshable { await model.refreshConversations() }
-    }
-
-    private func row(_ c: LocalConversation) -> some View {
-        HStack(spacing: 6) {
-            if c.serverId == nil { Image(systemName: "desktopcomputer").foregroundStyle(.secondary).help("Only on this Mac so far") }
-            Text(c.title).lineLimit(1)
-            Spacer(minLength: 0)
-            if model.answering[c.id] != nil { ProgressView().controlSize(.mini) }
-        }
-        .tag(c.id)
-        .contextMenu {
-            Button("Delete from This Mac", role: .destructive) { model.delete(c.id) }
-        }
-    }
-}
-
 struct AccountFooter: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        HStack {
-            if let email = model.user?.email {
-                Label(email, systemImage: "person.crop.circle").lineLimit(1).font(.callout)
-            } else {
-                Button { model.showSignIn = true } label: { Label("Sign In", systemImage: "person.crop.circle.badge.plus") }
-                    .help("Use the same account as helius-olo.io and the iPhone app")
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                if let email = model.user?.email {
+                    Label(email, systemImage: "person.crop.circle").lineLimit(1).font(.callout)
+                } else {
+                    Button { model.showSignIn = true } label: { Label("Sign In", systemImage: "person.crop.circle.badge.plus") }
+                        .help("Use the same account as helius-olo.io and the iPhone app")
+                }
+                Spacer()
             }
-            Spacer()
+            UsageMeter(compact: true)
         }
         .buttonStyle(.borderless)
         .padding(10)
     }
 }
 
+/// The empty state: the atom, the question, and the four things people try first (the web's FirstRun).
 struct EmptyState: View {
     @Environment(AppModel.self) private var model
     @State private var question = ""
+
+    private static let starters: [(label: String, prompt: String, note: String)] = [
+        ("Build something", "Build me a one-page site explaining what my business does, with a contact form", "Produces a file you can preview and save"),
+        ("Check it against sources", "What does current research say about sargassum as a biofuel feedstock?", "Turn on Search the web and every claim is checked against what it found"),
+        ("Work through a decision", "Compare hiring a contractor against training someone in-house for a six month project", "Olo weighs the competing factors"),
+        ("Keep context in one place", "I want to set up a project for my planning work", "Projects hold standing instructions and reference files"),
+    ]
 
     var body: some View {
         VStack(spacing: 18) {
@@ -114,8 +88,29 @@ struct EmptyState: View {
             TextField("Ask anything", text: $question)
                 .textFieldStyle(.roundedBorder).font(.title3).frame(maxWidth: 520)
                 .onSubmit { let q = question; question = ""; model.ask(q, in: model.newConversation()) }
+            starterRow
         }
         .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var starterRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            ForEach(0..<EmptyState.starters.count, id: \.self) { i in
+                let s = EmptyState.starters[i]
+                Button {
+                    model.ask(s.prompt, in: model.newConversation(), searchWeb: i == 1)
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(s.label).font(.callout.weight(.medium))
+                        Text(s.note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .frame(maxWidth: 760)
     }
 }

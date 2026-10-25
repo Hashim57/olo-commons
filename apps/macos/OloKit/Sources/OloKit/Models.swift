@@ -96,10 +96,33 @@ public struct Source: Codable, Equatable, Hashable, Sendable {
     public var index: Int
     public var title: String
     public var url: String
+    /// Learned reliability of the domain, 0 to 1, or nil without a track record.
     public var reliability: Double?
+    public var provider: String?
+    /// Whether the link answered during verification; nil when not checked.
+    public var urlOk: Bool?
+    public var published: String?
+    /// 1 authoritative, 2 established, 3 unknown, 4 down-ranked (server/sourceTiers.ts).
+    public var tier: Int?
+    /// Tier 4 only: "user-generated" or "low-trust site".
+    public var tierLabel: String?
 
-    public init(index: Int, title: String, url: String, reliability: Double? = nil) {
-        self.index = index; self.title = title; self.url = url; self.reliability = reliability
+    public init(index: Int, title: String, url: String, reliability: Double? = nil, provider: String? = nil,
+                urlOk: Bool? = nil, published: String? = nil, tier: Int? = nil, tierLabel: String? = nil) {
+        self.index = index; self.title = title; self.url = url; self.reliability = reliability; self.provider = provider
+        self.urlOk = urlOk; self.published = published; self.tier = tier; self.tierLabel = tierLabel
+    }
+
+    /// The short label shown on a down-ranked source, nil for every other tier.
+    public var downRankedLabel: String? {
+        guard tier == 4 else { return nil }
+        return tierLabel ?? "low-trust site"
+    }
+
+    /// The hostname without "www.", or the URL itself when it is not a web address.
+    public var domain: String {
+        guard let host = URL(string: url)?.host?.lowercased() else { return url }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 }
 
@@ -111,12 +134,18 @@ public struct ClaimVerdict: Codable, Equatable, Sendable {
     public var rationale: String
     public var excerpt: String?
     public var confidence: Double?
+    /// The node in the Zeus graph, present when the claim was filed. It is what a monitor watches.
+    public var claimId: String?
+    /// Answered from the verification graph rather than re-checked.
+    public var recalled: Bool?
 
-    public init(claim: String, verdict: String, citedBy: [Int] = [], rationale: String = "", excerpt: String? = nil, confidence: Double? = nil) {
+    public init(claim: String, verdict: String, citedBy: [Int] = [], rationale: String = "", excerpt: String? = nil, confidence: Double? = nil,
+                claimId: String? = nil, recalled: Bool? = nil) {
         self.claim = claim; self.verdict = verdict; self.citedBy = citedBy; self.rationale = rationale; self.excerpt = excerpt; self.confidence = confidence
+        self.claimId = claimId; self.recalled = recalled
     }
 
-    enum CodingKeys: String, CodingKey { case claim, verdict, citedBy, rationale, excerpt, confidence }
+    enum CodingKeys: String, CodingKey { case claim, verdict, citedBy, rationale, excerpt, confidence, claimId, recalled }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -126,6 +155,8 @@ public struct ClaimVerdict: Codable, Equatable, Sendable {
         rationale = (try? c.decode(String.self, forKey: .rationale)) ?? ""
         excerpt = try? c.decodeIfPresent(String.self, forKey: .excerpt)
         confidence = try? c.decodeIfPresent(Double.self, forKey: .confidence)
+        claimId = try? c.decodeIfPresent(String.self, forKey: .claimId)
+        recalled = try? c.decodeIfPresent(Bool.self, forKey: .recalled)
     }
 }
 
@@ -137,17 +168,26 @@ public struct AnswerVerification: Codable, Equatable, Sendable {
     public var score: Double
     /// Who wrote and who checked, when the server puts it inside the verification payload.
     public var answeredBy: AnsweredBy?
+    /// DOIs and quoted paper titles in the answer, each looked up in Crossref (saved with the verification).
+    public var references: [ReferenceCheck]?
+    /// The server's caution when the newest source is old for a time sensitive question.
+    public var freshnessNote: String?
 
-    public init(claims: [ClaimVerdict], answeredBy: AnsweredBy? = nil) {
+    public init(claims: [ClaimVerdict], answeredBy: AnsweredBy? = nil, references: [ReferenceCheck]? = nil, freshnessNote: String? = nil) {
         self.claims = claims
         supported = claims.filter { $0.verdict == "supported" }.count
         contradicted = claims.filter { $0.verdict == "contradicted" }.count
         unsupported = claims.count - supported - contradicted
         score = claims.isEmpty ? 0 : Double(supported) / Double(claims.count)
         self.answeredBy = answeredBy
+        self.references = references
+        self.freshnessNote = freshnessNote
     }
 
-    enum CodingKeys: String, CodingKey { case claims, supported, unsupported, contradicted, score, answeredBy = "answered_by" }
+    enum CodingKeys: String, CodingKey {
+        case claims, supported, unsupported, contradicted, score, references, freshnessNote
+        case answeredBy = "answered_by"
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -158,7 +198,12 @@ public struct AnswerVerification: Codable, Equatable, Sendable {
         score = (try? c.decode(Double.self, forKey: .score)) ?? 0
         answeredBy = try? c.decodeIfPresent(AnsweredBy.self, forKey: .answeredBy)
         if answeredBy?.isEmpty == true { answeredBy = nil }
+        references = try? c.decodeIfPresent([ReferenceCheck].self, forKey: .references)
+        freshnessNote = try? c.decodeIfPresent(String.self, forKey: .freshnessNote)
     }
+
+    /// Any claim Zeus did not support: what "Fix flagged sentences" rewrites.
+    public var flaggedCount: Int { contradicted + unsupported }
 }
 
 /// A message as helius-olo.io stores it (chat.getMessages).
