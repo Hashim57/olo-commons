@@ -162,6 +162,8 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                "steps": steps, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
+    print(json.dumps(report), flush=True)
+    # saved before the held-out evals, so a failure there never loses the adapter or the frozen-split numbers
 
     external = {}
     # Held-out VitaminC dev (Wikipedia revisions, human-written claims): the first number to trust once the rule-made split saturates.
