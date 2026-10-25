@@ -42,6 +42,7 @@ struct ChatView: View {
             }
             Divider()
             composer
+                .layoutPriority(1)
         }
         .navigationTitle(conversation?.title ?? "Olo")
         .toolbar {
@@ -101,19 +102,22 @@ struct ChatView: View {
                 }
                 Toggle(isOn: $challenge) { Label("Challenge me", systemImage: "exclamationmark.bubble") }
                     .help("Olo disagrees first when the evidence points the other way")
-                Spacer()
-                if let s = status { Text(s).font(.caption).foregroundStyle(.secondary) }
-                ContextGaugeView(reading: gauge)
+                Spacer(minLength: 8)
+                if let s = status { Text(s).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
             }
             .toggleStyle(.checkbox)
             .font(.caption)
+            .lineLimit(1)
+            ContextGaugeView(reading: gauge)
             privacyRow
             if conversation?.isPrivate == true {
                 Text(BrainText.privateExplainer).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            if let p = dictation.problem { Text(p).font(.caption).foregroundStyle(.orange) }
+            if let p = dictation.problem { Text(p).font(.caption).foregroundStyle(.orange).lineLimit(2) }
         }
         .padding(14)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(.bar)
     }
 
     /// "Add to Olo brain" (this chat, starting at the account default), the "Private chat" switch
@@ -135,9 +139,10 @@ struct ChatView: View {
                 .help(started ? "Set before the first message. File > New Private Chat starts one." : BrainText.privateExplainer)
             Button(BrainText.viewBrain) { model.openBrain() }
                 .buttonStyle(.link)
-            Spacer()
+            Spacer(minLength: 0)
         }
         .font(.caption)
+        .lineLimit(1)
     }
 
     private var gauge: ContextGauge.Reading {

@@ -41,8 +41,9 @@ struct ContextGaugeView: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(colour).frame(width: 6, height: 6)
-            Text(reading.line)
-            if reading.suggestSummary { Text("This thread is getting long; a new conversation will answer faster.").foregroundStyle(.secondary) }
+            Text(reading.suggestSummary ? reading.line + ". Long thread: a new conversation answers faster" : reading.line)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
         .font(.caption2)
         .foregroundStyle(reading.level == .ok ? Color.secondary : colour)

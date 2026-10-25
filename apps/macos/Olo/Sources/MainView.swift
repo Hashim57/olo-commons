@@ -69,6 +69,10 @@ struct AccountFooter: View {
         }
         .buttonStyle(.borderless)
         .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // An opaque bar with a rule above it, so conversations scroll under it instead of showing through.
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
     }
 }
 
