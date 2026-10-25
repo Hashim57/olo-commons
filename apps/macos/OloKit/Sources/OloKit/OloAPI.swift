@@ -34,7 +34,7 @@ public final class OloAPI: @unchecked Sendable {
 
     // MARK: tRPC helpers
 
-    private func run<T: Decodable>(_ req: URLRequest, as: T.Type) async throws -> T {
+    func run<T: Decodable>(_ req: URLRequest, as: T.Type) async throws -> T {
         let (data, resp) = try await session.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         return try TRPC.decode(T.self, data: data, status: status)
