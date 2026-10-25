@@ -48,7 +48,9 @@ States: **done** (on the Mac, same procedures as the web and iPhone), **partial*
 | Context gauge | `contextGauge.ts` | done | `ContextGauge.swift` mirrors the estimate; shown under the composer, amber at 70 percent, red at 90. |
 | Compute / analysis jobs | `compute.start`, `get`, `list`, `cancel` | done | "Analyse" in the composer menu runs the draft as a job and polls progress; the result lands in the thread. "Jobs" panel lists and cancels. |
 | Background builds | `builds.*`, `truncated` event | partial | The `truncated` notice is shown; polling the build and showing the file is not done. |
-| Ghost mode, tiers, library file attachments (`fileIds`) | stream fields | not done | Mac attachments are read on the Mac and sent inline (its own feature); the server file library is below. |
+| Private chats (ghost mode under the name the clients show) | stream `private: true`, ghost | done | 1.3. "Private chat" switch (lock) in the composer, File > New Private Chat. Never synced to the server list, never the brain, kept only on this Mac, encrypted with AES-GCM under a Keychain key (`OloKit/PrivateStore.swift`). The server keeps no history, so the Mac sends a short summary of earlier turns with each follow-up. Sidebar: lock and "Only on this Mac". |
+| Olo brain: ask once, per chat switch, brain note | `auth.me` `brainSharing`, `auth.setBrainSharing`, stream `brain`, `client`, event `brain` | done | 1.3. One-time sheet when the default is null (on this Mac when anonymous), "Add to Olo brain" per chat, a quiet note under the answer, Help > View the Olo brain. On the Commons fallback the Mac calls `olo-brain-ask` directly with `client: "macos"`. |
+| Tiers, library file attachments (`fileIds`) | stream fields | not done | Mac attachments are read on the Mac and sent inline (its own feature); the server file library is below. |
 
 ## Panels
 
@@ -66,7 +68,8 @@ States: **done** (on the Mac, same procedures as the web and iPhone), **partial*
 | Evidence file | `monitors.evidenceFile` | done | Saved as HTML with NSSavePanel and opened. |
 | Zeus graph | `zeus.graph` | done | `ZeusGraphView.swift`: Canvas, phyllotaxis placement as the iPhone does, colour by verdict, size by corroboration, click for the claim and its evidence; stats and source reputations. |
 | Workspaces (shared graphs, invite) | `workspaces.*` | not done | Private graph only (`workspaceId: null`). |
-| Coding workspace, code hand off | `code.*` | not done | A separate product surface; not sensible to rebuild in this round. |
+| Build with Olo (review on save, fixes, chat about the file) | `code.review` | done (Mac first) | 1.3. Watches a project folder with FSEvents and reviews each saved source file (any editor); issues with severity, category and line, click to jump, Apply fix with Undo, Apply all safe fixes (info and style), Fix as I save (errors that are bugs or security, after a 3 second countdown), chat about the file as a private chat. Always private: code never enters the brain. The web and iPhone do not have it yet. |
+| Coding workspace, code hand off | other `code.*` procedures | not done | The web's coding workspace is a separate surface; Build with Olo is the Mac's own take. |
 | Credits / usage meter | `billing.entitlement` | done | Messages used of limit (and analyses) in the sidebar footer and Settings > Account. |
 | Paywall / subscribe | `subscription.createCheckout` (web), StoreKit (iPhone) | Mac equivalent | StoreKit 2 (1.2); the Mac never opens a web checkout. |
 | Export a conversation (text, PDF) | `exportEngine.ts` (jsPDF), `expo-print` | done | Markdown (same layout as the text export) and PDF through `NSPrintOperation` saving to a file, with NSSavePanel. |

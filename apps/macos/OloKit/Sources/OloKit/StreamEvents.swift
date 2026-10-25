@@ -25,6 +25,8 @@ public enum StreamEvent: Equatable, Sendable {
     case memories([UsedMemory])
     /// The build outran the live window and was queued as a background build (or could not be).
     case truncated(jobId: String?, message: String)
+    /// What happened to the question in the Olo brain after the answer: "published", "held" or "skipped".
+    case brain(status: String)
     /// Anything this version does not use (citations report, suggestions): ignored, never an error.
     case other(String)
 
@@ -81,6 +83,9 @@ public enum StreamEvent: Equatable, Sendable {
         case "truncated":
             return .truncated(jobId: value["jobId"]?.stringValue,
                               message: value["message"]?.stringValue ?? "The build was too large to finish here.")
+        case "brain":
+            guard let s = value["status"]?.stringValue, !s.isEmpty else { return .other(type) }
+            return .brain(status: s)
         default:
             return .other(type)
         }
@@ -123,6 +128,8 @@ public struct StreamOutcome: Equatable, Sendable {
     public var artifacts: [Artifact] = []
     public var references: [ReferenceCheck] = []
     public var memories: [UsedMemory] = []
+    /// The Olo brain's answer for this question, when the chat shares.
+    public var brainStatus: String?
     public var status: String?
     /// The server said the answer is saved. A stream can end without this when the host
     /// closes long connections; the app then fetches the saved copy instead of losing it.
@@ -160,6 +167,7 @@ public struct StreamOutcome: Equatable, Sendable {
         case .references(let r): references = r
         case .memories(let m): memories = m
         case .truncated(_, let m): notices.append(m)
+        case .brain(let s): brainStatus = s
         case .other: break
         }
     }

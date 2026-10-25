@@ -54,6 +54,16 @@ final class AppModel {
     var libraryArtifacts: [Artifact] = []
     /// The conversation whose artifacts inspector is open.
     var showArtifacts = false
+    // The Olo brain and private chats (see AppModel+Brain.swift for the behaviour).
+    /// The default for "Add to Olo brain": the account's (auth.me) when signed in, this Mac's otherwise; nil until asked.
+    var brainSharing: Bool?
+    /// The one-time "Add my questions to the Olo brain?" sheet.
+    var showBrainChoice = false
+    /// Private chats, encrypted on this Mac; nil until the first private chat is kept (the Keychain key is made then).
+    @ObservationIgnored var privateStore: PrivateStore?
+    @ObservationIgnored var brainChoiceAsked = false
+    // Build with Olo (see BuildWorkspace.swift).
+    let buildWorkspace: BuildWorkspace
 
     @ObservationIgnored var openMainWindowAction: (() -> Void)?
     @ObservationIgnored private var tasks: [UUID: Task<Void, Never>] = [:]
@@ -62,9 +72,17 @@ final class AppModel {
     init() {
         api = OloAPI(token: Keychain.read("session"))
         commons = CommonsLibrary(store: store)
+        buildWorkspace = BuildWorkspace(api: api)
         if let data = UserDefaults.standard.data(forKey: "user.v1") { user = try? JSONDecoder().decode(SessionUser.self, from: data) }
-        conversations = store.conversations()
+        var all = store.sharedConversations()
+        // Private chats exist only if a key was made for them; nothing touches the Keychain otherwise.
+        let opened: PrivateStore? = try? PrivateStore.appSupport(createKey: false)
+        privateStore = opened
+        if let opened, let saved = try? opened.load() { all += saved }
+        conversations = all.sorted { $0.updatedAt > $1.updatedAt }
         pending = store.pending()
+        brainSharing = UserDefaults.standard.object(forKey: Prefs.brainSharing) as? Bool
+        buildWorkspace.app = self
     }
 
     var offlineOnly: Bool { UserDefaults.standard.bool(forKey: Prefs.offlineOnly) }
@@ -88,8 +106,10 @@ final class AppModel {
             await commons.refreshIfStale()
             await flushPending()
             await refreshLibrary()
+            await refreshBrainSharing()
         }
         await bootstrapBilling()
+        considerBrainChoice()
     }
 
     private func onlineAgain() async {
@@ -142,6 +162,7 @@ final class AppModel {
         await refreshConversations()
         await refreshEntitlement()
         await refreshLibrary()
+        await refreshBrainSharing()
     }
 
     /// Whether this person's conversations may be used to improve Olo and train Zeus.
@@ -183,6 +204,7 @@ final class AppModel {
 
     func eraseLocalData() {
         store.eraseAll()
+        privateStore?.erase()
         conversations.removeAll()
         pending.removeAll()
         selection = nil
@@ -199,8 +221,10 @@ final class AppModel {
     // MARK: Conversations
 
     func persist() {
-        store.saveConversations(conversations)
+        // The plain file never receives private chats (LocalStore filters them too); they go to the encrypted store.
+        store.saveConversations(conversations.filter { !$0.isPrivate })
         store.savePending(pending)
+        savePrivateConversations()
     }
 
     func conversation(_ id: UUID?) -> LocalConversation? {
@@ -221,7 +245,7 @@ final class AppModel {
 
     @discardableResult
     func newConversation() -> UUID {
-        if let current = conversation(selection), current.turns.isEmpty, current.serverId == nil { return current.id }
+        if let current = conversation(selection), current.turns.isEmpty, current.serverId == nil, !current.isPrivate { return current.id }
         let c = LocalConversation(title: "New conversation")
         conversations.insert(c, at: 0)
         selection = c.id
@@ -361,16 +385,27 @@ final class AppModel {
     }
 
     private func streamFromOlo(content: String, cid: UUID, tid: UUID, searchWeb: Bool, retryOnAuth: Bool) async throws {
-        let serverId = conversation(cid)?.serverId
+        let conv = conversation(cid)
+        // A private chat is never stored on the server: no conversation id goes or comes back, and the
+        // earlier turns travel inside the message (the server sees only this turn).
+        let isPrivate = conv?.isPrivate ?? false
+        let serverId = isPrivate ? nil : conv?.serverId
+        var sendContent = content
+        if isPrivate, let turns = conv?.turns {
+            let at = turns.firstIndex { $0.id == tid } ?? turns.count
+            let earlier = turns.prefix(max(0, at - 1)).map { (role: $0.role.rawValue, text: $0.text) }
+            sendContent = PrivateContext.compose(earlier: Array(earlier), content: content)
+        }
         var outcome = StreamOutcome()
         do {
-            let input = OloAPI.AskInput(conversationId: serverId, content: content, grounded: searchWeb,
-                                        projectId: activeProjectId, challenge: challengeMode)
+            let input = OloAPI.AskInput(conversationId: serverId, content: sendContent, grounded: searchWeb,
+                                        projectId: activeProjectId, challenge: challengeMode,
+                                        brain: brainEnabled(for: cid), isPrivate: isPrivate)
             for try await event in api.ask(input) {
                 try Task.checkCancellation()
                 outcome.apply(event)
                 switch event {
-                case .start(let id): update(cid) { $0.serverId = id }
+                case .start(let id): if !isPrivate && id > 0 { update(cid) { $0.serverId = id } }
                 case .delta: updateTurn(cid, tid) { $0.text = outcome.text; $0.origin = .olo }; answering[cid] = "Writing"
                 case .status(let stage, let detail): answering[cid] = detail ?? stage
                 case .sources(let s): updateTurn(cid, tid) { $0.sources = s }; answering[cid] = "Reading \(s.count) sources"
@@ -389,6 +424,7 @@ final class AppModel {
                 case .references(let r): updateTurn(cid, tid) { $0.references = r }
                 case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
                 case .truncated(_, let m): updateTurn(cid, tid) { $0.notices.append(m) }
+                case .brain(let s): updateTurn(cid, tid) { $0.brainStatus = s }
                 case .error(let message, _, let code):
                     throw OloAPI.StreamFailure(message: message, code: code, httpStatus: code == "quota_exceeded" ? 402 : 500)
                 default: break
@@ -405,12 +441,17 @@ final class AppModel {
             // The host closes long connections now and then. If text had arrived, the answer is being
             // saved on the server: fetch the saved copy rather than failing.
             if !outcome.text.isEmpty, !(error is CancellationError), !(error is OloAPI.StreamFailure) {
+                if isPrivate {
+                    // Nothing was saved on the server, so there is no copy to fetch.
+                    updateTurn(cid, tid) { $0.notices.append("The connection closed before the end of the answer. Private chats are not saved on the server, so ask again for the rest.") }
+                    return
+                }
                 await recoverSavedAnswer(cid: cid, tid: tid, partial: outcome)
                 return
             }
             throw error
         }
-        if !outcome.completed && !outcome.text.isEmpty {
+        if !isPrivate && !outcome.completed && !outcome.text.isEmpty {
             await recoverSavedAnswer(cid: cid, tid: tid, partial: outcome)
         }
     }
@@ -451,6 +492,8 @@ final class AppModel {
                     if let n = a.notice { t.notices.append(n) }
                     t.notices.append("helius-olo.io could not be reached (\(error.localizedDescription)), so Olo Commons answered.")
                 }
+                // helius-olo.io would have told the brain; with it unreachable, the Mac does (never for a private chat).
+                shareWithBrainDirectly(question: question, answer: a, cid: cid, tid: tid)
                 return
             }
         }
@@ -475,7 +518,10 @@ final class AppModel {
             t.origin = .offline
             t.sources = quoted.sources
         }
-        if !offlineOnly, UserDefaults.standard.object(forKey: Prefs.askPendingWhenOnline) as? Bool ?? true {
+        if conversation(cid)?.isPrivate == true {
+            // The queue is a plain file, so a private question is never put in it.
+            updateTurn(cid, tid) { $0.notices.append("Private chats are not queued. Ask again when the Mac is online.") }
+        } else if !offlineOnly, UserDefaults.standard.object(forKey: Prefs.askPendingWhenOnline) as? Bool ?? true {
             pending.append(PendingQuestion(question: question, content: content, localConversation: cid))
             updateTurn(cid, tid) { $0.notices.append("Olo will ask this properly, with checked sources, when the Mac is back online.") }
         }

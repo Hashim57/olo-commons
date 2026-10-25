@@ -44,6 +44,10 @@ struct OloCommands: Commands {
             Button("New Conversation") { model.newConversation(); model.showMainWindow() }
                 .keyboardShortcut("n")
             // Option+Space works from every app (see HotKey.swift), so it is not repeated here.
+            Button("New Private Chat") { model.newPrivateConversation(); model.showMainWindow() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+            Button("Build with Olo") { model.panel = .build; model.showMainWindow() }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
             Button("Ask Olo (Quick Ask)") { QuickAskController.shared.toggle() }
             Divider()
             Button("Attach Files...") { model.requestAttachFiles = true }
@@ -56,6 +60,7 @@ struct OloCommands: Commands {
         CommandGroup(replacing: .help) {
             Link("Olo Support", destination: URL(string: "https://helius-olo.io/support")!)
             Link("Olo Commons", destination: URL(string: "https://heliusnetwork.app/olo")!)
+            Link(BrainText.viewBrain, destination: BrainLinks.view)
             Link("Privacy", destination: URL(string: "https://helius-olo.io/privacy")!)
         }
     }

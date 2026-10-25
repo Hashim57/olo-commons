@@ -36,6 +36,29 @@ GitHub > olo-commons > Actions > **macOS app** > Run workflow > tick **Archive, 
 
 ## 4. Listing and review
 
+### What's New in 1.3 (paste into "What's New in This Version")
+
+```
+Build with Olo: choose a project folder and Olo reviews each file as you save it, in any editor. Click an issue to jump to the line, apply a fix (with Undo), apply all safe fixes at once, or turn on Fix as I save. Ask Olo about the file in a private chat.
+
+Private chats: answered in the cloud but not saved there, not used for training and never added to the Olo brain. The conversation is kept encrypted on your Mac only.
+
+The Olo brain: choose once whether your questions, scrubbed of personal details, may appear in the public Olo brain. Change it for any chat with the Add to Olo brain switch.
+```
+
+### Privacy answers for 1.3 (App Store Connect > App Privacy)
+
+Nothing new is collected, and two things are explicitly not collected:
+
+- **Code (Build with Olo)**: not collected. A file is sent to helius-olo.io only to be reviewed, is not stored, not logged beyond errors, not used for training and never added to the brain. Under Apple's definitions this is not "collection" (not retained beyond servicing the request), so no new data type is declared.
+- **Private chats**: not collected. They are answered and discarded by the server (no conversation, messages or memory stored, no training), and kept only on the Mac, encrypted with a key in the Keychain.
+- **Olo brain questions** (only when the person chooses "Add them" or turns on the switch): the question text, scrubbed of personal details, is published anonymously at heliusnetwork.app/olo#brain. It is not linked to the user (no user id, no IP stored, no conversation, no answer). If App Review asks, declare it as "Other User Content", not linked to the user, not used for tracking, purpose App Functionality; it is optional and off until chosen.
+- **Encryption**: private chats use CryptoKit's AES-GCM for data stored on the device only. That is exempt (encryption of the user's own data at rest, using the operating system's implementation), so `ITSAppUsesNonExemptEncryption` stays `false`.
+
+### Review notes for 1.3 (add to the Notes for the reviewer)
+
+> Build with Olo (toolbar hammer, or the sidebar's Build with Olo): press Choose Project Folder and pick any folder with source code (for example a small folder with one .js or .swift file). The app now uses the user-selected read/write entitlement so that it can write a fix the user explicitly applies; it only writes files inside the folder the user chose, only when the user presses Apply fix or Apply all safe fixes, or has turned on Fix as I save (off by default, with a 3 second countdown and Cancel). Open the file in TextEdit or any editor, change a line and save: within a few seconds Olo shows the file and its review. Undo puts the file back. Reviews need a connection and a session (the first question starts an anonymous one; reviews count as messages against the free allowance). Private chat: the lock switch under the composer, or File > New Private Chat. The Olo brain question appears once after the terms sheet.
+
 - **Subtitle**: `Answers you can check`
 - **Promotional text**: `Ask from any app with Option+Space and see which sentences the sources support. Same account as Olo on the web and iPhone.`
 - **Description**:
@@ -51,8 +74,8 @@ GitHub > olo-commons > Actions > **macOS app** > Run workflow > tick **Archive, 
 - **Keywords**: `research,sources,citations,fact check,AI assistant,verified,offline,PDF,notes,study`
 - **Category**: Productivity (secondary: Reference). **Copyright**: `2026 Helius Network`.
 - **URLs**: support `https://helius-olo.io/support`, marketing `https://helius-olo.io`, privacy `https://helius-olo.io/privacy`.
-- **Screenshots** (16:10, for example 2880 x 1800): the main window with a checked answer, the Quick Ask panel over another app, an offline answer, Settings > Folders.
-- **App Privacy**: declare what helius-olo.io collects (email for sign-in, the questions, answers and files you send; linked to the user, not used for tracking). Files and folders you do not send stay on the Mac. Check it against your privacy policy.
+- **Screenshots** (16:10, for example 2880 x 1800): the main window with a checked answer, the Quick Ask panel over another app, Build with Olo with a reviewed file, a private chat, Settings > Folders.
+- **App Privacy**: declare what helius-olo.io collects (email for sign-in, the questions, answers and files you send; linked to the user, not used for tracking). Files and folders you do not send stay on the Mac. Code reviewed by Build with Olo and private chats are not collected (see "Privacy answers for 1.3" above). Check it against your privacy policy.
 - **Encryption**: the app declares `ITSAppUsesNonExemptEncryption = false` (standard HTTPS only).
 - **Age rating**: answer the questionnaire truthfully; open-ended AI assistants usually land at 12+ or 17+.
 
@@ -90,7 +113,7 @@ The server also needs the App Store Server API key and the shared secret for thi
 
 ### 5.3 Submit the subscriptions with the version
 
-- The **first** subscription of an app must be submitted together with a new app version: on the version page (1.2.0) scroll to **In-App Purchases and Subscriptions**, press **+**, tick both products, then submit the version. After that, later changes to a subscription can be submitted on their own.
+- The **first** subscription of an app must be submitted together with a new app version: on the version page (1.2.0, or 1.3.0 if 1.2.0 was never submitted) scroll to **In-App Purchases and Subscriptions**, press **+**, tick both products, then submit the version. After that, later changes to a subscription can be submitted on their own.
 - App Review tests the purchase in the sandbox. Add to the **Notes for the reviewer**: `Olo > Subscribe opens the plans. Sign-in is required first because the plan is tied to the account (use any email; the code arrives within a minute). Payment goes through StoreKit; the server verifies the transaction with Apple. Restore Purchases is in the same sheet.`
 - **EULA**: App Review needs either Apple's standard EULA or a custom one in the listing. The app links Apple's standard EULA (https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) in the terms sheet and the subscription sheet; in App Store Connect > the app > **App Information** > **License Agreement**, leave "Apple's Standard License Agreement" selected unless Hashim's lawyer supplies a custom one, in which case paste it there and change `Legal.eulaURL` in `OloKit/Sources/OloKit/Legal.swift` to the page that hosts it.
 - **Paid Apps agreement**: Agreements, Tax, and Banking must show the Paid Apps agreement as Active, with bank and tax forms done, or the products stay "Missing Metadata" whatever you do on the product pages.

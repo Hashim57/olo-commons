@@ -24,6 +24,10 @@ struct MainView: View {
                 Button { model.newConversation() } label: { Label("New Conversation", systemImage: "square.and.pencil") }
                     .help("New conversation (Cmd+N)")
             }
+            ToolbarItem(placement: .primaryAction) {
+                Button { model.panel = .build } label: { Label("Build with Olo", systemImage: "hammer") }
+                    .help("Build with Olo: Olo reviews your project's files as you save them, in any editor")
+            }
             ToolbarItem(placement: .status) {
                 if !model.isOnline {
                     Label("Offline", systemImage: "wifi.slash").foregroundStyle(.orange)
@@ -34,6 +38,8 @@ struct MainView: View {
         .sheet(isPresented: $model.showSignIn) { SignInView() }
         .sheet(isPresented: $model.showSubscribe) { SubscribeView(store: model.purchases) }
         .sheet(isPresented: $model.showTerms) { TermsGateView() }
+        .sheet(isPresented: $model.showBrainChoice) { BrainChoiceSheet() }
+        .onChange(of: model.showTerms) { if !model.showTerms { model.considerBrainChoice() } }
         .overlay(alignment: .top) {
             if let b = model.banner {
                 Text(b).font(.callout).padding(10).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))

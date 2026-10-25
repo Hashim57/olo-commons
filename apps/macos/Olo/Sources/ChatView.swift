@@ -107,9 +107,37 @@ struct ChatView: View {
             }
             .toggleStyle(.checkbox)
             .font(.caption)
+            privacyRow
+            if conversation?.isPrivate == true {
+                Text(BrainText.privateExplainer).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             if let p = dictation.problem { Text(p).font(.caption).foregroundStyle(.orange) }
         }
         .padding(14)
+    }
+
+    /// "Add to Olo brain" (this chat, starting at the account default), the "Private chat" switch
+    /// (only before the first message), and the link to the brain.
+    private var privacyRow: some View {
+        let isPrivate = conversation?.isPrivate ?? false
+        let started = !(conversation?.turns.isEmpty ?? true) || conversation?.serverId != nil
+        let brainOn = Binding<Bool>(get: { model.brainEnabled(for: conversationId) }, set: { model.setAddToBrain(conversationId, $0) })
+        let privateOn = Binding<Bool>(get: { isPrivate }, set: { model.setPrivate(conversationId, $0) })
+        return HStack(spacing: 14) {
+            Toggle(isOn: brainOn) { Label(BrainText.toggle, systemImage: "brain.head.profile") }
+                .toggleStyle(.checkbox)
+                .disabled(isPrivate)
+                .help(isPrivate ? "Private chats are never added to the Olo brain" : "Only the question text, scrubbed of personal details, appears in the public Olo brain. Never the answer, your name or your account.")
+            Toggle(isOn: privateOn) { Label(BrainText.privateChat, systemImage: isPrivate ? "lock.fill" : "lock.open") }
+                .toggleStyle(.switch)
+                .controlSize(.mini)
+                .disabled(started)
+                .help(started ? "Set before the first message. File > New Private Chat starts one." : BrainText.privateExplainer)
+            Button(BrainText.viewBrain) { model.openBrain() }
+                .buttonStyle(.link)
+            Spacer()
+        }
+        .font(.caption)
     }
 
     private var gauge: ContextGauge.Reading {
@@ -238,6 +266,9 @@ struct TurnView: View {
                     Text("Shaped by \(turn.memories.count) thing\(turn.memories.count == 1 ? "" : "s") you've told Olo")
                         .font(.caption2).foregroundStyle(.secondary)
                         .help(turn.memories.map(\.content).joined(separator: "\n"))
+                }
+                if let s = turn.brainStatus, let note = BrainText.note(for: s) {
+                    Label(note, systemImage: "brain.head.profile").font(.caption2).foregroundStyle(.secondary)
                 }
                 footer
                 if !compact, !turn.followUps.isEmpty {

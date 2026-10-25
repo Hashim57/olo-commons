@@ -3,12 +3,13 @@ import OloKit
 
 /// The panels that take the place of a conversation in the main window.
 enum LibraryPanel: String, CaseIterable, Identifiable {
-    case memory, artifacts, watching, zeus, skills, connectors, jobs
+    case build, memory, artifacts, watching, zeus, skills, connectors, jobs
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
+        case .build: return "Build with Olo"
         case .memory: return "Memory"
         case .artifacts: return "Artifacts"
         case .watching: return "Watching"
@@ -21,6 +22,7 @@ enum LibraryPanel: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
+        case .build: return "hammer"
         case .memory: return "brain"
         case .artifacts: return "doc.richtext"
         case .watching: return "eye"

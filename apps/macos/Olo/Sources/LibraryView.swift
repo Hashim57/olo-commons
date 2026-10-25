@@ -150,11 +150,16 @@ struct LibrarySidebar: View {
 
     private func row(_ c: LocalConversation) -> some View {
         HStack(spacing: 6) {
-            if c.serverId == nil { Image(systemName: "desktopcomputer").foregroundStyle(.secondary).help("Only on this Mac so far") }
+            if c.isPrivate {
+                Image(systemName: "lock.fill").foregroundStyle(.secondary).help(BrainText.privateExplainer)
+            } else if c.serverId == nil {
+                Image(systemName: "desktopcomputer").foregroundStyle(.secondary).help("Only on this Mac so far")
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(c.title).lineLimit(1)
                 HStack(spacing: 6) {
                     Text(c.updatedAt, format: .relative(presentation: .named))
+                    if c.isPrivate { Text(BrainText.onlyOnThisMac) }
                     if let f = c.folder, model.folderFilter == nil { Text(f).lineLimit(1) }
                 }
                 .font(.caption2).foregroundStyle(.secondary)
@@ -256,6 +261,7 @@ struct PanelHost: View {
     var body: some View {
         Group {
             switch panel {
+            case .build: BuildWithOloView()
             case .memory: MemoryView()
             case .artifacts: ArtifactsView(conversationId: nil)
             case .watching: MonitorsView()

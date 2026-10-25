@@ -11,7 +11,7 @@ Double click `Olo.xcodeproj`. Xcode opens it and fetches nothing from the intern
 1. In the left sidebar click the blue **Olo** project, then the **Olo** target, then the **Signing & Capabilities** tab.
 2. Tick **Automatically manage signing** and choose your team under **Team**.
 3. The Bundle Identifier is `io.helius-olo.desktop`. If Xcode says it is taken, change it to one of yours (for example `com.yourname.olo`) and use the same one in App Store Connect.
-4. App Sandbox should show **Outgoing Connections (Client)** and **User Selected File: Read Only**. Leave them as they are.
+4. App Sandbox should show **Outgoing Connections (Client)** and **User Selected File: Read/Write** (Build with Olo writes the fixes you apply). Leave them as they are.
 
 ## 3. Try it on your Mac
 
@@ -23,7 +23,7 @@ appstoreconnect.apple.com > **Apps** > **+** > **New App**: platform **macOS**, 
 
 ## 5. Archive and upload
 
-Version 1.2.0, build 3 are already set in the project. The first upload with subscriptions must be submitted together with the subscriptions themselves (APP_STORE.md, section "Subscriptions in App Store Connect"). For each later upload raise the Build number by one.
+Version 1.3.0, build 4 are already set in the project. The first upload with subscriptions must be submitted together with the subscriptions themselves (APP_STORE.md, section "Subscriptions in App Store Connect"). For each later upload raise the Build number by one.
 
 ### Archive
 

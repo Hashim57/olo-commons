@@ -83,6 +83,28 @@ public final class OloAPI: @unchecked Sendable {
         _ = try await run(req, as: JSONValue.self)
     }
 
+    /// The session user with the account's Olo brain default (auth.me). An older server without
+    /// the procedure, or one that leaves the field out, reads as .unknown.
+    public func brainSharingState() async throws -> BrainSharingState {
+        let value = try await run(try TRPC.queryRequest(base: base, path: "auth.me", token: token), as: JSONValue.self)
+        return BrainSharingState.read(value)
+    }
+
+    public struct BrainSharingInput: Codable, Sendable {
+        public let share: Bool
+        public init(share: Bool) { self.share = share }
+    }
+
+    struct BrainSharingResult: Codable, Sendable { var brainSharing: Bool? }
+
+    /// Saves the account default for the Olo brain (auth.setBrainSharing). An anonymous workspace
+    /// is refused (PRECONDITION_FAILED); the caller keeps the choice on the Mac then.
+    @discardableResult
+    public func setBrainSharing(_ share: Bool) async throws -> Bool {
+        let req = try TRPC.mutationRequest(base: base, path: "auth.setBrainSharing", input: BrainSharingInput(share: share), token: token)
+        return try await run(req, as: BrainSharingResult.self).brainSharing ?? share
+    }
+
     // MARK: Conversations
 
     public func listConversations() async throws -> [Conversation] {
@@ -112,10 +134,25 @@ public final class OloAPI: @unchecked Sendable {
         public var challenge: Bool = false
         /// Redo the last exchange: the previous reply is dropped first.
         public var regenerate: Bool = false
+        /// Add this question to the Olo brain once answered (ignored by the server for private chats).
+        public var brain: Bool = false
+        /// A private chat: nothing stored on the server, no memory, no training, never the brain (sent as "private").
+        public var isPrivate: Bool = false
+        /// Which client asked.
+        public var client: String = "macos"
 
-        public init(conversationId: Int?, content: String, grounded: Bool = false, ghost: Bool = false, projectId: Int? = nil, challenge: Bool = false, regenerate: Bool = false) {
-            self.conversationId = conversationId; self.content = content; self.grounded = grounded; self.ghost = ghost
+        enum CodingKeys: String, CodingKey {
+            case conversationId, content, tier, grounded, ghost, autoTier, computeMode, projectId, challenge, regenerate, brain, client
+            case isPrivate = "private"
+        }
+
+        public init(conversationId: Int?, content: String, grounded: Bool = false, ghost: Bool = false, projectId: Int? = nil, challenge: Bool = false, regenerate: Bool = false,
+                    brain: Bool = false, isPrivate: Bool = false) {
+            self.conversationId = conversationId; self.content = content; self.grounded = grounded; self.ghost = ghost || isPrivate
             self.projectId = projectId; self.challenge = challenge; self.regenerate = regenerate
+            // A private chat never goes to the brain, whatever the toggle says.
+            self.isPrivate = isPrivate
+            self.brain = brain && !isPrivate && !ghost
         }
     }
 

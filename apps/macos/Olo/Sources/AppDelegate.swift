@@ -90,4 +90,6 @@ enum Prefs {
     static let challengeMode = "challengeMode"
     /// Dictation: on-device recognition only (the recogniser refuses when the language needs the server).
     static let dictationOnDeviceOnly = "dictationOnDeviceOnly"
+    /// The Olo brain default on this Mac (an anonymous workspace keeps it here; an account's copy is cached). Missing until asked.
+    static let brainSharing = "brainSharing"
 }

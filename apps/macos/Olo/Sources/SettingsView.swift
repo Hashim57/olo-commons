@@ -185,6 +185,12 @@ struct AccountSettings: View {
                 Button("Sign In...") { model.showSignIn = true; model.showMainWindow() }
             }
             AccountPlanSection(store: model.purchases)
+            Section("Olo brain") {
+                Toggle("Add my questions to the Olo brain", isOn: Binding(get: { model.brainSharing ?? false }, set: { model.setBrainSharing($0) }))
+                Text(BrainText.cardBody).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(BrainText.privateExplainer).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Link(BrainText.viewBrain, destination: BrainLinks.view)
+            }
             Section("Training") {
                 Toggle(ConsentText.label, isOn: Binding(get: { model.trainingConsent }, set: { model.trainingConsent = $0 }))
                 Text(ConsentText.paragraph).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
