@@ -51,6 +51,25 @@ export function foldSystem(messages) {
   return rest;
 }
 
+/** Mistral Instruct's own prompt format, for the raw path: the template Zeus was trained with. */
+export function mistralPrompt(messages) {
+  let out = '<s>';
+  for (const m of messages) {
+    if (m.role === 'user') out += `[INST] ${m.content} [/INST]`;
+    else if (m.role === 'assistant') out += ` ${m.content}</s>`;
+  }
+  return out;
+}
+
+/** The text in whatever shape Workers AI returned it (response, result.response, a bare string). */
+export function answerText(out) {
+  if (typeof out === 'string') return out.trim();
+  if (typeof out?.response === 'string') return out.response.trim();
+  if (typeof out?.result?.response === 'string') return out.result.response.trim();
+  if (Array.isArray(out?.choices) && typeof out.choices[0]?.message?.content === 'string') return out.choices[0].message.content.trim();
+  return '';
+}
+
 export function scores(env) {
   try { return env.ZEUS_SCORES ? JSON.parse(env.ZEUS_SCORES) : null; } catch { return null; }
 }
@@ -102,10 +121,24 @@ export default {
     const maxTokens = Math.max(1, Math.min(Number(body.max_tokens) || 200, MAX_TOKENS));
 
     try {
-      const out = await env.AI.run(env.ZEUS_MODEL || DEFAULT_MODEL, { messages, lora: env.ZEUS_LORA, max_tokens: maxTokens, temperature: 0 });
-      const text = typeof out?.response === 'string' ? out.response : '';
-      if (!text) return json({ error: 'zeus_empty_answer' }, 502);
+      // Two ways to run the adapter: the chat form, then the raw form with Mistral's own template (what Zeus
+      // trained on). Workers AI has answered empty to one and not the other; the response says which one answered.
+      const model = env.ZEUS_MODEL || DEFAULT_MODEL;
+      const attempts = [
+        { how: 'messages', input: { messages, lora: env.ZEUS_LORA, max_tokens: maxTokens, temperature: 0 } },
+        { how: 'raw', input: { prompt: mistralPrompt(messages), raw: true, lora: env.ZEUS_LORA, max_tokens: maxTokens, temperature: 0 } },
+        { how: 'messages-default-temperature', input: { messages, lora: env.ZEUS_LORA, max_tokens: maxTokens } },
+      ];
+      let text = '', how = '', shapes = [], out = null;
+      for (const a of attempts) {
+        out = await env.AI.run(model, a.input);
+        text = answerText(out);
+        shapes.push(a.how + ':' + (out && typeof out === 'object' ? Object.keys(out).join('|') : typeof out));
+        if (text) { how = a.how; break; }
+      }
+      if (!text) return json({ error: 'zeus_empty_answer', detail: 'Workers AI returned no text; shapes ' + shapes.join(', ') + '; lora ' + env.ZEUS_LORA + ' on ' + model }, 502);
       return json({
+        zeus_path: how,
         id: 'zeus-' + crypto.randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000),
         model: 'zeus-' + (env.ZEUS_VERSION || 'unknown'),
         choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],

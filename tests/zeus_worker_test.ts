@@ -73,3 +73,31 @@ Deno.test('foldSystem keeps the conversation and joins system text into the firs
   assertEquals(foldSystem([{ role: 'system', content: 's1' }, { role: 'system', content: 's2' }, { role: 'user', content: 'u' }, { role: 'assistant', content: 'a' }]),
     [{ role: 'user', content: 's1\n\ns2\n\nu' }, { role: 'assistant', content: 'a' }]);
 });
+
+// @ts-ignore plain JS module
+import { answerText, mistralPrompt } from '../zeus/cloudflare/worker.js';
+
+Deno.test('mistralPrompt renders the Instruct template Zeus trained with', () => {
+  assertEquals(mistralPrompt([{ role: 'user', content: 'Claim: x' }]), '<s>[INST] Claim: x [/INST]');
+  assertEquals(mistralPrompt([{ role: 'user', content: 'a' }, { role: 'assistant', content: 'b' }, { role: 'user', content: 'c' }]), '<s>[INST] a [/INST] b</s>[INST] c [/INST]');
+});
+
+Deno.test('answerText reads every shape Workers AI has used', () => {
+  assertEquals(answerText({ response: ' {"label":"supported"} ' }), '{"label":"supported"}');
+  assertEquals(answerText({ result: { response: 'x' } }), 'x');
+  assertEquals(answerText('plain'), 'plain');
+  assertEquals(answerText({ choices: [{ message: { content: 'c' } }] }), 'c');
+  assertEquals(answerText({ response: '' }), '');
+  assertEquals(answerText(null), '');
+});
+
+Deno.test('the Worker falls back to the raw Mistral prompt when the chat form answers empty', async () => {
+  let n = 0;
+  const e = env({ AI: { run: async (_m: string, input: any) => { n++; return input.raw ? { response: '{"label":"not_covered","evidence":[],"rationale":"r"}' } : { response: '' }; } } });
+  const r = await worker.fetch(new Request('https://zeus.test/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ model: 'default_model', messages: [{ role: 'user', content: 'Claim: y' }] }) }), e);
+  const j = await r.json();
+  assertEquals(r.status, 200);
+  assertEquals(j.zeus_path, 'raw');
+  assertEquals(n, 2);
+  assert(j.choices[0].message.content.includes('not_covered'));
+});
