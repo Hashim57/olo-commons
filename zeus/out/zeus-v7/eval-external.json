@@ -1,0 +1,52 @@
+{
+  "vitaminc_dev": {
+    "n": 300,
+    "label_accuracy": 0.67,
+    "json_valid": 1.0,
+    "evidence_hit": 0.67,
+    "f1": {
+      "supported": 0.744,
+      "contradicted": 0.605,
+      "not_covered": 0.634
+    },
+    "confusion": {
+      "supported": {
+        "supported": 90,
+        "contradicted": 4,
+        "not_covered": 6,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 27,
+        "contradicted": 52,
+        "not_covered": 21,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 25,
+        "contradicted": 16,
+        "not_covered": 59,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.9,
+        "tnr": 0.74
+      },
+      "contradicted": {
+        "tpr": 0.52,
+        "tnr": 0.9
+      },
+      "not_covered": {
+        "tpr": 0.59,
+        "tnr": 0.865
+      }
+    },
+    "binary_balanced_accuracy": 0.82,
+    "note": "held out, never trained on; human-written claims over Wikipedia revisions"
+  },
+  "llm_aggrefact": {
+    "error": "DatasetNotFoundError: Dataset 'lytang/LLM-AggreFact' is a gated dataset on the Hub. You must be authenticated to access it."
+  }
+}
