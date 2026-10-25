@@ -20,7 +20,7 @@ final class MemoryController {
         defer { loading = false }
         do { list = try await api.listMemories(); error = nil }
         catch let e as TRPC.RemoteError where e.isNotFound { error = "This server has no memory yet." }
-        catch { error = error.localizedDescription }
+        catch { self.error = error.localizedDescription }
     }
 
     private func run(_ what: String, _ work: () async throws -> Void) async {
