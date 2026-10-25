@@ -111,12 +111,11 @@ struct ChatView: View {
             ContextGaugeView(reading: gauge)
             privacyRow
             if conversation?.isPrivate == true {
-                Text(BrainText.privateExplainer).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(BrainText.privateExplainer).font(.caption2).foregroundStyle(.secondary).lineLimit(3)
             }
             if let p = dictation.problem { Text(p).font(.caption).foregroundStyle(.orange).lineLimit(2) }
         }
         .padding(14)
-        .fixedSize(horizontal: false, vertical: true)
         .background(.bar)
     }
 

@@ -113,7 +113,7 @@ struct EmptyState: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(s.label).font(.callout.weight(.medium))
-                        Text(s.note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Text(s.note).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)

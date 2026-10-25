@@ -214,7 +214,7 @@ struct QuotaBanner: View {
         if let text = model.quotaBanner {
             HStack(spacing: 10) {
                 Image(systemName: "hourglass")
-                Text(text).fixedSize(horizontal: false, vertical: true)
+                Text(text).lineLimit(3).layoutPriority(1)
                 Spacer(minLength: 8)
                 if model.isSubscribed {
                     Button("Manage") { model.purchases.manageSubscriptions() }.controlSize(.small)

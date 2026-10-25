@@ -285,7 +285,7 @@ struct NudgeBanner: View {
                 Image(systemName: "bell")
                 VStack(alignment: .leading, spacing: 2) {
                     Text(n.title).font(.callout.weight(.medium))
-                    if !n.body.isEmpty { Text(n.body).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                    if !n.body.isEmpty { Text(n.body).font(.caption).foregroundStyle(.secondary).lineLimit(3) }
                     if let s = n.suggestion {
                         Button(s) { model.openNudge(n) }.buttonStyle(.link).font(.caption)
                     }
