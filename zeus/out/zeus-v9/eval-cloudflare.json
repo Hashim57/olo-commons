@@ -1,0 +1,49 @@
+{
+  "served_by": "zeus.6hnz57bf82.workers.dev",
+  "model": "default_model",
+  "n": 200,
+  "label_accuracy": 1.0,
+  "json_valid": 1.0,
+  "evidence_hit": 1.0,
+  "f1": {
+    "supported": 1.0,
+    "contradicted": 1.0,
+    "not_covered": 1.0
+  },
+  "confusion": {
+    "supported": {
+      "supported": 59,
+      "contradicted": 0,
+      "not_covered": 0,
+      "invalid": 0
+    },
+    "contradicted": {
+      "supported": 0,
+      "contradicted": 64,
+      "not_covered": 0,
+      "invalid": 0
+    },
+    "not_covered": {
+      "supported": 0,
+      "contradicted": 0,
+      "not_covered": 77,
+      "invalid": 0
+    }
+  },
+  "rates": {
+    "supported": {
+      "tpr": 1.0,
+      "tnr": 1.0
+    },
+    "contradicted": {
+      "tpr": 1.0,
+      "tnr": 1.0
+    },
+    "not_covered": {
+      "tpr": 1.0,
+      "tnr": 1.0
+    }
+  },
+  "binary_balanced_accuracy": 1.0,
+  "minutes": 3.9
+}
