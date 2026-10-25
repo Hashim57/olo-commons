@@ -63,4 +63,9 @@ def status_row(date, version, base, train_examples, ev, minutes, gpu):
     f1 = ev.get("f1") or {}
     note = (f"Trained in the cloud ({gpu}, {minutes} min), not on the Mac. Eval n={ev.get('n')}, JSON valid {ev.get('json_valid')}, "
             f"F1 supported {f1.get('supported')} / contradicted {f1.get('contradicted')} / not covered {f1.get('not_covered')}.")
+    if ev.get("binary_balanced_accuracy") is not None:
+        note += f" Binary balanced accuracy (supported vs the rest, the LLM-AggreFact view) {ev['binary_balanced_accuracy']}."
+    rates = ev.get("rates") or {}
+    if rates.get("supported", {}).get("tpr") is not None:
+        note += " TPR/TNR " + ", ".join(f"{l} {rates[l]['tpr']}/{rates[l]['tnr']}" for l in ("supported", "contradicted", "not_covered") if l in rates) + "."
     return f"| {date} | {version} | {base} | {train_examples} | {ev.get('label_accuracy')} | {ev.get('evidence_hit')} | {note} |"

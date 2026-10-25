@@ -20,7 +20,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(__file__))
-from eval import LABELS, evidence_ok, parse  # noqa: E402
+from eval import LABELS, evidence_ok, parse, score as shared_score  # noqa: E402
 from train_lora import SYSTEM, render_user  # noqa: E402
 
 
@@ -39,28 +39,8 @@ def ask(url, key, model, ex, timeout=60, tries=3):
 
 
 def score(examples, answers):
-    tp = {l: 0 for l in LABELS}; fp = dict(tp); fn = dict(tp)
-    correct = valid = ev_hits = 0
-    for ex, text in zip(examples, answers):
-        pred = parse(text or "")
-        if not pred:
-            fn[ex["label"]] += 1
-            continue
-        valid += 1
-        if pred["label"] == ex["label"]:
-            correct += 1; tp[ex["label"]] += 1
-            if evidence_ok(pred, ex):
-                ev_hits += 1
-        else:
-            fp[pred["label"]] += 1; fn[ex["label"]] += 1
-    n = len(examples)
-    f1 = {}
-    for l in LABELS:
-        p = tp[l] / (tp[l] + fp[l]) if tp[l] + fp[l] else 0
-        r = tp[l] / (tp[l] + fn[l]) if tp[l] + fn[l] else 0
-        f1[l] = round(2 * p * r / (p + r), 3) if p + r else 0
-    return {"n": n, "label_accuracy": round(correct / n, 3) if n else 0, "json_valid": round(valid / n, 3) if n else 0,
-            "evidence_hit": round(ev_hits / n, 3) if n else 0, "f1": f1}
+    """The shared scorer in eval.py (confusion matrix, per-label rates, binary balanced accuracy)."""
+    return shared_score(examples, answers)
 
 
 def main():

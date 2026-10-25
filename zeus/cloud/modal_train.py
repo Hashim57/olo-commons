@@ -61,7 +61,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     sys.path.insert(0, os.path.join(work, "zeus"))
     sys.path.insert(0, os.path.join(work, "zeus", "cloud"))
     import recipe  # noqa: E402
-    from eval import evidence_ok, parse, LABELS  # noqa: E402
+    from eval import evidence_ok, parse, score, LABELS  # noqa: E402
 
     data = os.path.join(work, "zeus", "data")
 
@@ -136,33 +136,17 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     # measure on the frozen eval split, greedy, as served
     model.eval()
     tok.padding_side = "left"
-    tp = {l: 0 for l in LABELS}; fp = dict(tp); fn = dict(tp)
-    correct = valid = hits = 0
+    answers = []
     for i in range(0, len(evals), 8):
         group = evals[i:i + 8]
         prompts = [tok.apply_chat_template(recipe.prompt_messages(ex), add_generation_prompt=True, tokenize=False) for ex in group]
         enc = tok(prompts, return_tensors="pt", padding=True, add_special_tokens=False).to("cuda")
         with torch.no_grad():
             gen = model.generate(**enc, max_new_tokens=200, do_sample=False, pad_token_id=tok.pad_token_id)
-        for ex, g in zip(group, gen):
-            pred = parse(tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True))
-            if not pred:
-                fn[ex["label"]] += 1; continue
-            valid += 1
-            if pred["label"] == ex["label"]:
-                correct += 1; tp[ex["label"]] += 1
-                if evidence_ok(pred, ex):
-                    hits += 1
-            else:
-                fp[pred["label"]] += 1; fn[ex["label"]] += 1
+        for g in gen:
+            answers.append(tok.decode(g[enc["input_ids"].shape[1]:], skip_special_tokens=True))
     n = len(evals)
-    f1 = {}
-    for l in LABELS:
-        p = tp[l] / (tp[l] + fp[l]) if tp[l] + fp[l] else 0
-        r = tp[l] / (tp[l] + fn[l]) if tp[l] + fn[l] else 0
-        f1[l] = round(2 * p * r / (p + r), 3) if p + r else 0
-    report = {"model": f"zeus/out/zeus-{version}", "base": base, "n": n, "label_accuracy": round(correct / n, 3) if n else 0,
-              "json_valid": round(valid / n, 3) if n else 0, "evidence_hit": round(hits / n, 3) if n else 0, "f1": f1}
+    report = {"model": f"zeus/out/zeus-{version}", "base": base, **score(evals, answers)}
 
     out = os.path.join(work, "out")
     model.save_pretrained(os.path.join(out, "peft"))

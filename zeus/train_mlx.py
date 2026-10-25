@@ -29,7 +29,7 @@ def folds(base):
 
 sys.path.insert(0, os.path.dirname(__file__))
 from train_lora import SYSTEM, render_user, render_answer  # noqa: E402
-from eval import parse, evidence_ok, LABELS  # noqa: E402
+from eval import parse, evidence_ok, LABELS, score  # noqa: E402
 
 
 def to_mlx(data_dir, out_dir, fold=False):
@@ -66,33 +66,12 @@ def evaluate(base, adapter, data_dir, limit):
     from mlx_lm import load, generate
     model, tok = load(base, adapter_path=adapter)
     examples = [json.loads(l) for l in open(os.path.join(data_dir, "eval.jsonl"))][:limit]
-    correct = valid = ev_hits = 0
-    per = {l: {"tp": 0, "fp": 0, "fn": 0} for l in LABELS}
+    answers = []
     for ex in examples:
         msgs = prompt_messages(ex, folds(base))
         prompt = tok.apply_chat_template(msgs, add_generation_prompt=True)
-        text = generate(model, tok, prompt=prompt, max_tokens=200, verbose=False)
-        pred = parse(text)
-        if not pred:
-            per[ex["label"]]["fn"] += 1
-            continue
-        valid += 1
-        if pred["label"] == ex["label"]:
-            correct += 1
-            per[ex["label"]]["tp"] += 1
-            if evidence_ok(pred, ex):
-                ev_hits += 1
-        else:
-            per[pred["label"]]["fp"] += 1
-            per[ex["label"]]["fn"] += 1
-    n = len(examples)
-    f1 = {}
-    for l, c in per.items():
-        p = c["tp"] / (c["tp"] + c["fp"]) if c["tp"] + c["fp"] else 0
-        r = c["tp"] / (c["tp"] + c["fn"]) if c["tp"] + c["fn"] else 0
-        f1[l] = round(2 * p * r / (p + r), 3) if p + r else 0
-    return {"model": adapter, "base": base, "n": n, "label_accuracy": round(correct / n, 3) if n else 0,
-            "json_valid": round(valid / n, 3) if n else 0, "evidence_hit": round(ev_hits / n, 3) if n else 0, "f1": f1}
+        answers.append(generate(model, tok, prompt=prompt, max_tokens=200, verbose=False))
+    return {"model": adapter, "base": base, **score(examples, answers)}
 
 
 def last_checkpoint(out):

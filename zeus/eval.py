@@ -41,6 +41,60 @@ def evidence_ok(pred, ex):
     return all(e.get("passage") in want and e.get("quote", "") and e["quote"] in texts.get(e["passage"], "") for e in ev)
 
 
+def score(examples, answers):
+    """Measured numbers for a list of examples and the model's raw answers (text or an
+    already parsed dict per example). One function for every path that scores Zeus
+    (eval.py, eval_endpoint.py, train_mlx.py, cloud/modal_train.py), so the four
+    never drift apart. Nothing is estimated: an answer that does not parse counts
+    against the true label and never towards a predicted one.
+
+    Returns: n, label_accuracy, json_valid, evidence_hit, f1 (per label), and
+    - confusion: true label -> {predicted label or "invalid": count}
+    - rates: per label, tpr (recall: of the examples with this label, how many were
+      labelled so) and tnr (of the examples without this label, how many were not
+      wrongly given it). The gap between the two shows a bias the headline hides.
+    - binary_balanced_accuracy: the two-label view used by LLM-AggreFact, with
+      supported as 1 and both contradicted and not_covered as 0, so Zeus can be
+      put beside published checkers. It is the mean of the supported tpr and tnr.
+    """
+    confusion = {l: {k: 0 for k in LABELS + ("invalid",)} for l in LABELS}
+    tp, fp, fn = Counter(), Counter(), Counter()
+    correct = valid = ev_hits = 0
+    for ex, ans in zip(examples, answers):
+        pred = ans if isinstance(ans, dict) else parse(ans or "")
+        if pred is not None and pred.get("label") not in LABELS:
+            pred = None
+        if not pred:
+            fn[ex["label"]] += 1
+            confusion[ex["label"]]["invalid"] += 1
+            continue
+        valid += 1
+        confusion[ex["label"]][pred["label"]] += 1
+        if pred["label"] == ex["label"]:
+            correct += 1
+            tp[ex["label"]] += 1
+            if evidence_ok(pred, ex):
+                ev_hits += 1
+        else:
+            fp[pred["label"]] += 1
+            fn[ex["label"]] += 1
+    n = len(examples)
+    f1, rates = {}, {}
+    for l in LABELS:
+        p = tp[l] / (tp[l] + fp[l]) if tp[l] + fp[l] else 0
+        r = tp[l] / (tp[l] + fn[l]) if tp[l] + fn[l] else 0
+        f1[l] = round(2 * p * r / (p + r), 3) if p + r else 0
+        positives = tp[l] + fn[l]
+        negatives = n - positives
+        rates[l] = {"tpr": round(tp[l] / positives, 3) if positives else None,
+                    "tnr": round((negatives - fp[l]) / negatives, 3) if negatives else None}
+    s = rates["supported"]
+    bba = round((s["tpr"] + s["tnr"]) / 2, 3) if s["tpr"] is not None and s["tnr"] is not None else None
+    return {"n": n, "label_accuracy": round(correct / n, 3) if n else 0, "json_valid": round(valid / n, 3) if n else 0,
+            "evidence_hit": round(ev_hits / n, 3) if n else 0, "f1": f1, "confusion": confusion, "rates": rates,
+            "binary_balanced_accuracy": bba}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--adapter")
@@ -67,36 +121,15 @@ def main():
     with open(args.eval_file or os.path.join(args.data, "eval.jsonl")) as f:
         examples = [json.loads(l) for l in f][: args.limit]
 
-    tp, fp, fn = Counter(), Counter(), Counter()
-    correct = valid = ev_hits = 0
+    answers = []
     for ex in examples:
         msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": render_user(ex)}]
         ids = tok.apply_chat_template(msgs, add_generation_prompt=True, return_tensors="pt").to(model.device)
         with torch.no_grad():
             out = model.generate(ids, max_new_tokens=200, do_sample=False)
-        text = tok.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
-        pred = parse(text)
-        if not pred:
-            fn[ex["label"]] += 1
-            continue
-        valid += 1
-        if pred["label"] == ex["label"]:
-            correct += 1
-            tp[ex["label"]] += 1
-            if evidence_ok(pred, ex):
-                ev_hits += 1
-        else:
-            fp[pred["label"]] += 1
-            fn[ex["label"]] += 1
+        answers.append(tok.decode(out[0][ids.shape[1]:], skip_special_tokens=True))
 
-    n = len(examples)
-    f1 = {}
-    for l in LABELS:
-        p = tp[l] / (tp[l] + fp[l]) if tp[l] + fp[l] else 0
-        r = tp[l] / (tp[l] + fn[l]) if tp[l] + fn[l] else 0
-        f1[l] = round(2 * p * r / (p + r), 3) if p + r else 0
-    report = {"model": args.adapter or args.model, "n": n, "label_accuracy": round(correct / n, 3) if n else 0,
-              "json_valid": round(valid / n, 3) if n else 0, "evidence_hit": round(ev_hits / n, 3) if n else 0, "f1": f1}
+    report = {"model": args.adapter or args.model, **score(examples, answers)}
     out = args.out or os.path.join(args.adapter or ".", "eval.json")
     with open(out, "w") as f:
         json.dump(report, f, indent=2)
