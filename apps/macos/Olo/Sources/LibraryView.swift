@@ -130,11 +130,11 @@ struct LibrarySidebar: View {
         HStack {
             Text(model.folderFilter ?? (model.user?.email ?? "Conversations")).lineLimit(1)
             Spacer()
-            if !model.folders.isEmpty {
+            if !model.conversationFolders.isEmpty {
                 Menu {
                     Button("All folders") { model.folderFilter = nil }
                     Divider()
-                    ForEach(model.folders, id: \.self) { f in
+                    ForEach(model.conversationFolders, id: \.self) { f in
                         Button(f) { model.folderFilter = f }
                     }
                 } label: {
@@ -170,10 +170,10 @@ struct LibrarySidebar: View {
     private func rowMenu(_ c: LocalConversation) -> some View {
         Button(c.isPinned ? "Unpin" : "Pin") { Task { await model.setPinned(c.id, !c.isPinned) } }
         Menu("Move to Folder") {
-            ForEach(model.folders, id: \.self) { f in
+            ForEach(model.conversationFolders, id: \.self) { f in
                 Button(f) { Task { await model.setFolder(c.id, f) } }.disabled(c.folder == f)
             }
-            if !model.folders.isEmpty { Divider() }
+            if !model.conversationFolders.isEmpty { Divider() }
             Button("New Folder...") { folderPrompt = c.id }
             if c.folder != nil { Button("Remove from Folder") { Task { await model.setFolder(c.id, nil) } } }
         }

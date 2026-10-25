@@ -78,7 +78,7 @@ extension AppModel {
     // MARK: Pins and folders
 
     /// Every folder the listed conversations use, sorted.
-    var folders: [String] {
+    var conversationFolders: [String] {
         Array(Set(conversations.compactMap { $0.folder }.filter { !$0.isEmpty })).sorted { $0.lowercased() < $1.lowercased() }
     }
 
