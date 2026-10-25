@@ -36,6 +36,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, fuse, looseQuery } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
+import { applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400, MAX_SENTENCES = 5;
@@ -120,13 +121,25 @@ Deno.serve(async (req) => {
   }
   const results = fuse(semantic, keyword, k);
   const passages: Passage[] = labelPassages(results);
-  const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, summary: r.summary || null, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at, similarity: typeof r.similarity === 'number' ? r.similarity : null, match: r.match, citation: citation(r) }));
+  const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, summary: r.summary || null, url: r.url, source: r.source, source_slug: r.source_slug, source_kind: r.source_kind || null, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at,
+    // sql/002: trust and time (null until the migration has run)
+    status: r.status || null, credibility: typeof r.credibility === 'number' ? r.credibility : null, corroboration: typeof r.corroboration === 'number' ? r.corroboration : null, valid_from: r.valid_from || null, valid_to: r.valid_to || null, observed_at: r.observed_at || null, source_revision: r.source_revision || null,
+    url_ok: null as boolean | null, similarity: typeof r.similarity === 'number' ? r.similarity : null, match: r.match, citation: citation(r) }));
+  const sources = sourceSummary(provenance);
+  const freshness_note = timeSensitive(q) && sources.newest_published && sources.newest_published < new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10)
+    ? `This looks like a question about something that changes; the newest source here is from ${sources.newest_published}.` : null;
+  // Gaps (sql/002 takes the daily-salted address hash for a per-address cap; the older one-argument form is the fallback).
+  const recordGap = () => sb.rpc('olo_record_gap', { p_q: q, p_ip_hash: ipHash }).then((r: any) => { if (r?.error) return sb.rpc('olo_record_gap', { p_q: q }); }, () => {}).then(() => {}, () => {});
+  // Links of the passages an answer cites are checked while the model writes (bounded: six urls, four seconds each).
+  const linkCheck = checkLinks(provenance.map(p => p.url));
+  const markLinks = async () => { try { const ok = await linkCheck; for (const p of provenance) if (p.url in ok) p.url_ok = ok[p.url]; } catch { /* unknown stays null */ } };
 
   const logIt = (results_n: number) => sb.from('olo_query_log').insert({ ip_hash: ipHash, q_len: q.length, results: results_n, client: 'answer' + (keyed ? ':keyed' : '') }).then(() => {}, () => {});
 
   if (!passages.length) {
     await logIt(0);
-    return new Response(JSON.stringify({ q, answer: NOT_COVERED_TEXT, sentences: [], passages: [], verifier: null, model: null, summary: summarise([]), covered: false, attribution: 'Olo Commons by Helius Network.' }), { headers: H });
+    recordGap();
+    return new Response(JSON.stringify({ q, answer: NOT_COVERED_TEXT, answer_shown: NOT_COVERED_TEXT, shown: 0, hidden: 0, abstained: true, sentences: [], passages: [], verifier: null, model: null, summary: summarise([]), covered: false, sources, freshness_note: null, answered_by: { writer: null, writer_provider: null, verifier: null, mode: 'none' }, attribution: 'Olo Commons by Helius Network.' }), { headers: H });
   }
 
   // draft, with the first writer that answers
@@ -141,9 +154,13 @@ Deno.serve(async (req) => {
     // No writer reachable: answer from the passages themselves.
     const quoted = extractiveAnswer(q, passages);
     await logIt(passages.length);
-    if (!quoted.length) sb.rpc('olo_record_gap', { p_q: q }).then(() => {}, () => {});
+    if (!quoted.length) recordGap();
+    await markLinks();
+    const shownX = shownAnswer(quoted);
     return new Response(JSON.stringify({
-      q, mode: 'extractive', answer: quoted.length ? quoted.map(s => s.text).join(' ') : NOT_COVERED_TEXT, covered: quoted.length > 0, sentences: quoted, summary: summarise(quoted),
+      q, mode: 'extractive', answer: quoted.length ? quoted.map(s => s.text).join(' ') : NOT_COVERED_TEXT, answer_shown: quoted.length ? shownX.text : NOT_COVERED_TEXT, shown: shownX.shown, hidden: shownX.hidden, abstained: !quoted.length,
+      covered: quoted.length > 0, sentences: quoted, summary: summarise(quoted), sources, freshness_note,
+      answered_by: { writer: null, writer_provider: null, verifier: 'extractive', mode: 'extractive' },
       passages: provenance, verifier: 'extractive', model: null, notice: 'No writing model could be reached, so these are the passages\' own sentences that best match the question.' + (draftErrors.length ? ` (${draftErrors.join('; ')})` : ''),
       attribution: 'Olo Commons by Helius Network. Each passage carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api',
     }), { headers: H });
@@ -172,18 +189,27 @@ Deno.serve(async (req) => {
       } catch (e) { verifyError = String((e as Error).message || e).slice(0, 80); }
     }
     const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
-    return { text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked };
+    // Figures and dates in the sentence must be in its sources, whatever the verifier said.
+    return applyFigureCheck({ text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, s.text, scope);
   }));
   const counts = usedBy.reduce((m, n) => m.set(n, (m.get(n) || 0) + 1), new Map<string, number>());
   const verifier = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || (zeusUrl ? `zeus:${zeusModel}` : 'llm-fallback');
 
   await logIt(passages.length);
   // a question the Commons could not answer is a gap worth filling; the RPC exists once sql/001 has been rerun, so a failure here is ignored
-  if (!covered || (verdicts.length && verdicts.every(v => v.verdict === 'not_covered'))) sb.rpc('olo_record_gap', { p_q: q }).then(() => {}, () => {});
+  if (!covered || (verdicts.length && verdicts.every(v => v.verdict === 'not_covered'))) recordGap();
+  await markLinks();
+  const shown = covered ? shownAnswer(verdicts) : { text: NOT_COVERED_TEXT, shown: 0, hidden: 0, abstained: true };
+  const mode = writer === writers[0] ? 'written' : 'written-fallback';
+  let provider = ''; try { provider = new URL(writer.base).hostname; } catch { provider = writer.base; }
 
   return new Response(JSON.stringify({
-    q, answer: covered ? sentences.map(s => s.text).join(' ') : NOT_COVERED_TEXT, covered, sentences: verdicts, summary: summarise(verdicts),
-    passages: provenance, verifier, model: writer.model, mode: writer === writers[0] ? 'written' : 'written-fallback',
+    q, answer: covered ? sentences.map(s => s.text).join(' ') : NOT_COVERED_TEXT,
+    // What a client shows by default: only the sentences Zeus and the figure check support. The full draft stays in `answer`.
+    answer_shown: shown.text, shown: shown.shown, hidden: shown.hidden, abstained: shown.abstained,
+    covered, sentences: verdicts, summary: summarise(verdicts), sources, freshness_note,
+    answered_by: { writer: writer.model, writer_provider: provider, verifier, mode },
+    passages: provenance, verifier, model: writer.model, mode,
     attribution: 'Olo Commons by Helius Network. Each passage carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api',
   }), { headers: H });
 });

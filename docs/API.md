@@ -49,6 +49,14 @@ Response:
   "attribution": "..." }
 ```
 
+Since the trust update (sql/002 and the October 2026 functions) the response also carries:
+
+- `answer_shown`, `shown`, `hidden`, `abstained`: what a client shows by default. Only sentences Zeus marked supported *and* whose figures appear in their sources are shown; the rest stay in `sentences` behind a "show unverified" control. When nothing is supported, `abstained` is true and `answer_shown` says Olo could not verify an answer, instead of showing a plausible unverified paragraph.
+- Each sentence has `figures_checked` and `figures_missing`: every number, date or percentage in a sentence must appear in the passages it cites, whatever the verifier said; a missing one downgrades the sentence to not covered with the figure named in `rationale`.
+- `sources`: `{ passages, independent_sources, newest_published, oldest_published, last_observed, median_credibility, verified_passages }`, the line under an answer. `freshness_note` is set when the question looks time-sensitive and the newest source is over a year old.
+- `answered_by`: `{ writer, writer_provider, verifier, mode }` so an app can print which model wrote and which checked, including fallbacks.
+- Each passage has `status`, `credibility`, `corroboration`, `valid_from`, `valid_to`, `observed_at`, `source_revision`, `source_kind` (docs/TRUST.md) and `url_ok` (true, false, or null when the link check timed out; up to six distinct cited links are checked with a four-second HEAD while the model writes).
+
 `verifier` says what checked the sentences: `zeus:<model>` when a served Zeus adapter did (`OLO_ZEUS_URL` set), or `llm-fallback` when the drafting model ran the Zeus prompt instead. The page shows this, so nobody mistakes the fallback for Zeus. When the Commons has nothing on the question, `covered` is false, `answer` is "The Commons does not cover this yet." and the topic words of the question (never the question itself) are recorded as a gap for the ingester to fill (see Gaps below). Same limits as the query call; the two share one counter. A `503 answering_not_configured` means the project has no model key yet; a `502 model_unavailable` means the provider did not answer in time.
 
 ## Status
