@@ -1,0 +1,113 @@
+{
+  "eval_v2": {
+    "n": 200,
+    "label_accuracy": 0.755,
+    "json_valid": 1.0,
+    "evidence_hit": 0.745,
+    "f1": {
+      "supported": 0.586,
+      "contradicted": 0.825,
+      "not_covered": 0.824
+    },
+    "confusion": {
+      "supported": {
+        "supported": 34,
+        "contradicted": 10,
+        "not_covered": 38,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 0,
+        "contradicted": 26,
+        "not_covered": 1,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 0,
+        "contradicted": 0,
+        "not_covered": 91,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.415,
+        "tnr": 1.0
+      },
+      "contradicted": {
+        "tpr": 0.963,
+        "tnr": 0.942
+      },
+      "not_covered": {
+        "tpr": 1.0,
+        "tnr": 0.642
+      }
+    },
+    "binary_balanced_accuracy": 0.708,
+    "by_kind": {
+      "near_miss": {
+        "n": 91,
+        "accuracy": 1.0
+      },
+      "relation_flip": {
+        "n": 27,
+        "accuracy": 0.963
+      },
+      "true_passage_last": {
+        "n": 82,
+        "accuracy": 0.415
+      }
+    },
+    "note": "frozen harder split: near-miss not covered, relation-flip contradictions, true passage last"
+  },
+  "vitaminc_dev": {
+    "n": 300,
+    "label_accuracy": 0.667,
+    "json_valid": 0.997,
+    "evidence_hit": 0.663,
+    "f1": {
+      "supported": 0.695,
+      "contradicted": 0.673,
+      "not_covered": 0.634
+    },
+    "confusion": {
+      "supported": {
+        "supported": 65,
+        "contradicted": 25,
+        "not_covered": 10,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 6,
+        "contradicted": 76,
+        "not_covered": 17,
+        "invalid": 1
+      },
+      "not_covered": {
+        "supported": 16,
+        "contradicted": 25,
+        "not_covered": 59,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.65,
+        "tnr": 0.89
+      },
+      "contradicted": {
+        "tpr": 0.76,
+        "tnr": 0.75
+      },
+      "not_covered": {
+        "tpr": 0.59,
+        "tnr": 0.865
+      }
+    },
+    "binary_balanced_accuracy": 0.77,
+    "note": "held out, never trained on; human-written claims over Wikipedia revisions"
+  },
+  "llm_aggrefact": {
+    "error": "DatasetNotFoundError: Dataset 'lytang/LLM-AggreFact' is a gated dataset on the Hub. You must be authenticated to access it."
+  }
+}
