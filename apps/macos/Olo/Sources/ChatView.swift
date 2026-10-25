@@ -160,24 +160,31 @@ struct TurnView: View {
     let compact: Bool
     var onFollowUp: (String) -> Void = { _ in }
     @State private var showChecks = false
+    @State private var showUnverified = UserDefaults.standard.bool(forKey: Prefs.showUnverified)
+    @State private var flagNote: String?
 
     var body: some View {
         if turn.role == .user {
-            HStack {
-                Spacer(minLength: 60)
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text(turn.text).textSelection(.enabled)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                    if !turn.attachments.isEmpty {
-                        Text(turn.attachments.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack {
+                    Spacer(minLength: 60)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(turn.text).textSelection(.enabled)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(Color.accentColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+                        if !turn.attachments.isEmpty {
+                            Text(turn.attachments.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
+                if Crisis.detect(turn.text) { CrisisBanner() }
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 if turn.text.isEmpty {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text(status ?? "Thinking").foregroundStyle(.secondary) }
+                } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons {
+                    answerText(checked: v)
                 } else {
                     Text(markdown(turn.text)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
                 }
@@ -198,6 +205,59 @@ struct TurnView: View {
         (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
     }
 
+    /// Only the sentences Zeus could support are shown; the rest wait behind a button, labelled.
+    private func answerText(checked v: AnswerVerification) -> some View {
+        let split = Abstain.splitShown(text: turn.text, claims: v.claims)
+        return VStack(alignment: .leading, spacing: 8) {
+            if split.shown.isEmpty {
+                Text(Abstain.nothingVerified).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(markdown(split.shown.joined(separator: " "))).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+            if !split.hidden.isEmpty {
+                Button(showUnverified ? "Hide \(split.hidden.count) unverified sentence\(split.hidden.count == 1 ? "" : "s")" : "Show \(split.hidden.count) unverified sentence\(split.hidden.count == 1 ? "" : "s")") { showUnverified.toggle() }
+                    .buttonStyle(.borderless).font(.caption)
+                if showUnverified {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(split.hidden.enumerated()), id: \.offset) { _, h in
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(h.0).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                Text(Abstain.label(for: h.1)).font(.caption2).foregroundStyle(h.1 == "contradicted" ? Color.red : Color.orange)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+        }
+    }
+
+    /// The Flag menu on a claim: the reader's verdict goes to a reviewer, and accepted flags teach Zeus.
+    private func flagMenu(_ c: ClaimVerdict) -> some View {
+        Menu {
+            ForEach(0..<FeedbackRequest.userChoices.count, id: \.self) { i in
+                let choice = FeedbackRequest.userChoices[i]
+                Button(choice.label) { sendFlag(c, choice.value) }
+            }
+        } label: {
+            Label("Flag", systemImage: "flag").labelStyle(.titleOnly)
+        }
+        .menuStyle(.borderlessButton).font(.caption).fixedSize()
+        .help("Tell a reviewer this verdict is wrong; accepted flags teach Zeus")
+    }
+
+    private func sendFlag(_ c: ClaimVerdict, _ userVerdict: String) {
+        let origin = turn.origin ?? .olo
+        guard let req = try? FeedbackRequest.build(answerSource: origin, claim: c, sources: turn.sources, userVerdict: userVerdict, note: nil) else { flagNote = FeedbackRequest.failed; return }
+        flagNote = "Sending the flag"
+        Task { @MainActor in
+            flagNote = await FeedbackRequest.send(req)
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            flagNote = nil
+        }
+    }
+
     private func verification(_ v: AnswerVerification) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Button { showChecks.toggle() } label: {
@@ -211,10 +271,15 @@ struct TurnView: View {
                 .font(.caption.weight(.medium))
             }
             .buttonStyle(.plain)
+            if let n = flagNote { Text(n).font(.caption2).foregroundStyle(.secondary) }
             if showChecks {
                 ForEach(Array(v.claims.enumerated()), id: \.offset) { _, c in
                     VStack(alignment: .leading, spacing: 2) {
-                        Label(c.claim, systemImage: icon(c.verdict)).foregroundStyle(color(c.verdict))
+                        HStack(alignment: .top, spacing: 6) {
+                            Label(c.claim, systemImage: icon(c.verdict)).foregroundStyle(color(c.verdict))
+                            Spacer(minLength: 4)
+                            flagMenu(c)
+                        }
                         if let e = c.excerpt, !e.isEmpty { Text("\"\(e)\"").font(.caption).italic().foregroundStyle(.secondary) }
                         if !c.rationale.isEmpty { Text(c.rationale).font(.caption).foregroundStyle(.secondary) }
                     }
@@ -240,6 +305,17 @@ struct TurnView: View {
     }
 
     private var footer: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if !turn.text.isEmpty, let line = turn.answeredBy?.line {
+                Text(line + (Publishers.summary(of: turn.sources).map { "; " + $0 } ?? "")).font(.caption2).foregroundStyle(.secondary)
+            } else if !turn.text.isEmpty, let p = Publishers.summary(of: turn.sources) {
+                Text(p).font(.caption2).foregroundStyle(.secondary)
+            }
+            footerRow
+        }
+    }
+
+    private var footerRow: some View {
         HStack(spacing: 12) {
             if let o = turn.origin, !turn.text.isEmpty {
                 Text(o.label).font(.caption2).foregroundStyle(o == .offline ? Color.orange : Color.secondary)
@@ -260,5 +336,22 @@ struct TurnView: View {
 
     private func color(_ v: String) -> Color {
         switch v { case "supported": return .primary; case "contradicted": return .red; default: return .orange }
+    }
+}
+
+
+/// A calm note with helplines, shown above the answer when a message reads as self-harm. Never blocks the answer.
+struct CrisisBanner: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(Crisis.title).font(.callout.weight(.semibold))
+            ForEach(Crisis.helplines, id: \.name) { h in
+                Text("\(h.name): \(h.detail)").font(.caption)
+            }
+            Text(Crisis.emergency).font(.caption.weight(.medium))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
     }
 }

@@ -10,6 +10,8 @@ public enum StreamEvent: Equatable, Sendable {
     case status(stage: String, detail: String?)
     case notice(String)
     case verification(AnswerVerification)
+    /// Who wrote the answer, where it ran and who checked it ({type:"answered_by", writer, writer_provider or provider, verifier}).
+    case answeredBy(writer: String?, provider: String?, verifier: String?)
     case followUps([String])
     case cut(String)
     case answerComplete(conversationId: Int?, messageId: Int?)
@@ -39,8 +41,13 @@ public enum StreamEvent: Equatable, Sendable {
             guard let m = value["message"]?.stringValue else { return nil }
             return .notice(m)
         case "verification":
-            guard let v = value["verification"]?.decoded(as: AnswerVerification.self) else { return nil }
+            guard var v = value["verification"]?.decoded(as: AnswerVerification.self) else { return nil }
+            // answered_by may sit beside the verification rather than inside it.
+            if v.answeredBy == nil, let a = value["answered_by"].flatMap(AnsweredBy.init(json:)) { v.answeredBy = a }
             return .verification(v)
+        case "answered_by":
+            let a = AnsweredBy(json: value) ?? value["answered_by"].flatMap(AnsweredBy.init(json:))
+            return .answeredBy(writer: a?.writer, provider: a?.provider, verifier: a?.verifier)
         case "followups":
             if case .array(let items)? = value["questions"] {
                 return .followUps(items.compactMap { $0.stringValue })
@@ -91,6 +98,7 @@ public struct StreamOutcome: Equatable, Sendable {
     public var text: String = ""
     public var sources: [Source] = []
     public var verification: AnswerVerification?
+    public var answeredBy: AnsweredBy?
     public var notices: [String] = []
     public var followUps: [String] = []
     public var status: String?
@@ -108,7 +116,12 @@ public struct StreamOutcome: Equatable, Sendable {
         case .sources(let s): sources = s
         case .status(let stage, let detail): status = detail ?? stage
         case .notice(let m): notices.append(m)
-        case .verification(let v): verification = v
+        case .verification(let v):
+            verification = v
+            if let a = v.answeredBy { answeredBy = a }
+        case .answeredBy(let w, let p, let v):
+            let a = AnsweredBy(writer: w, provider: p, verifier: v)
+            if !a.isEmpty { answeredBy = a }
         case .followUps(let q): followUps = q
         case .cut(let m): notices.append(m)
         case .answerComplete(let c, let m):

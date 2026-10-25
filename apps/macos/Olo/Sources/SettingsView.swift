@@ -10,6 +10,7 @@ struct SignInView: View {
     @State private var sent = false
     @State private var busy = false
     @State private var error: String?
+    @State private var consent = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -21,6 +22,10 @@ struct SignInView: View {
                 TextField("Six digit code", text: $code)
                     .textContentType(.oneTimeCode)
                     .onChange(of: code) { code = String(code.filter(\.isNumber).prefix(6)) }
+            }
+            if sent {
+                Toggle(ConsentText.label, isOn: $consent)
+                Text(ConsentText.paragraph).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let error { Text(error).foregroundStyle(.red).font(.callout) }
             HStack {
@@ -50,7 +55,7 @@ struct SignInView: View {
     private func verify() async {
         busy = true; error = nil
         defer { busy = false }
-        do { try await model.verify(email: email.trimmingCharacters(in: .whitespaces), code: code); dismiss() }
+        do { try await model.verify(email: email.trimmingCharacters(in: .whitespaces), code: code, trainingConsent: consent); dismiss() }
         catch { self.error = error.localizedDescription }
     }
 }
@@ -73,6 +78,7 @@ struct GeneralSettings: View {
     @AppStorage(Prefs.hotKeyEnabled) private var hotKey = true
     @AppStorage(Prefs.searchWebByDefault) private var searchWeb = false
     @AppStorage(Prefs.useFoldersByDefault) private var useFolders = false
+    @AppStorage(Prefs.showUnverified) private var showUnverified = false
     @State private var login = false
 
     var body: some View {
@@ -88,6 +94,8 @@ struct GeneralSettings: View {
                 .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Open Olo at login (in the menu bar)", isOn: $login)
                 .onChange(of: login) { model.launchAtLogin = login }
+            Toggle("Always show unverified sentences in answers", isOn: $showUnverified)
+            Text("Off: only sentences Zeus could support are shown; the rest wait behind a button, labelled.").font(.caption).foregroundStyle(.secondary)
             Toggle("Search the web for new questions", isOn: $searchWeb)
             Toggle("Use my folders for new questions", isOn: $useFolders)
             Section("Where Olo runs") {
@@ -176,6 +184,10 @@ struct AccountSettings: View {
                 Text(model.user == nil ? "Not signed in. Olo gives you free messages to start; sign in to use your account." : "Using free messages on this Mac.")
                 Button("Sign In...") { model.showSignIn = true; model.showMainWindow() }
             }
+            Section("Training") {
+                Toggle(ConsentText.label, isOn: Binding(get: { model.trainingConsent }, set: { model.trainingConsent = $0 }))
+                Text(ConsentText.paragraph).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             Section("Data on this Mac") {
                 Text("Copies of your conversations, questions waiting for a connection and the Commons copy are kept in Olo's own container. Your account data lives on helius-olo.io.")
                     .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -187,4 +199,11 @@ struct AccountSettings: View {
             }
         }
     }
+}
+
+
+/// The one consent that matters, in the same words on every Olo app.
+enum ConsentText {
+    static let label = "Use my conversations to improve Olo and train Zeus"
+    static let paragraph = "Olo is a paid product. With this on, your questions and answers may be used to improve Olo and to train Zeus, Olo's open-source verifier. Flags you send from a verdict are always used, because sending one is your choice. Memory and attached files are never used for training. Conversations can be deleted, and links to them are never indexed by search engines."
 }

@@ -14,19 +14,39 @@ public struct Turn: Codable, Equatable, Identifiable, Sendable {
     public var attachments: [String]
     public var serverMessageId: Int?
     public var createdAt: Date
+    /// Who answered (added in 1.1): the writing model, where it ran, and the verifier.
+    /// Optional, so conversations saved by 1.0 still decode (the synthesised decoder
+    /// uses decodeIfPresent for optionals).
+    public var writer: String?
+    public var provider: String?
+    public var verifier: String?
 
     public init(role: Role, text: String, origin: AnswerOrigin? = nil, verification: AnswerVerification? = nil, sources: [Source] = [],
                 notices: [String] = [], followUps: [String] = [], attachments: [String] = [], serverMessageId: Int? = nil,
-                createdAt: Date = Date(), id: UUID = UUID()) {
+                createdAt: Date = Date(), id: UUID = UUID(), writer: String? = nil, provider: String? = nil, verifier: String? = nil) {
         self.id = id; self.role = role; self.text = text; self.origin = origin; self.verification = verification; self.sources = sources
         self.notices = notices; self.followUps = followUps; self.attachments = attachments; self.serverMessageId = serverMessageId; self.createdAt = createdAt
+        self.writer = writer; self.provider = provider; self.verifier = verifier
     }
 
     /// A stored helius-olo.io message as a turn.
     public init(message m: Message) {
+        let a = m.verification?.answeredBy
         self.init(role: m.role == "user" ? .user : .assistant, text: m.content, origin: m.role == "user" ? nil : .olo,
                   verification: m.verification, sources: m.sources ?? [], serverMessageId: m.id,
-                  createdAt: ISO8601.parse(m.createdAt) ?? Date())
+                  createdAt: ISO8601.parse(m.createdAt) ?? Date(), writer: a?.writer, provider: a?.provider, verifier: a?.verifier)
+    }
+
+    public var answeredBy: AnsweredBy? {
+        let a = AnsweredBy(writer: writer, provider: provider, verifier: verifier)
+        return a.isEmpty ? nil : a
+    }
+
+    public mutating func setAnsweredBy(_ a: AnsweredBy?) {
+        guard let a, !a.isEmpty else { return }
+        if let w = a.writer { writer = w }
+        if let p = a.provider { provider = p }
+        if let v = a.verifier { verifier = v }
     }
 }
 

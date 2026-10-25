@@ -14,6 +14,14 @@ A native SwiftUI app (not a website in a window) on the same account as helius-o
 | Same account | Sign in with your email code; conversations are the same on the web, iPhone and Mac. Without signing in, Olo starts an anonymous workspace with the free messages, which moves into your account when you sign in. |
 | Menu bar, login | Lives in the menu bar after the window closes; Open at Login in Settings. olo://ask?q=... and olo://chat/42 links work. |
 
+## 1.1: checked by default, flags, consent
+
+- Only the sentences Zeus could support are shown; contradicted, not covered and unchecked ones wait behind "Show N unverified sentences" (Settings > General to always show them).
+- Every claim has a Flag menu (Supported, Contradicted, Not covered, Wrong source, Unclear). A reviewer confirms flags before they teach Zeus (docs/FEEDBACK.md). Never the question, never who asked.
+- Under each answer: who wrote it, where it ran, who checked it, and how many independent publishers stand behind it.
+- "Use my conversations to improve Olo and train Zeus" is off until ticked (sign-in and Settings > Account). Flags are always used; memory and files never are.
+- A message that reads as self-harm shows helplines above the answer (Samaritans 116 123, Shout 85258, 116 123 in the EU, 999 or 112). The answer is never blocked.
+
 ## Where answers are made
 
 Never on the Mac. In order: helius-olo.io (Anthropic, then OpenAI, then open models on Cloudflare; Zeus checks each sentence), then Olo Commons' own service (open models on Groq and Cloudflare, checked by Zeus) if helius-olo.io cannot be reached, then the offline quotes above. The only work the Mac does is a keyword search (BM25) over saved text, which takes milliseconds.

@@ -78,4 +78,8 @@ enum Prefs {
     static let searchWebByDefault = "searchWebByDefault"
     static let useFoldersByDefault = "useFoldersByDefault"
     static let offlineOnly = "offlineOnly"
+    /// Show contradicted, not covered and unchecked sentences in answers without pressing the button.
+    static let showUnverified = "showUnverified"
+    /// "Use my conversations to improve Olo and train Zeus": off until the person ticks it.
+    static let trainingConsent = "trainingConsent"
 }

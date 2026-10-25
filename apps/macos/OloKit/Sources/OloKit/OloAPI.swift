@@ -69,6 +69,19 @@ public final class OloAPI: @unchecked Sendable {
         try await run(try TRPC.queryRequest(base: base, path: "auth.profile", token: token), as: Profile.self)
     }
 
+    public struct ConsentInput: Codable, Sendable {
+        public let consent: Bool
+        public init(consent: Bool) { self.consent = consent }
+    }
+
+    /// Records whether this person's conversations may be used to improve Olo and train
+    /// Zeus (auth.setTrainingConsent). A server that does not know the procedure yet
+    /// answers NOT_FOUND; the caller keeps the choice locally in that case.
+    public func setTrainingConsent(_ consent: Bool) async throws {
+        let req = try TRPC.mutationRequest(base: base, path: "auth.setTrainingConsent", input: ConsentInput(consent: consent), token: token)
+        _ = try await run(req, as: JSONValue.self)
+    }
+
     // MARK: Conversations
 
     public func listConversations() async throws -> [Conversation] {

@@ -135,16 +135,19 @@ public struct AnswerVerification: Codable, Equatable, Sendable {
     public var unsupported: Int
     public var contradicted: Int
     public var score: Double
+    /// Who wrote and who checked, when the server puts it inside the verification payload.
+    public var answeredBy: AnsweredBy?
 
-    public init(claims: [ClaimVerdict]) {
+    public init(claims: [ClaimVerdict], answeredBy: AnsweredBy? = nil) {
         self.claims = claims
         supported = claims.filter { $0.verdict == "supported" }.count
         contradicted = claims.filter { $0.verdict == "contradicted" }.count
         unsupported = claims.count - supported - contradicted
         score = claims.isEmpty ? 0 : Double(supported) / Double(claims.count)
+        self.answeredBy = answeredBy
     }
 
-    enum CodingKeys: String, CodingKey { case claims, supported, unsupported, contradicted, score }
+    enum CodingKeys: String, CodingKey { case claims, supported, unsupported, contradicted, score, answeredBy = "answered_by" }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -153,6 +156,8 @@ public struct AnswerVerification: Codable, Equatable, Sendable {
         contradicted = (try? c.decode(Int.self, forKey: .contradicted)) ?? claims.filter { $0.verdict == "contradicted" }.count
         unsupported = (try? c.decode(Int.self, forKey: .unsupported)) ?? (claims.count - supported - contradicted)
         score = (try? c.decode(Double.self, forKey: .score)) ?? 0
+        answeredBy = try? c.decodeIfPresent(AnsweredBy.self, forKey: .answeredBy)
+        if answeredBy?.isEmpty == true { answeredBy = nil }
     }
 }
 

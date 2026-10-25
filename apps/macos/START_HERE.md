@@ -23,6 +23,10 @@ appstoreconnect.apple.com > **Apps** > **+** > **New App**: platform **macOS**, 
 
 ## 5. Archive and upload
 
+Version 1.1.0, build 2 are already set in the project. For each later upload raise the Build number by one.
+
+### Archive
+
 1. At the top choose **Any Mac (Apple Silicon, Intel)**.
 2. Menu **Product** > **Archive**. When it finishes, the Organizer window opens.
 3. Select the archive > **Distribute App** > **App Store Connect** > **Upload**, then Next through the screens (automatic signing) and **Upload**.

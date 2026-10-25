@@ -107,11 +107,37 @@ final class AppModel {
         try await api.requestEmailCode(email)
     }
 
-    func verify(email: String, code: String) async throws {
+    func verify(email: String, code: String, trainingConsent consent: Bool? = nil) async throws {
         let s = try await api.verifyEmailCode(email: email, code: code)
         adopt(s)
         showSignIn = false
+        if let consent {
+            UserDefaults.standard.set(consent, forKey: Prefs.trainingConsent)
+            await sendTrainingConsent(consent)
+        }
         await refreshConversations()
+    }
+
+    /// Whether this person's conversations may be used to improve Olo and train Zeus.
+    /// Off until ticked. Kept on this Mac, and told to helius-olo.io when it knows the
+    /// procedure (an older server answers NOT_FOUND, which is ignored).
+    var trainingConsent: Bool {
+        get { UserDefaults.standard.bool(forKey: Prefs.trainingConsent) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Prefs.trainingConsent)
+            Task { await sendTrainingConsent(newValue) }
+        }
+    }
+
+    private func sendTrainingConsent(_ consent: Bool) async {
+        guard canReachCloud, api.token != nil else { return }
+        do {
+            try await api.setTrainingConsent(consent)
+        } catch let e as TRPC.RemoteError where e.isNotFound {
+            // The server does not record it yet; the choice stays on this Mac.
+        } catch {
+            banner = "Your training choice is saved on this Mac but could not be sent to helius-olo.io yet."
+        }
     }
 
     func signOut() {
@@ -312,7 +338,8 @@ final class AppModel {
                 case .status(let stage, let detail): answering[cid] = detail ?? stage
                 case .sources(let s): updateTurn(cid, tid) { $0.sources = s }; answering[cid] = "Reading \(s.count) sources"
                 case .notice(let m), .cut(let m): updateTurn(cid, tid) { $0.notices.append(m) }
-                case .verification(let v): updateTurn(cid, tid) { $0.verification = v }
+                case .verification(let v): updateTurn(cid, tid) { $0.verification = v; $0.setAnsweredBy(v.answeredBy) }
+                case .answeredBy(let w, let p, let ver): updateTurn(cid, tid) { $0.setAnsweredBy(AnsweredBy(writer: w, provider: p, verifier: ver)) }
                 case .followUps(let q): updateTurn(cid, tid) { $0.followUps = q }
                 case .answerComplete(_, let mid):
                     updateTurn(cid, tid) { $0.serverMessageId = mid }
@@ -355,7 +382,7 @@ final class AppModel {
                 updateTurn(cid, tid) { t in
                     t.text = last.content
                     t.serverMessageId = last.id
-                    if let v = last.verification { t.verification = v }
+                    if let v = last.verification { t.verification = v; t.setAnsweredBy(v.answeredBy) }
                     if let s = last.sources, !s.isEmpty { t.sources = s }
                 }
                 return
@@ -375,6 +402,7 @@ final class AppModel {
                     t.origin = .commons
                     t.sources = a.asSources
                     t.verification = a.asVerification
+                    t.setAnsweredBy(a.attribution)
                     if let n = a.notice { t.notices.append(n) }
                     t.notices.append("helius-olo.io could not be reached (\(error.localizedDescription)), so Olo Commons answered.")
                 }

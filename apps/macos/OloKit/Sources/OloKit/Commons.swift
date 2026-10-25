@@ -84,6 +84,17 @@ public struct CommonsAnswer: Codable, Equatable, Sendable {
     public var model: String?
     public var mode: String?
     public var notice: String?
+    public var answeredBy: AnsweredBy?
+
+    enum CodingKeys: String, CodingKey {
+        case q, covered, answer, sentences, passages, verifier, model, mode, notice
+        case answeredBy = "answered_by"
+    }
+
+    /// Who wrote and checked: the answered_by object, or the older model and verifier fields.
+    public var attribution: AnsweredBy {
+        AnsweredBy(writer: answeredBy?.writer ?? model, provider: answeredBy?.provider, verifier: answeredBy?.verifier ?? verifier)
+    }
 
     public static let endpoint = URL(string: "https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-answer")!
 

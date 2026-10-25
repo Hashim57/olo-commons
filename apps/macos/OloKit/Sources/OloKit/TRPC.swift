@@ -10,6 +10,8 @@ public enum TRPC {
         public var httpStatus: Int
         public var errorDescription: String? { message }
         public var isUnauthorized: Bool { code == "UNAUTHORIZED" || httpStatus == 401 }
+        /// The server does not have this procedure (an older deployment): the app carries on without it.
+        public var isNotFound: Bool { code == "NOT_FOUND" || httpStatus == 404 }
     }
 
     struct Envelope<T: Encodable>: Encodable { let json: T }
