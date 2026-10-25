@@ -24,18 +24,38 @@ from eval import LABELS, evidence_ok, parse, score as shared_score  # noqa: E402
 from train_lora import SYSTEM, render_user  # noqa: E402
 
 
-def ask(url, key, model, ex, timeout=60, tries=3):
+def ask(url, key, model, ex, timeout=60, tries=3, errors=None):
+    """The model's answer text, or "" when the endpoint did not answer. Every failure is
+    recorded in `errors` (a list) as "HTTP <code>: <body start>" or the exception name,
+    so a served model that scores zero never does so silently."""
     body = json.dumps({"model": model, "temperature": 0, "max_tokens": 200,
                        "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": render_user(ex)}]}).encode()
+    last = None
     for attempt in range(tries):
         req = urllib.request.Request(url.rstrip("/") + "/chat/completions", data=body, method="POST",
                                      headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return json.loads(r.read())["choices"][0]["message"]["content"]
-        except (urllib.error.URLError, KeyError, ValueError, TimeoutError):
-            time.sleep(2 * (attempt + 1))
+        except urllib.error.HTTPError as e:
+            last = f"HTTP {e.code}: {e.read()[:160].decode('utf-8', 'replace')}"
+            if 400 <= e.code < 500 and e.code != 429:
+                break  # a client error (401 wrong key, 404 wrong path, 413) will not change on retry
+        except (urllib.error.URLError, KeyError, ValueError, TimeoutError, OSError) as e:
+            last = f"{type(e).__name__}: {str(e)[:120]}"
+        time.sleep(2 * (attempt + 1))
+    if errors is not None:
+        errors.append(last or "no answer")
     return ""
+
+
+def error_summary(errors):
+    """{"count": n, "kinds": {"HTTP 401: {...": 200}} with at most five distinct kinds, for the report."""
+    kinds = {}
+    for e in errors:
+        kinds[e] = kinds.get(e, 0) + 1
+    top = sorted(kinds.items(), key=lambda kv: -kv[1])[:5]
+    return {"count": len(errors), "kinds": dict(top)}
 
 
 def score(examples, answers):
@@ -58,8 +78,12 @@ def main():
     examples = [json.loads(l) for l in open(os.path.join(a.data, "eval.jsonl")) if l.strip()][: a.limit]
     t0 = time.time()
     with ThreadPoolExecutor(a.workers) as pool:
-        answers = list(pool.map(lambda ex: ask(a.url, key, a.model, ex), examples))
+        errors = []
+        answers = list(pool.map(lambda ex: ask(a.url, key, a.model, ex, errors=errors), examples))
     report = {"served_by": a.url.split("/")[2], "model": a.model, **score(examples, answers), "minutes": round((time.time() - t0) / 60, 1)}
+    if errors:
+        report["errors"] = error_summary(errors)
+        print(f"{len(errors)} of {len(examples)} requests failed; most common: {next(iter(report['errors']['kinds']))}", file=sys.stderr)
     if a.out:
         with open(a.out, "w") as f:
             json.dump(report, f, indent=2)

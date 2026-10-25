@@ -1,0 +1,39 @@
+# Checks the Zeus that is actually serving (the Cloudflare Worker): /health, then a handful of
+# eval examples through /v1/chat/completions, with every refused or failed request's reason in
+# the log. Run it by hand when eval-cloudflare.json scores zero or olo-answer says the verifier
+# fell back. Reads only; commits nothing. Needs the ZEUS_URL variable and the ZEUS_KEY secret.
+name: Zeus served check
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'How many eval examples to send'
+        default: '8'
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Health and model list
+        env:
+          ZEUS_URL: ${{ vars.ZEUS_URL }}
+          ZEUS_KEY: ${{ secrets.ZEUS_KEY }}
+        run: |
+          if [ -z "$ZEUS_URL" ]; then echo "::error::ZEUS_URL variable is not set"; exit 1; fi
+          BASE="${ZEUS_URL%/v1}"
+          echo "GET $BASE/health"; curl -sS -m 30 "$BASE/health"; echo
+          echo "GET $ZEUS_URL/models"; curl -sS -m 30 -o /tmp/models.json -w "HTTP %{http_code}\n" -H "Authorization: Bearer $ZEUS_KEY" "$ZEUS_URL/models"; head -c 600 /tmp/models.json; echo
+      - name: A few eval examples through the served model
+        env:
+          ZEUS_URL: ${{ vars.ZEUS_URL }}
+          ZEUS_KEY: ${{ secrets.ZEUS_KEY }}
+        run: |
+          python3 -m pip install --quiet requests
+          python3 zeus/build_dataset.py --max-atoms 400 --out /tmp/zdata
+          python3 zeus/eval_endpoint.py --url "$ZEUS_URL" --data /tmp/zdata --limit "${{ github.event.inputs.limit || '8' }}" --workers 2
