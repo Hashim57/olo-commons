@@ -20,6 +20,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { clean } from './text.ts';
 import { ckanCandidates, OPEN_LICENCES } from './ckan.ts';
+import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikiSearchTitles, type Candidate } from './sources.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
@@ -158,6 +159,9 @@ Deno.serve(async (req) => {
   // Least recently run first, so no source is starved when a run is cut short.
   const { data: sources } = await sb.from('olo_sources').select('*').eq('enabled', true).order('last_run_at', { ascending: true, nullsFirst: true });
   const stats = { fetched: 0, added: 0, skipped: 0, failed: 0, linked: 0 };
+  // Why things failed, per source, written into the run note at the end (see runlog.ts).
+  const errors: RunError[] = [];
+  const fail = (slug: string, e: unknown) => { stats.failed++; errors.push({ slug, message: e instanceof Error ? e.message : String(e) }); };
   const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats }).eq('id', run?.id);
   let cutShort = false;
 
@@ -182,7 +186,7 @@ Deno.serve(async (req) => {
         const links = (nb || []).filter((x: any) => x.sim >= MIN_LINK).flatMap((x: any) => [{ from_atom: atom.id, to_atom: x.id, relation: 'similar', weight: x.sim }, { from_atom: x.id, to_atom: atom.id, relation: 'similar', weight: x.sim }]);
         if (links.length) { const { error: le } = await sb.from('olo_links').upsert(links, { onConflict: 'from_atom,to_atom,relation', ignoreDuplicates: true }); if (!le) stats.linked += links.length; }
         await checkpoint();
-      } catch (_) { stats.failed++; }
+      } catch (e) { fail(src.slug, e); }
     }
     if (addedHere) { src.atoms = (src.atoms || 0) + addedHere; await sb.from('olo_sources').update({ atoms: src.atoms }).eq('id', src.id); }
     return addedHere;
@@ -200,7 +204,7 @@ Deno.serve(async (req) => {
       for (const src of searchable) {
         if (outOfTime() || gapAdded >= gapBudget) break;
         let cands: Candidate[] = [];
-        try { cands = await search[src.slug](gap.topic, perSrc); } catch (_) { stats.failed++; continue; }
+        try { cands = await search[src.slug](gap.topic, perSrc); } catch (e) { fail(src.slug + ' (gap search)', e); continue; }
         gapFetched += cands.length;
         gapAdded += await ingest(src, cands.slice(0, gapBudget - gapAdded));
       }
@@ -215,13 +219,13 @@ Deno.serve(async (req) => {
     if (outOfTime()) { cutShort = true; break; }
     const fn = discover[src.slug]; if (!fn) continue;
     let cands: Candidate[] = [];
-    try { cands = await fn(perSource, src); } catch (e) { stats.failed++; continue; }
+    try { cands = await fn(perSource, src); } catch (e) { fail(src.slug, e); continue; }
     await ingest(src, cands);
     await sb.from('olo_sources').update({ last_run_at: new Date().toISOString() }).eq('id', src.id);
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + (cutShort ? ' (time budget reached, continues next run)' : '') }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });
