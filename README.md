@@ -6,6 +6,8 @@ Olo Commons grows every 15 minutes from sources the world already trusts (Wikipe
 
 Live: https://heliusnetwork.app/olo
 
+Since October 2026 every atom also carries trust and time: a status (candidate, verified, disputed, superseded, retracted), a computed credibility, validity dates, the revision of its source and what replaced it (docs/TRUST.md). Sources are re-read and nothing is overwritten. Sentence flags from Olo's apps, reviewed by a person, teach Zeus every day (docs/FEEDBACK.md); Zeus's measured numbers are in docs/ZEUS_SCORECARD.md. Olo, Zeus and the Commons together are Helius Network's WEBOCTA system (docs/WEBOCTA.md).
+
 ## Why
 
 Language models are good at reasoning and bad at remembering. The fix is not a bigger model; it is a shared, citable memory that is open to inspect, open to correct and open to build on, in the spirit of the Internet Archive and Wikipedia. Olo Commons is that memory for Olo (helius-olo.io and the Olo inside the Helius Network app), and for anyone else.
@@ -13,10 +15,12 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 ## What is in this repository
 
 - `sql/001_olo_commons.sql`: the schema for Postgres with pgvector. Sources registry, atoms, links, queue, run log, daily snapshots, projects, read-only API functions, Row Level Security, scheduled jobs.
+- `sql/002_trust_time_provenance.sql`: status, credibility, validity dates, source revisions, supersession, the feedback table, retractions and the per-address cap on curiosity gaps. Run after 001.
 - `functions/olo-ingest`: the hourly ingester (Supabase Edge Function, Deno). One discovery routine per source, using that source's own public API. Embeds with `gte-small` inside Supabase; no external AI key.
 - `functions/olo-query`: the read API. Meaning search merged with keyword search, provenance on every result, rate limiting by hashed address, CORS for known origins.
 - `functions/olo-answer`: the answer API. Retrieves like olo-query, drafts two to four cited sentences with a hosted open-weight model, and has every sentence checked (supported, contradicted, not covered, with quoted evidence) by Zeus when a served adapter is configured, otherwise by the drafting model under the Zeus prompt, and says which. Uncovered questions become gaps the ingester fills next.
-- `docs/API.md`: how to call it.
+- `functions/olo-feedback`: sentence flags from the apps, bounded and rate limited, reviewed before they teach Zeus.
+- `docs/API.md`: how to call it. `docs/TRUST.md`, `docs/FEEDBACK.md`, `docs/ZEUS_SCORECARD.md`, `docs/WEBOCTA.md`.
 - `SECURITY.md`: what is enforced and how to report a problem.
 
 ## Run your own
@@ -28,7 +32,7 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 
 ## Zeus: the verification model
 
-`zeus/` holds the open build of Zeus, Olo's claim verification layer: a LoRA fine-tune of an open-weight instruction model (Qwen2.5-7B-Instruct by default) trained on examples made from the Commons itself. `build_dataset.py` makes the data, `train_lora.py` trains on one GPU, `eval.py` scores every version on a frozen split, `serve.py` exposes it over HTTP. `zeus/STATUS.md` records each build. Hand-written examples in `zeus/data/gold/` are the most useful contribution you can make.
+`zeus/` holds the open build of Zeus, Olo's claim verification layer: a rank-8 LoRA on Mistral 7B Instruct v0.2 (Apache 2.0) trained on examples made from the Commons, open fact-checking corpora, hand-written gold and reviewed feedback. It trains in the cloud every day when there is something new to learn (`.github/workflows/zeus-train.yml`, `zeus/cloud/`), is measured on a frozen split, on held-out VitaminC and on an LLM-AggreFact sample, and serves on Cloudflare Workers AI (`zeus/cloudflare/`). `zeus/STATUS.md` records each build; `docs/ZEUS_SCORECARD.md` is the current scorecard. Hand-written examples in `zeus/data/gold/` are the most useful contribution you can make.
 
 ## Build on it
 
