@@ -36,3 +36,8 @@ Text from Wikipedia and VitaminC is under CC BY-SA 3.0 or 4.0: attribute Wikiped
 ## Not in the data
 
 No personal data, no query text from the read API, no text the Commons was not allowed to redistribute. Gaps recorded by `olo-answer` are bags of topic words, never questions, and are not training data.
+
+
+## eval2.jsonl: the harder frozen split (added 25 Oct 2026)
+
+Built over the same eval atoms as `eval.jsonl` and nothing else, with its own generator, so it never overlaps training and leaves the first split byte-identical. Three patterns per atom where the rules allow: a near-miss not covered (passages on the topic that do not state the claim), a relation-flip contradiction with the passages shuffled (both terms of the comparison present, one word changed), and a supported claim whose true passage comes last of four. The first split saturated at v6 (0.995); this one is the Commons-based number to watch, reported per pattern in docs/ZEUS_SCORECARD.md beside the held-out VitaminC dev set.

@@ -41,8 +41,10 @@ def main():
     ext_path = os.path.join(out, "eval-external.json")
     if os.path.exists(ext_path):
         ext = json.load(open(ext_path))
-        vit, agg = ext.get("vitaminc_dev") or {}, ext.get("llm_aggrefact") or {}
+        vit, agg, ev2 = ext.get("vitaminc_dev") or {}, ext.get("llm_aggrefact") or {}, ext.get("eval_v2") or {}
         held = []
+        if ev2.get("label_accuracy") is not None:
+            held.append(f"Commons eval v2 (harder, n={ev2.get('n')}) accuracy {ev2.get('label_accuracy')}, evidence hit {ev2.get('evidence_hit')}")
         if vit:
             held.append(f"VitaminC dev (held out, n={vit.get('n')}) accuracy {vit.get('label_accuracy')}, evidence hit {vit.get('evidence_hit')}, binary balanced accuracy {vit.get('binary_balanced_accuracy')}")
         if agg.get("balanced_accuracy") is not None:

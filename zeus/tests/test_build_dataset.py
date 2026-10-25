@@ -154,3 +154,26 @@ def test_snapshot_rows_become_atoms_with_the_same_ids():
     # the split depends only on the id, so a snapshot build keeps the frozen eval split
     assert bd.stable_split(a["id"], 0.1) == bd.stable_split("0b33889b-f1c3-4711-8ed4-96477ffee3ea", 0.1)
     assert bd.passage(a)["text"] == a["summary"]
+
+
+def test_eval2_uses_only_eval_atoms_with_the_hard_patterns():
+    from build_dataset import build, build_eval2, stable_split
+    def text(i):
+        if i % 2 == 0:
+            return f"Harbour{i} is a harbour town founded by settlers in 19{50 + i % 40}. Its port is larger than the port of Harbour{i + 2} and busier than before."
+        return f"The village of Mine{i} was founded near a river in 19{50 + i % 40} and mined copper. Its mine is deeper than the mine at Mine{i + 2} and older than most."
+    atoms = [{"id": f"{i:08x}-0000-0000-0000-000000000000", "title": f"Place {i}", "url": f"https://x/{i}", "source": "wikipedia", "summary": text(i)} for i in range(60)]
+    ev2 = build_eval2(atoms, 0.3)
+    assert ev2, "eval2 is empty"
+    eval_ids = {a["id"] for a in atoms if stable_split(a["id"], 0.3) == "eval"}
+    assert all(ex["atom_id"] in eval_ids for ex in ev2)
+    kinds = {ex["kind"] for ex in ev2}
+    assert {"near_miss", "relation_flip", "true_passage_last"} <= kinds, kinds
+    for ex in ev2:
+        if ex["kind"] == "true_passage_last":
+            assert ex["passages"][-1]["id"] == ex["atom_id"][:8] and ex["label"] == "supported"
+        if ex["kind"] == "relation_flip":
+            assert ex["label"] == "contradicted" and ex["claim"] != ex["evidence"][0]["quote"]
+    # the frozen split is untouched by the extra generator
+    assert build(atoms, 0.3)["eval"] == build(atoms, 0.3)["eval"]
+    assert build_eval2(atoms, 0.3) == ev2

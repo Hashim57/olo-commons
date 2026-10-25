@@ -246,6 +246,42 @@ def build(atoms, eval_share, seed=7, near_miss=True):
     return out
 
 
+def build_eval2(atoms, eval_share, seed=7):
+    """The harder, versioned eval split (eval2.jsonl), over the same eval atoms as the frozen
+    split and nothing else, so it never overlaps training. Three patterns a 7B model does
+    not get for free from the rule-made split: near-miss not_covered (passages on the
+    topic that do not state the claim), relation-flip contradictions (both terms of the
+    comparison present, one word changed), and supported claims whose true passage comes
+    last among four, so passage order gives nothing away. Its own generator (seed + 2)
+    leaves the frozen split and the training order untouched."""
+    rng = random.Random(seed + 2)
+    usable = [a for a in atoms if sentences(a.get("summary") or a.get("content") or "")]
+    titles = [a.get("title", "") for a in usable if a.get("title")]
+    out = []
+    for a in usable:
+        if stable_split(a["id"], eval_share) != "eval":
+            continue
+        sents = sentences(a.get("summary") or a.get("content") or "")
+        claim = rng.choice(sents)
+        near = near_misses(claim, a, usable)
+        if near:
+            out.append({"claim": claim, "passages": [passage(o) for o in near], "label": "not_covered", "evidence": [],
+                        "rationale": "The passages are on a related topic, but none of them states this claim.", "atom_id": a["id"], "kind": "near_miss"})
+        c = contradict(claim, rng, [t for t in titles if t != a.get("title")], prefer_relation=True)
+        if c and c[1].startswith("relation"):
+            others = rng.sample([o for o in usable if o["id"] != a["id"]], k=min(2, len(usable) - 1))
+            ps = [passage(a)] + [passage(o) for o in others]
+            rng.shuffle(ps)
+            out.append({"claim": c[0], "passages": ps, "label": "contradicted", "evidence": [{"passage": a["id"][:8], "quote": claim[:160]}],
+                        "rationale": f"The passage says the opposite ({c[1]}).", "atom_id": a["id"], "kind": "relation_flip"})
+        distractors = rng.sample([o for o in usable if o["id"] != a["id"]], k=min(3, len(usable) - 1))
+        out.append({"claim": claim, "passages": [passage(o) for o in distractors] + [passage(a)], "label": "supported",
+                    "evidence": [{"passage": a["id"][:8], "quote": claim[:160]}], "rationale": "The last passage states the claim directly.",
+                    "atom_id": a["id"], "kind": "true_passage_last"})
+    rng.shuffle(out)
+    return out
+
+
 def count_gold(gold_dir, skip_eval=False):
     """(number of files, number of valid examples) in a directory of jsonl files.
     A line counts only if it parses and carries claim, passages, label and
@@ -289,15 +325,16 @@ def main():
     else:
         atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", args.max_atoms)
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
+    data["eval2"] = build_eval2(atoms, args.eval_share)
     os.makedirs(args.out, exist_ok=True)
-    for split in ("train", "eval"):
+    for split in ("train", "eval", "eval2"):
         with open(os.path.join(args.out, f"{split}.jsonl"), "w") as f:
             for ex in data[split]:
                 f.write(json.dumps(ex, ensure_ascii=False) + "\n")
     gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
     imported_files, n_imported = count_gold(os.path.join(args.out, "imported"), skip_eval=True)
     by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
-    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]),
+    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]), "eval2": len(data["eval2"]),
             "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
             "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
             "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss"),

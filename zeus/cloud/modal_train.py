@@ -166,6 +166,24 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     # saved before the held-out evals, so a failure there never loses the adapter or the frozen-split numbers
 
     external = {}
+    # The harder versioned split over the same eval atoms (near misses, relation flips, true passage last):
+    # frozen like the first split, never trained on, and not yet saturated.
+    ev2 = load(os.path.join(data, "eval2.jsonl"))[:eval_limit]
+    if ev2:
+        try:
+            a, _ = run(ev2)
+            r2 = score(ev2, a)
+            kinds = {}
+            for ex, ans in zip(ev2, a):
+                k = ex.get("kind", "other")
+                d = kinds.setdefault(k, {"n": 0, "correct": 0})
+                d["n"] += 1
+                if ans and ans.get("label") == ex["label"]:
+                    d["correct"] += 1
+            r2["by_kind"] = {k: {"n": d["n"], "accuracy": round(d["correct"] / d["n"], 3)} for k, d in sorted(kinds.items())}
+            external["eval_v2"] = {"n": len(ev2), **r2, "note": "frozen harder split: near-miss not covered, relation-flip contradictions, true passage last"}
+        except Exception as e:
+            external["eval_v2"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     # Held-out VitaminC dev (Wikipedia revisions, human-written claims): the first number to trust once the rule-made split saturates.
     vit = load(os.path.join(data, "imported", "vitaminc-eval.jsonl"))
     if vit:
@@ -218,7 +236,7 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
         subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--split", "dev", "--n", "300", "--out", "zeus/data/imported/vitaminc-eval.jsonl"], check=False)
     subprocess.run([py, "zeus/build_dataset.py"], check=True)
     # Only what training needs: the splits, gold and imported sets, and the helpers (not the corpus cache).
-    parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl") if os.path.exists(f"zeus/data/{f}")]
+    parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl", "eval2.jsonl") if os.path.exists(f"zeus/data/{f}")]
     parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported") if os.path.isdir(f"zeus/data/{d}")]
     parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
     payload = _tar(parts)
