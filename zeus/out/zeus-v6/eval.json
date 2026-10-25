@@ -1,0 +1,48 @@
+{
+  "model": "zeus/out/zeus-v6",
+  "base": "mistralai/Mistral-7B-Instruct-v0.2",
+  "n": 200,
+  "label_accuracy": 0.995,
+  "json_valid": 1.0,
+  "evidence_hit": 0.995,
+  "f1": {
+    "supported": 0.992,
+    "contradicted": 0.993,
+    "not_covered": 1.0
+  },
+  "confusion": {
+    "supported": {
+      "supported": 63,
+      "contradicted": 1,
+      "not_covered": 0,
+      "invalid": 0
+    },
+    "contradicted": {
+      "supported": 0,
+      "contradicted": 70,
+      "not_covered": 0,
+      "invalid": 0
+    },
+    "not_covered": {
+      "supported": 0,
+      "contradicted": 0,
+      "not_covered": 66,
+      "invalid": 0
+    }
+  },
+  "rates": {
+    "supported": {
+      "tpr": 0.984,
+      "tnr": 1.0
+    },
+    "contradicted": {
+      "tpr": 1.0,
+      "tnr": 0.992
+    },
+    "not_covered": {
+      "tpr": 1.0,
+      "tnr": 1.0
+    }
+  },
+  "binary_balanced_accuracy": 0.992
+}
