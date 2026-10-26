@@ -32,6 +32,13 @@ const OPEN_LICENCE_URLS: Array<[RegExp, string]> = [
   [/^usa\.gov\/(government-works|publicdomain|government-copyright)/, 'Public domain (U.S. Government Work)'],
   [/^usa\.gov\/publicdomain\/label\/1\.0/, 'Public domain (U.S. Government Work)'],
   [/^nationalarchives\.gov\.uk\/doc\/open-government-licence/, 'Open Government Licence'],
+  // Many state and city portals publish the Open Definition URL instead of the licence's own.
+  [/^opendefinition\.org\/licenses\/cc-zero$/, 'CC0 1.0'],
+  [/^opendefinition\.org\/licenses\/cc-by$/, 'CC BY'],
+  [/^opendefinition\.org\/licenses\/cc-by-sa$/, 'CC BY-SA'],
+  [/^opendefinition\.org\/licenses\/odc-pddl$/, 'ODC Public Domain Dedication and Licence'],
+  [/^opendefinition\.org\/licenses\/odc-by$/, 'ODC Attribution Licence'],
+  [/^opendefinition\.org\/licenses\/odc-odbl$/, 'ODC Open Database Licence'],
 ];
 
 function normaliseUrl(u: string): string {
@@ -66,7 +73,7 @@ export function dataGovLicence(row: any): string | null {
 export function dataGovCandidate(row: any): DataGovCandidate | null {
   if (!row || typeof row !== 'object') return null;
   const dcat = row.dcat || {};
-  const access = String(dcat.accessLevel || 'public').toLowerCase();
+  const access = String(dcat.accessLevel || row.access_level || 'public').toLowerCase();
   if (access !== 'public') return null;
   const licence = dataGovLicence(row); if (!licence) return null;
   const title = clean(row.title || dcat.title).slice(0, 200);

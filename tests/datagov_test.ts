@@ -31,6 +31,9 @@ Deno.test('licence URLs match across http, https, www and a trailing slash', () 
   assertEquals(dataGovLicence(row({}, { license: 'http://www.usa.gov/publicdomain/label/1.0/' })), 'Public domain (U.S. Government Work)');
   assertEquals(dataGovLicence(row({}, { license: 'https://creativecommons.org/licenses/by/4.0' })), 'CC BY');
   assertEquals(dataGovLicence(row({}, { license: 'http://opendatacommons.org/licenses/odbl/1.0/' })), 'ODC Open Database Licence');
+  // As seen in a live v4 response from a state portal (26 October 2026).
+  assertEquals(dataGovLicence(row({}, { license: 'http://www.opendefinition.org/licenses/cc-by' })), 'CC BY');
+  assertEquals(dataGovLicence(row({}, { license: 'http://www.opendefinition.org/licenses/cc-by-nc' })), null);
 });
 
 Deno.test('unknown or custom licences are dropped', () => {
