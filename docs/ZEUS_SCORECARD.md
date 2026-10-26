@@ -7,6 +7,7 @@ Measured 2026-10-25 UTC. Base mistralai/Mistral-7B-Instruct-v0.2, rank-8 LoRA, 6
 | Set | n | Label accuracy | Evidence hit | JSON valid | Binary balanced accuracy |
 | --- | --- | --- | --- | --- | --- |
 | Commons eval v2 (frozen, harder: near misses, relation flips, true passage last) | 200 | 100.0% | 99.5% | 100.0% | 100.0% |
+| Commons eval v3 (frozen, versioned: near misses naming everything, relation and before/after flips, modal shifts, two-passage support, decade paraphrases) | not yet measured | | | | |
 | VitaminC dev (human-written claims over Wikipedia revisions, three labels) | 300 | 67.7% | 66.0% | 99.7% | 81.5% |
 | LLM-AggreFact | not measured (DatasetNotFoundError: Dataset 'lytang/LLM-AggreFact' is a gated dataset on the Hub. You must be authenticated to access it.) | | | | |
 
