@@ -128,12 +128,12 @@ public struct BuildAllowance: Equatable, Sendable {
         if let nested = value["reviews"] ?? value["build"] {
             (a.used, a.limit) = pair(nested, usedKeys: ["used"], limitKeys: ["limit", "max"], remainingKeys: ["remaining", "left"])
         } else {
-            (a.used, a.limit) = pair(value, usedKeys: ["reviewsUsed", "used"], limitKeys: ["reviewsLimit", "limit"], remainingKeys: ["reviewsRemaining", "remaining"])
+            (a.used, a.limit) = pair(value, usedKeys: ["reviewsUsed", "used"], limitKeys: ["reviewsLimit", "limit"], remainingKeys: ["reviewsRemaining", "reviewsLeft", "remaining"])
         }
         if let nested = value["completions"] {
             (a.completionsUsed, a.completionsLimit) = pair(nested, usedKeys: ["used"], limitKeys: ["limit", "max"], remainingKeys: ["remaining", "left"])
         } else {
-            (a.completionsUsed, a.completionsLimit) = pair(value, usedKeys: ["completionsUsed"], limitKeys: ["completionsLimit"], remainingKeys: ["completionsRemaining"])
+            (a.completionsUsed, a.completionsLimit) = pair(value, usedKeys: ["completionsUsed"], limitKeys: ["completionsLimit"], remainingKeys: ["completionsRemaining", "completionsLeft"])
         }
         if a.limit == nil && a.completionsLimit == nil { return nil }
         return a
