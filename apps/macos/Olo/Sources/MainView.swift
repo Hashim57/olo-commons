@@ -26,7 +26,7 @@ struct MainView: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Button { model.panel = .build } label: { Label("Build with Olo", systemImage: "hammer") }
-                    .help("Build with Olo: Olo reviews your project's files as you save them, in any editor")
+                    .help("Build with Olo: code in Olo's editor while Olo reviews, suggests and writes with you")
             }
             ToolbarItem(placement: .status) {
                 if !model.isOnline {
