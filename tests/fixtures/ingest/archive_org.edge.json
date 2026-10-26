@@ -1,0 +1,41 @@
+{
+  "responseHeader": {
+    "status": 0,
+    "QTime": 41,
+    "params": {
+      "query": "mediatype:texts AND description:*",
+      "qin": "mediatype:texts AND description:*",
+      "fields": "identifier,title,description,creator,date,licenseurl",
+      "wt": "json",
+      "rows": 4,
+      "start": 0
+    }
+  },
+  "response": {
+    "numFound": 4,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "origintheoryofli00darw",
+        "title": "On the origin of species by means of natural selection, or, The preservation of favoured races in the struggle for life",
+        "creator": ["Darwin, Charles, 1809-1882", "Murray, John, 1808-1892, publisher"],
+        "description": "<p>First edition, London: John Murray, 1859. Darwin&#39;s account of descent with modification &amp; natural selection, with one folding diagram. Digitized from a copy held by a university library.</p>",
+        "date": "1859",
+        "licenseurl": "http://creativecommons.org/publicdomain/mark/1.0/"
+      },
+      {
+        "title": "A record with no identifier",
+        "description": "This row has a title and a description long enough to be kept, but no identifier, so there is no stable archive.org URL to give it."
+      },
+      {
+        "identifier": "untitled-scan-0001",
+        "description": "A description without a title is not enough to make an atom, however long it is and however much it says about the scan."
+      },
+      {
+        "identifier": "stub-0002",
+        "title": "Scan",
+        "description": ["scan", "page 1"]
+      }
+    ]
+  }
+}

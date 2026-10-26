@@ -1,0 +1,36 @@
+{
+  "type": "standard",
+  "title": "Proyecto Gutenberg",
+  "displaytitle": "<span class=\"mw-page-title-main\">Proyecto Gutenberg</span>",
+  "namespace": { "id": 0, "text": "" },
+  "wikibase_item": "Q22673",
+  "titles": {
+    "canonical": "Proyecto_Gutenberg",
+    "normalized": "Proyecto Gutenberg",
+    "display": "<span class=\"mw-page-title-main\">Proyecto Gutenberg</span>"
+  },
+  "pageid": 41622,
+  "lang": "es",
+  "dir": "ltr",
+  "revision": "170123456",
+  "tid": "0a1b2c3d-0000-11f1-8000-000000000000",
+  "timestamp": "2026-09-30T08:15:00Z",
+  "description": "biblioteca digital de libros electrónicos gratuitos",
+  "description_source": "central",
+  "content_urls": {
+    "desktop": {
+      "page": "https://es.wikipedia.org/wiki/Proyecto_Gutenberg",
+      "revisions": "https://es.wikipedia.org/wiki/Proyecto_Gutenberg?action=history",
+      "edit": "https://es.wikipedia.org/wiki/Proyecto_Gutenberg?action=edit",
+      "talk": "https://es.wikipedia.org/wiki/Discusi%C3%B3n:Proyecto_Gutenberg"
+    },
+    "mobile": {
+      "page": "https://es.wikipedia.org/wiki/Proyecto_Gutenberg",
+      "revisions": "https://es.wikipedia.org/wiki/Especial:Historial/Proyecto_Gutenberg",
+      "edit": "https://es.wikipedia.org/wiki/Proyecto_Gutenberg?action=edit",
+      "talk": "https://es.wikipedia.org/wiki/Discusi%C3%B3n:Proyecto_Gutenberg"
+    }
+  },
+  "extract": "El Proyecto Gutenberg es una iniciativa de voluntarios para digitalizar, archivar y distribuir obras culturales. Fue fundado en 1971 por el escritor estadounidense Michael S. Hart y es la biblioteca digital más antigua. La mayoría de los elementos de su colección son textos completos de libros de dominio público, que se ofrecen gratis en formatos abiertos.",
+  "extract_html": "<p>El <b>Proyecto Gutenberg</b> es una iniciativa de voluntarios para digitalizar, archivar y distribuir obras culturales. Fue fundado en 1971 por el escritor estadounidense Michael S. Hart y es la biblioteca digital más antigua. La mayoría de los elementos de su colección son textos completos de libros de dominio público, que se ofrecen gratis en formatos abiertos.</p>"
+}

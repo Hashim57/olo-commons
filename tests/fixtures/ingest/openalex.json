@@ -1,0 +1,584 @@
+{
+  "meta": {
+    "count": 5,
+    "db_response_time_ms": 38,
+    "page": 1,
+    "per_page": 5,
+    "groups_count": null
+  },
+  "results": [
+    {
+      "id": "https://openalex.org/W2741809807",
+      "doi": "https://doi.org/10.7717/PEERJ.4375",
+      "title": "The state of OA: a large-scale analysis of the prevalence and impact of Open Access articles",
+      "publication_date": "2018-02-13",
+      "abstract_inverted_index": {
+        "Despite": [
+          0
+        ],
+        "growing": [
+          1
+        ],
+        "interest": [
+          2
+        ],
+        "in": [
+          3
+        ],
+        "Open": [
+          4
+        ],
+        "Access": [
+          5
+        ],
+        "(OA)": [
+          6
+        ],
+        "to": [
+          7
+        ],
+        "scholarly": [
+          8,
+          54
+        ],
+        "literature,": [
+          9
+        ],
+        "there": [
+          10
+        ],
+        "is": [
+          11,
+          56
+        ],
+        "an": [
+          12,
+          34
+        ],
+        "unmet": [
+          13
+        ],
+        "need": [
+          14,
+          31
+        ],
+        "for": [
+          15,
+          42
+        ],
+        "large-scale,": [
+          16
+        ],
+        "up-to-date,": [
+          17
+        ],
+        "and": [
+          18,
+          24
+        ],
+        "reproducible": [
+          19
+        ],
+        "studies": [
+          20
+        ],
+        "assessing": [
+          21
+        ],
+        "the": [
+          22,
+          53
+        ],
+        "prevalence": [
+          23
+        ],
+        "characteristics": [
+          25
+        ],
+        "of": [
+          26,
+          52
+        ],
+        "OA.": [
+          27
+        ],
+        "We": [
+          28,
+          46
+        ],
+        "address": [
+          29
+        ],
+        "this": [
+          30
+        ],
+        "using": [
+          32
+        ],
+        "oaDOI,": [
+          33
+        ],
+        "open": [
+          35
+        ],
+        "online": [
+          36
+        ],
+        "service": [
+          37
+        ],
+        "that": [
+          38,
+          48
+        ],
+        "determines": [
+          39
+        ],
+        "OA": [
+          40,
+          57
+        ],
+        "status": [
+          41
+        ],
+        "67": [
+          43
+        ],
+        "million": [
+          44
+        ],
+        "articles.": [
+          45
+        ],
+        "estimate": [
+          47
+        ],
+        "at": [
+          49
+        ],
+        "least": [
+          50
+        ],
+        "28%": [
+          51
+        ],
+        "literature": [
+          55
+        ],
+        "&amp;": [
+          58
+        ],
+        "growing.": [
+          59
+        ]
+      },
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A5023888391",
+            "display_name": "Heather Piwowar",
+            "orcid": null
+          },
+          "institutions": []
+        },
+        {
+          "author_position": "middle",
+          "author": {
+            "id": "https://openalex.org/A5032586592",
+            "display_name": "Jason Priem",
+            "orcid": null
+          },
+          "institutions": []
+        },
+        {
+          "author_position": "last",
+          "author": {
+            "id": null,
+            "display_name": null
+          },
+          "institutions": []
+        }
+      ],
+      "primary_location": {
+        "is_oa": true,
+        "landing_page_url": "https://doi.org/10.7717/peerj.4375",
+        "pdf_url": "https://peerj.com/articles/4375.pdf",
+        "source": {
+          "id": "https://openalex.org/S1983995261",
+          "display_name": "PeerJ",
+          "type": "journal"
+        },
+        "license": "cc-by",
+        "version": "publishedVersion"
+      },
+      "is_retracted": false,
+      "open_access": {
+        "is_oa": true,
+        "oa_status": "gold",
+        "oa_url": "https://peerj.com/articles/4375.pdf",
+        "any_repository_has_fulltext": true
+      }
+    },
+    {
+      "id": "https://openalex.org/W2100000002",
+      "doi": "https://doi.org/10.1000/http.landing.42",
+      "title": "A work whose landing page is plain <i>http</i>",
+      "publication_date": "2021-06",
+      "abstract_inverted_index": {
+        "This": [
+          0
+        ],
+        "work": [
+          1
+        ],
+        "has": [
+          2
+        ],
+        "a": [
+          3
+        ],
+        "landing": [
+          4
+        ],
+        "page": [
+          5
+        ],
+        "served": [
+          6
+        ],
+        "over": [
+          7
+        ],
+        "plain": [
+          8
+        ],
+        "http,": [
+          9
+        ],
+        "so": [
+          10
+        ],
+        "the": [
+          11,
+          14,
+          22
+        ],
+        "connector": [
+          12
+        ],
+        "uses": [
+          13
+        ],
+        "doi.org": [
+          15
+        ],
+        "link": [
+          16
+        ],
+        "instead,": [
+          17
+        ],
+        "which": [
+          18
+        ],
+        "is": [
+          19
+        ],
+        "https": [
+          20
+        ],
+        "and": [
+          21
+        ],
+        "stable": [
+          23
+        ],
+        "address": [
+          24
+        ],
+        "of": [
+          25
+        ],
+        "record": [
+          26
+        ],
+        "for": [
+          27
+        ],
+        "this": [
+          28
+        ],
+        "article.": [
+          29
+        ]
+      },
+      "authorships": [],
+      "primary_location": {
+        "is_oa": true,
+        "landing_page_url": "http://hdl.handle.net/1234/5678",
+        "pdf_url": null,
+        "source": null,
+        "license": null,
+        "version": "acceptedVersion"
+      },
+      "is_retracted": false,
+      "open_access": {
+        "is_oa": true,
+        "oa_status": "green",
+        "oa_url": "http://hdl.handle.net/1234/5678",
+        "any_repository_has_fulltext": true
+      }
+    },
+    {
+      "id": "https://openalex.org/W2100000003",
+      "doi": null,
+      "title": "A repository preprint with no DOI and no landing page",
+      "publication_date": "2023-11-30",
+      "abstract_inverted_index": {
+        "Without": [
+          0
+        ],
+        "a": [
+          1,
+          4,
+          10
+        ],
+        "DOI": [
+          2
+        ],
+        "or": [
+          3
+        ],
+        "landing": [
+          5
+        ],
+        "page,": [
+          6
+        ],
+        "the": [
+          7,
+          28
+        ],
+        "work": [
+          8
+        ],
+        "keeps": [
+          9
+        ],
+        "stable": [
+          11
+        ],
+        "address": [
+          12
+        ],
+        "on": [
+          13
+        ],
+        "OpenAlex": [
+          14
+        ],
+        "itself,": [
+          15
+        ],
+        "which": [
+          16
+        ],
+        "is": [
+          17
+        ],
+        "enough": [
+          18
+        ],
+        "to": [
+          19,
+          23
+        ],
+        "cite": [
+          20
+        ],
+        "it": [
+          21,
+          25
+        ],
+        "and": [
+          22
+        ],
+        "find": [
+          24
+        ],
+        "again": [
+          26
+        ],
+        "when": [
+          27
+        ],
+        "next": [
+          29
+        ],
+        "run": [
+          30
+        ],
+        "re-reads": [
+          31
+        ],
+        "its": [
+          32
+        ],
+        "metadata.": [
+          33
+        ]
+      },
+      "authorships": [
+        {
+          "author_position": "first",
+          "author": {
+            "id": "https://openalex.org/A5000000003",
+            "display_name": "R. Researcher"
+          },
+          "institutions": []
+        }
+      ],
+      "primary_location": null,
+      "is_retracted": false,
+      "open_access": {
+        "is_oa": true,
+        "oa_status": "green",
+        "oa_url": null,
+        "any_repository_has_fulltext": false
+      }
+    },
+    {
+      "id": "https://openalex.org/W2100000004",
+      "doi": "https://doi.org/10.1000/retracted.1",
+      "title": "A retracted work",
+      "publication_date": "2019-01-01",
+      "abstract_inverted_index": {
+        "This": [
+          0
+        ],
+        "abstract": [
+          1
+        ],
+        "would": [
+          2
+        ],
+        "be": [
+          3,
+          18
+        ],
+        "long": [
+          4
+        ],
+        "enough,": [
+          5
+        ],
+        "but": [
+          6
+        ],
+        "the": [
+          7,
+          21
+        ],
+        "work": [
+          8
+        ],
+        "has": [
+          9
+        ],
+        "been": [
+          10
+        ],
+        "retracted": [
+          11
+        ],
+        "by": [
+          12
+        ],
+        "its": [
+          13
+        ],
+        "publisher": [
+          14
+        ],
+        "and": [
+          15
+        ],
+        "must": [
+          16
+        ],
+        "never": [
+          17
+        ],
+        "stored": [
+          19
+        ],
+        "in": [
+          20
+        ],
+        "Commons": [
+          22
+        ],
+        "as": [
+          23
+        ],
+        "if": [
+          24
+        ],
+        "it": [
+          25,
+          30
+        ],
+        "still": [
+          26
+        ],
+        "held,": [
+          27
+        ],
+        "whatever": [
+          28
+        ],
+        "else": [
+          29
+        ],
+        "says.": [
+          31
+        ]
+      },
+      "authorships": [],
+      "primary_location": {
+        "is_oa": true,
+        "landing_page_url": "https://example.org/retracted",
+        "source": null,
+        "license": "cc-by",
+        "version": "publishedVersion"
+      },
+      "is_retracted": true,
+      "open_access": {
+        "is_oa": true,
+        "oa_status": "gold"
+      }
+    },
+    {
+      "id": "https://openalex.org/W2100000005",
+      "doi": "https://doi.org/10.1000/no.abstract",
+      "title": "A work with no abstract",
+      "publication_date": "2020-05-05",
+      "abstract_inverted_index": null,
+      "authorships": [],
+      "primary_location": {
+        "is_oa": true,
+        "landing_page_url": "https://example.org/no-abstract",
+        "source": null,
+        "license": null,
+        "version": null
+      },
+      "is_retracted": false,
+      "open_access": {
+        "is_oa": true,
+        "oa_status": "bronze"
+      }
+    }
+  ],
+  "group_by": []
+}
