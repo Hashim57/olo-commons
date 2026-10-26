@@ -59,7 +59,8 @@ Every ingest run (every 15 minutes) re-reads up to 3 of the oldest-observed Wiki
 | arXiv | metadata CC0; abstract under arXiv's licence | papers | version kept; DOI when given |
 | PubMed | NLM citation data public domain; abstract as published | papers | PMID and DOI kept |
 | OpenAlex | CC0 1.0 metadata | papers | open-access, not retracted, with abstract; DOI kept; `OPENALEX_KEY` optional |
-| Project Gutenberg, Internet Archive, data.gov | public domain / per item | books, archive, data | unchanged |
+| Project Gutenberg, Internet Archive | public domain / per item | books, archive | unchanged |
+| Data.gov | per dataset: open licence URL, or a federal dataset with no licence (U.S. Government Work, 17 U.S.C. 105) | government data | catalogue API v4 (CKAN was switched off in 2026); only public datasets; `DATAGOV_API_KEY` optional (api.data.gov, otherwise DEMO_KEY) |
 | Crossref Retraction Watch | CC0 1.0 | integrity | never a source of facts; hides retracted atoms |
 
 New sources start disabled in `olo_sources` and are enabled by a person after a run or two.

@@ -19,7 +19,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { clean } from './text.ts';
-import { ckanCandidates, OPEN_LICENCES } from './ckan.ts';
+import { dataGovApiBase, dataGovCandidates, dataGovSearchUrl, DATAGOV_TOPICS } from './datagov.ts';
 import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
@@ -71,14 +71,18 @@ async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
 const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>> = {
   wikipedia: (n) => wikiRandom('en', n),
   wikipedia_es: (n) => wikiRandom('es', n),
-  // data.gov dataset descriptions through CKAN package_search (issue #3). Only
-  // packages under an open licence id are requested and kept (see ckan.ts). The
-  // API base comes from the registry row so a portal move needs no code change.
+  // data.gov dataset descriptions through the catalogue API v4 (datagov.ts). The
+  // CKAN API this used to call was switched off in 2026, which is why the source
+  // never added an atom. A key from api.data.gov goes in the DATAGOV_API_KEY
+  // secret; without one DEMO_KEY is used, which allows 30 calls an hour, more than
+  // one call every 15 minutes needs. Only openly licensed, public datasets are kept.
   async data_gov(n, src) {
-    const api = (src.api_base || 'https://catalog.data.gov/api/3').replace(/\/+$/, '');
-    const fq = 'license_id:(' + Object.keys(OPEN_LICENCES).map(id => `"${id}"`).join(' OR ') + ')';
-    const r: any = await get(`${api}/action/package_search?rows=${Math.min(n * 3, 30)}&start=${Math.floor(Math.random() * 2000)}&fq=${encodeURIComponent(fq)}`);
-    return pick(ckanCandidates(r, 'https://catalog.data.gov', n * 3), n);
+    const api = dataGovApiBase(src.api_base);
+    const topic = DATAGOV_TOPICS[Math.floor(Math.random() * DATAGOV_TOPICS.length)];
+    const key = Deno.env.get('DATAGOV_API_KEY') || 'DEMO_KEY';
+    const r = await fetch(dataGovSearchUrl(api, topic, Math.min(n * 4, 40)), { headers: { 'User-Agent': UA, Accept: 'application/json', 'X-Api-Key': key }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`data.gov v4 ${r.status}${r.status === 403 ? ' (api.data.gov key missing or invalid: set DATAGOV_API_KEY)' : r.status === 429 ? ' (api.data.gov rate limit: set DATAGOV_API_KEY to a personal key)' : ''}`);
+    return pick(dataGovCandidates(await r.json(), n * 3), n);
   },
   async wikidata(n) {
     const r: any = await get(`https://www.wikidata.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=${Math.min(n * 2, 20)}&format=json`);

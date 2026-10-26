@@ -42,7 +42,7 @@ on conflict (slug) do nothing;
 -- after the deployed connector has been watched for a run or two
 -- (update public.olo_sources set enabled = true where slug = '...').
 insert into public.olo_sources (slug, name, kind, homepage, api_base, licence, licence_url, description, trust, enabled) values
- ('data_gov', 'Data.gov', 'government', 'https://catalog.data.gov', 'https://catalog.data.gov/api/3', 'Per dataset; only open licence ids are kept (U.S. public domain, CC0, CC BY, CC BY-SA, ODC, OGL)', 'https://resources.data.gov/open-licenses/', 'Descriptions of U.S. government open datasets from the data.gov CKAN catalogue.', 75, false),
+ ('data_gov', 'Data.gov', 'government', 'https://catalog.data.gov', 'https://api.gsa.gov/technology/datagov/v4', 'Per dataset; only open licence ids are kept (U.S. public domain, CC0, CC BY, CC BY-SA, ODC, OGL)', 'https://resources.data.gov/open-licenses/', 'Descriptions of U.S. government open datasets from the data.gov CKAN catalogue.', 75, false),
  ('wikipedia_es', 'Wikipedia (español)', 'encyclopedia', 'https://es.wikipedia.org', 'https://es.wikipedia.org/api/rest_v1', 'CC BY-SA 4.0', 'https://creativecommons.org/licenses/by-sa/4.0/', 'La enciclopedia libre: article summaries from the Spanish Wikipedia, stored with lang = es.', 85, false)
 on conflict (slug) do nothing;
 
