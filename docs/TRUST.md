@@ -9,7 +9,7 @@ Since sql/002 every atom says how far to trust it, when it was true, which revis
 | candidate | Stored with provenance, not yet corroborated | the ingester, on insert |
 | verified | Two independent sources agree (a neighbour from another source at cosine similarity 0.85 or more), or the source itself is authoritative (registry trust 90 or more: peer-reviewed papers, public-domain editions, statistics, law) | `olo_rescore_atom` |
 | disputed | Two current atoms disagree on a fact that can only have one value, for overlapping validity periods | the ingester (planned) and reviewers |
-| superseded | The source page changed; this row keeps the old text under a permanent link to its revision, with `valid_to` set and `superseded_by` pointing at the new atom | the re-check step of the ingester |
+| superseded | The source page changed; this row keeps the old text under a permanent link to its revision, with `valid_to` set and `superseded_by` pointing at the new atom. Also used for an old duplicate merged into its earliest copy (`duplicate_of` set; see Duplicates) | the re-check step of the ingester; `olo_merge_duplicates` |
 | retracted | The paper behind it is in the Crossref Retraction Watch data | the weekly retraction check |
 
 Superseded and retracted atoms are kept (nothing is deleted) but never served as current: `olo_search_text`, `olo_match` and the offline snapshot leave them out; the full export carries them with their status so a builder can show history.
@@ -35,8 +35,38 @@ Superseded and retracted atoms are kept (nothing is deleted) but never served as
 
 - `source_revision`: the Wikipedia revision id (from the REST summary), the Wikidata `lastrevid`, the arXiv version, or nothing for sources without revisions.
 - `doi` and `pmid`: for the retraction check (arXiv, PubMed, OpenAlex).
-- `content_hash` and `retrieved_at` as before.
+- `content_hash` and `retrieved_at` as before; `norm_hash` (sql/009) for the duplicate check.
+- `olo_atom_sightings`: every other source and url where the same atom was found (see Duplicates).
 - A superseded Wikipedia atom's url becomes `https://en.wikipedia.org/w/index.php?title=...&oldid=<revision>`, the permanent link to the text it quotes.
+
+## Duplicates (sql/009)
+
+The same paper often reaches the Commons more than once: from arXiv, then PubMed, then OpenAlex. Since sql/009 the ingester stores it once and records every other place it was found. The rules are in `functions/olo-ingest/dedup.ts` and its tests.
+
+A candidate is the same atom as one already stored when, strongest evidence first:
+
+| Reason | Test |
+|---|---|
+| same_doi | the same DOI, whatever its case or written form (doi.org link, `doi:` prefix, URL encoding), and no conflicting PMID |
+| same_pmid | the same PubMed id, and no conflicting DOI |
+| same_text | the same title and body once case, accents, punctuation, HTML entities and whitespace are normalised (`norm_hash`) |
+| near_text | the bodies share at least 90 percent of their word 3-grams (Jaccard) and the titles at least 80 percent of their words, both texts at least 25 words long |
+
+Text matches are looked up two ways: the normalised-text hash (indexed), and the closest neighbours by embedding at cosine 0.95 or more. The embedding only decides what to compare; the decision is always made on the text, so two Wikipedia articles with similar leads but different titles stay two atoms.
+
+What is never treated as a duplicate:
+
+- two atoms from the same source. The url and content hash already refuse exact copies, and two pages of one source that read alike (Wikidata homonyms, arXiv versions) are different records;
+- an atom whose DOI or PMID differs from the candidate's, however alike the text: a preprint and its journal version stay apart;
+- a superseded atom. Re-checks are not affected at all: a changed page is always stored as the new atom its old one points to.
+
+A duplicate is not inserted. It becomes a **sighting** of the earliest copy in `olo_atom_sightings`: its source, url, licence, identifiers, the reason and the score. Sightings are public provenance (`olo_atom_sightings(p_id)`, and the table is readable), written only by the service role.
+
+Corroboration is kept. `olo_rescore_atom` counts distinct other sources among the strongly similar neighbours, as before, **and** among the atom's sightings. Before deduplication the second copy was stored as its own atom and counted as an agreeing neighbour; now the same source counts through its sighting, so a paper indexed by two registries is verified exactly as it was, and is served once. Note what this signal is: two registries carrying the same paper confirm the record (that the paper exists and says this), not two independent authors reaching the same finding.
+
+If sql/009 has not been run, the ingester stores the candidate as a new atom, as it did before, rather than lose the second source.
+
+Duplicates stored before sql/009 are reported by `select * from olo_merge_duplicates();` (service role). `olo_merge_duplicates(true)`, run by a person, merges only same DOI or same PMID pairs from different sources: the later copy keeps its row and url, becomes a sighting of the earliest one, and is marked superseded with `duplicate_of` and `superseded_by` set, so it is no longer served twice but stays in the export with its status. Nothing is deleted, and a second run finds nothing left to merge.
 
 ## Re-checks (the daily learning loop)
 
