@@ -18,7 +18,7 @@ Superseded and retracted atoms are kept (nothing is deleted) but never served as
 
 `olo_credibility(trust, corroboration, published_at, observed_at, source_kind, status)`, recomputable at any time:
 
-- starts at the source's registry trust (Wikipedia 85, arXiv and PubMed 90, Wikinews 70, OpenAlex 85, data.gov 75);
+- starts at the source's registry trust (Wikipedia 85, arXiv and PubMed 90, Wikinews 70, OpenAlex 85, Europeana 80, DOAJ 80, data.gov 75);
 - plus 6 per independent agreeing source, at most 15;
 - minus up to 20 for age, only for kinds whose facts move (encyclopedia, government, data, other): about one point per 55 days from `published_at`; papers and books keep their score;
 - minus 10 when the source has not been re-read for a year;
@@ -59,6 +59,8 @@ Every ingest run (every 15 minutes) re-reads up to 3 of the oldest-observed Wiki
 | arXiv | metadata CC0; abstract under arXiv's licence | papers | version kept; DOI when given |
 | PubMed | NLM citation data public domain; abstract as published | papers | PMID and DOI kept |
 | OpenAlex | CC0 1.0 metadata | papers | open-access, not retracted, with abstract; DOI kept; `OPENALEX_KEY` optional |
+| DOAJ | DOAJ metadata CC BY-SA 4.0; abstract under the article's open-access licence | papers | peer-reviewed open-access journals; DOI kept for the retraction check; no key |
+| Europeana | per record: PDM, CC0, CC BY or CC BY-SA only | archive | cultural heritage records from European institutions; `lang` from the record; `EUROPEANA_KEY` optional (public demo key otherwise) |
 | Project Gutenberg, Internet Archive | public domain / per item | books, archive | unchanged |
 | Data.gov | per dataset: open licence URL, or a federal dataset with no licence (U.S. Government Work, 17 U.S.C. 105) | government data | catalogue API v4 (CKAN was switched off in 2026); only public datasets; `DATAGOV_API_KEY` optional (api.data.gov, otherwise DEMO_KEY) |
 | Crossref Retraction Watch | CC0 1.0 | integrity | never a source of facts; hides retracted atoms |
