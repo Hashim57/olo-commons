@@ -179,7 +179,7 @@ struct AccountSettings: View {
         Form {
             if let email = model.user?.email {
                 LabeledContent("Signed in as", value: email)
-                Button("Sign Out") { model.signOut() }
+                Button("Sign Out...") { model.confirmSignOut = true; model.showMainWindow() }
             } else {
                 Text(model.user == nil ? "Not signed in. Olo gives you free messages to start; sign in to use your account." : "Using free messages on this Mac.")
                 Button("Sign In...") { model.showSignIn = true; model.showMainWindow() }

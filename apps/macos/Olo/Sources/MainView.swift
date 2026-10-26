@@ -39,6 +39,12 @@ struct MainView: View {
         .sheet(isPresented: $model.showSubscribe) { SubscribeView(store: model.purchases) }
         .sheet(isPresented: $model.showTerms) { TermsGateView() }
         .sheet(isPresented: $model.showBrainChoice) { BrainChoiceSheet() }
+        .confirmationDialog("Sign out of Olo?", isPresented: $model.confirmSignOut) {
+            Button("Sign Out", role: .destructive) { model.signOut() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your conversations stay in your account and come back when you sign in again. Private chats stay on this Mac.")
+        }
         .onChange(of: model.showTerms) { if !model.showTerms { model.considerBrainChoice() } }
         .overlay(alignment: .top) {
             if let b = model.banner {
@@ -58,7 +64,19 @@ struct AccountFooter: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 if let email = model.user?.email {
-                    Label(email, systemImage: "person.crop.circle").lineLimit(1).font(.callout)
+                    Menu {
+                        SettingsLink { Text("Account Settings...") }
+                        Button(model.isSubscribed ? "Manage Plan..." : "Subscribe...") {
+                            if model.isSubscribed { model.purchases.manageSubscriptions() } else { model.openSubscribe() }
+                        }
+                        Divider()
+                        Button("Sign Out...") { model.confirmSignOut = true }
+                    } label: {
+                        Label(email, systemImage: "person.crop.circle").lineLimit(1).font(.callout)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.visible)
+                    .help("Account, plan and sign out")
                 } else {
                     Button { model.showSignIn = true } label: { Label("Sign In", systemImage: "person.crop.circle.badge.plus") }
                         .help("Use the same account as helius-olo.io and the iPhone app")

@@ -39,6 +39,8 @@ struct OloCommands: Commands {
     var body: some Commands {
         CommandGroup(after: .appInfo) {
             Button("Subscribe...") { model.openSubscribe() }
+            Button("Sign Out...") { model.confirmSignOut = true; model.showMainWindow() }
+                .disabled(model.user?.email == nil)
         }
         CommandGroup(replacing: .newItem) {
             Button("New Conversation") { model.newConversation(); model.showMainWindow() }
@@ -94,6 +96,9 @@ struct MenuBarMenu: View {
         }
         Divider()
         SettingsLink { Text("Settings...") }
+        if model.user?.email != nil {
+            Button("Sign Out...") { model.confirmSignOut = true; NSApp.activate(ignoringOtherApps: true); openWindow(id: "main") }
+        }
         Button("Quit Olo") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 }

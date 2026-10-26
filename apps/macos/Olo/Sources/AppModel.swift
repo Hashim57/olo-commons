@@ -32,6 +32,8 @@ final class AppModel {
     var answering: [UUID: String] = [:]
     var banner: String?
     var showSignIn = false
+    /// Asks "Sign out of Olo?" before signing out (the account footer, the Olo menu and the menu bar).
+    var confirmSignOut = false
     var requestAttachFiles = false
     // Terms and plan (see AppModel+Billing.swift for the behaviour).
     var entitlement: Entitlement?
@@ -199,7 +201,10 @@ final class AppModel {
         nudges = []
         jobs = []
         libraryArtifacts = []
+        if let id = selection, conversation(id) == nil { selection = nil }
+        panel = nil
         persist()
+        banner = "Signed out. Conversations from your account are no longer on this Mac; private chats stay here, encrypted."
     }
 
     func eraseLocalData() {
