@@ -62,6 +62,14 @@ async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
   const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en&format=json`);
   return wikidataCandidates(e, ids, n);
 }
+// OpenAlex gives keyless callers a small daily budget per IP, which the shared Edge egress IPs use up (issue #16):
+// say so in the run note instead of a bare 429.
+async function getOpenAlex(url: string) {
+  try { return await get(url); } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    throw new Error(/^429 /.test(m) ? `${m} (OpenAlex daily budget used up: set the OPENALEX_KEY secret)` : m);
+  }
+}
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
   if (!ids.length) return [];
   const xml: string = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=${ids.join(',')}&rettype=abstract&retmode=xml`, 'text/xml');
@@ -113,7 +121,7 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
   async openalex(n, src) {
     const api = (src.api_base || 'https://api.openalex.org').replace(/\/+$/, '');
     const key = Deno.env.get('OPENALEX_KEY') || '';
-    const r: any = await get(`${api}/works?filter=has_abstract:true,is_oa:true,is_retracted:false,type:article&sample=${Math.min(n * 2, 25)}&seed=${Math.floor(Math.random() * 1e6)}&per-page=${Math.min(n * 2, 25)}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com${key ? `&api_key=${encodeURIComponent(key)}` : ''}`);
+    const r: any = await getOpenAlex(`${api}/works?filter=has_abstract:true,is_oa:true,is_retracted:false,type:article&sample=${Math.min(n * 2, 25)}&seed=${Math.floor(Math.random() * 1e6)}&per-page=${Math.min(n * 2, 25)}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com${key ? `&api_key=${encodeURIComponent(key)}` : ''}`);
     return openalexCandidates(r?.results || [], n);
   },
   async pubmed(n) {
@@ -132,7 +140,7 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async arxiv(topic, n) { const xml: string = await get(searchUrl('arxiv', topic, n)!, 'application/atom+xml'); return arxivCandidates(xml); },
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
   async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
-  async openalex(topic, n) { const r: any = await get(searchUrl('openalex', topic, n)!); return openalexCandidates(r?.results || [], n); },
+  async openalex(topic, n) { const r: any = await getOpenAlex(searchUrl('openalex', topic, n, Deno.env.get('OPENALEX_KEY') || '')!); return openalexCandidates(r?.results || [], n); },
 };
 
 function quality(c: Candidate, trust: number) {
