@@ -1,0 +1,94 @@
+# Olo for macOS: a native SwiftUI app. Generate the Xcode project with
+#   brew install xcodegen && xcodegen generate
+# (CI does this on every push; see .github/workflows/macos-app.yml.)
+name: Olo
+options:
+  bundleIdPrefix: io.helius-olo
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.3.0"
+    CURRENT_PROJECT_VERSION: "7"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+packages:
+  OloKit:
+    path: OloKit
+targets:
+  Olo:
+    type: application
+    platform: macOS
+    sources:
+      - path: Olo/Sources
+      - path: Olo/Resources
+    dependencies:
+      - package: OloKit
+    info:
+      path: Olo/Info.plist
+      properties:
+        CFBundleDisplayName: Olo
+        CFBundleName: Olo
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSApplicationCategoryType: public.app-category.productivity
+        LSMinimumSystemVersion: "14.0"
+        NSHumanReadableCopyright: "2026 Helius Network"
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Olo listens only while you dictate a question.
+        NSSpeechRecognitionUsageDescription: Olo turns what you say into the text of your question.
+        CFBundleURLTypes:
+          - CFBundleURLName: io.helius-olo.desktop
+            CFBundleURLSchemes: [olo]
+        # "Ask Olo" in every app's Services menu (and right click > Services): selected text, or files in Finder.
+        NSServices:
+          - NSMenuItem: { default: Ask Olo }
+            NSMessage: askOlo
+            NSPortName: Olo
+            NSSendTypes: [public.utf8-plain-text, NSStringPboardType]
+            NSRequiredContext: {}
+          - NSMenuItem: { default: Ask Olo About These Files }
+            NSMessage: askOloAboutFiles
+            NSPortName: Olo
+            NSSendFileTypes: [public.content, public.text, com.adobe.pdf]
+            NSRequiredContext: {}
+    entitlements:
+      path: Olo/Olo.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.files.user-selected.read-write: true
+        com.apple.security.files.bookmarks.app-scope: true
+        com.apple.security.device.audio-input: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.helius-olo.desktop
+        PRODUCT_NAME: Olo
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_STYLE: Automatic
+        COMBINE_HIDPI_IMAGES: YES
+        INFOPLIST_KEY_LSUIElement: NO
+  OloTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Olo/Tests]
+    dependencies:
+      - target: Olo
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Olo.app/Contents/MacOS/Olo
+schemes:
+  Olo:
+    build:
+      targets:
+        Olo: all
+        OloTests: [test]
+    run:
+      # Local StoreKit testing: the two subscriptions without App Store Connect (Olo/Olo.storekit).
+      storeKitConfiguration: Olo/Olo.storekit
+    test:
+      targets: [OloTests]

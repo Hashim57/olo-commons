@@ -1,0 +1,630 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		023A6B158F72E7B6D2725A74 /* AppModel+Brain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC22BA86F27D8B97D8FC16B /* AppModel+Brain.swift */; };
+		03D9EE327B758A01F4CAB54D /* BuildEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF513A9C37B8C3579CC8C7B4 /* BuildEditor.swift */; };
+		1F1EDDB255D6F8EA4C609EFD /* UsageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE8F71F245079DA20CFD51B8 /* UsageView.swift */; };
+		2121D0D33A163E1F7B43ED9E /* CodeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98F0D33CB7CDC965E9ECE04A /* CodeView.swift */; };
+		2BC11C7D9394851EE605C2A5 /* HeliusAtom.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE5A546BD07292F6957142B5 /* HeliusAtom.swift */; };
+		33364384207EF2134BC75721 /* QuickAsk.swift in Sources */ = {isa = PBXBuildFile; fileRef = 561B1E50D8CE97D501408101 /* QuickAsk.swift */; };
+		385DFFF3ACD646C009204BCB /* OloApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FB0982779EEC28794E55EE8 /* OloApp.swift */; };
+		3C2354427E21324F2F07A17F /* StoreController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98529371170848C283F8049A /* StoreController.swift */; };
+		40F3A1C67E6B7A3C3B539277 /* ConnectorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C511FF28C9C06393B2DEFF6 /* ConnectorsView.swift */; };
+		454EF04E5040E070D1031892 /* AppModel+Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB5C4A3BB11BB094381712BE /* AppModel+Library.swift */; };
+		4D596BE86999B8A6533C6775 /* BuildWithOloView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0CAA4E26C82FF65537D6CAC /* BuildWithOloView.swift */; };
+		52506662AEB15AF6169F4D29 /* TermsGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6290E8ABE8F45907B4C7FD4C /* TermsGate.swift */; };
+		5BAE60AF2622368F870B3AB1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1485749BE595751D60154472 /* MainView.swift */; };
+		6043C7B5E30E97947FABDBCC /* EditPassageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B33A3869F73B91FF190F62B2 /* EditPassageView.swift */; };
+		65D51CDAAFA50187575F6A7A /* FileExtractorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECEE3DE25F27549DE5712FE8 /* FileExtractorTests.swift */; };
+		67624B8F71147F5F84B49C99 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4FD2182C436AE000C4F12A4 /* ChatView.swift */; };
+		69DBBAC08BCB56F73BD740E2 /* AppModel+Billing.swift in Sources */ = {isa = PBXBuildFile; fileRef = D537D5EE0AFECBCD30557FB1 /* AppModel+Billing.swift */; };
+		73665ABD7133E93FFF40FD44 /* System.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E2B11877FBFE63F5870A5AE /* System.swift */; };
+		73A63FC4974609DB0007074A /* BuildFileTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCCA2AF2AD16A4A51D8B00DC /* BuildFileTree.swift */; };
+		764758C8FFE0A21F55B38972 /* BuildWorkspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2CB0E4BF3E58313A9C1E9C3 /* BuildWorkspace.swift */; };
+		7847699A7C3A38B03CE1F819 /* BuildEditorAppTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22E01F1B5170AD4F332FE0F5 /* BuildEditorAppTests.swift */; };
+		7A1933C1AAF11DCBCF1811CB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A23977D2C3258187A17CCF19 /* Assets.xcassets */; };
+		8F4F716172577BFF3083703E /* DiffView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 373E731BC805F47997C243EA /* DiffView.swift */; };
+		93009E4A1C8CCEACC806A51B /* ArtifactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF049CC7D522DE9BC160D7F4 /* ArtifactsView.swift */; };
+		9F3EDB6FAE9B6F15D8B7780D /* MemoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24A71B91743A32DD747149B5 /* MemoryView.swift */; };
+		A6667FC8930388199B949630 /* Libraries.swift in Sources */ = {isa = PBXBuildFile; fileRef = 091C54A9E0039CDE98196B64 /* Libraries.swift */; };
+		AD84084BA6E6DBE764FAAEAC /* SubscribeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934088AD8241E0ADF61ECB09 /* SubscribeView.swift */; };
+		B7C35E80897E9587C4E6A68E /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D7926AF0292AD354F27A769 /* ExportView.swift */; };
+		BA487CBFB366C04878C73834 /* CodeEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929B339BEAABBD60D8C3DE28 /* CodeEditor.swift */; };
+		BDAA8E481CC04E471DB4F6E0 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77C112CC8E500D0AD37A51D8 /* AppDelegate.swift */; };
+		C3379F08412FAB0E50CF8447 /* SkillsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2465FA69641D6115F857BF3B /* SkillsView.swift */; };
+		C36290A855A8194E305698B4 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B754BA5C653E34EAFB469F92 /* AppModel.swift */; };
+		C5B7B701589B6A600A6BB2A9 /* BrainChoiceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64FD3567305288903085F7D9 /* BrainChoiceView.swift */; };
+		C92CC6193CF8798FF9F600B6 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F301EB92661613FA80C182E9 /* LibraryView.swift */; };
+		CCB0DEC29A2E6B378147813F /* MonitorsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03CC3ABD2D7CA4D24984FA93 /* MonitorsView.swift */; };
+		CF5FCD009C9AA4E95F632979 /* Dictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B99C807E29C389081BCB10 /* Dictation.swift */; };
+		D1C882EFC24AE71EBFF5396C /* FolderWatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFBA18BF57C1D4D9FDA29668 /* FolderWatcher.swift */; };
+		D4B4CEB9D50FDAA0F682DB02 /* FileExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC510FFD3CBE595A3730C7D3 /* FileExtractor.swift */; };
+		E05F167C99890510989CE456 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0269EF4A329DBC5F16C74226 /* SettingsView.swift */; };
+		E37E7115FD823982C9F9C980 /* ChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BBC96890AB82523ABDB9B89 /* ChartView.swift */; };
+		F51B95BC3E5D9E7F7F054253 /* OloKit in Frameworks */ = {isa = PBXBuildFile; productRef = 247716B9B5167585BDBA5321 /* OloKit */; };
+		F665BB2E2354E1092F71DBD9 /* ComputeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49ABEB339376A0FC65F78E68 /* ComputeView.swift */; };
+		F957DE6DB8B23A729E03AD7D /* ZeusGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB58C5A2A9E51A08E8EDC0D /* ZeusGraphView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		41205E645C584AEB5360297E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D2480AF95A65433B9CAA8A34 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 958D3F136A919BE219560849;
+			remoteInfo = Olo;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0269EF4A329DBC5F16C74226 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		03CC3ABD2D7CA4D24984FA93 /* MonitorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonitorsView.swift; sourceTree = "<group>"; };
+		091C54A9E0039CDE98196B64 /* Libraries.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Libraries.swift; sourceTree = "<group>"; };
+		1485749BE595751D60154472 /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		22E01F1B5170AD4F332FE0F5 /* BuildEditorAppTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildEditorAppTests.swift; sourceTree = "<group>"; };
+		2465FA69641D6115F857BF3B /* SkillsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkillsView.swift; sourceTree = "<group>"; };
+		24A71B91743A32DD747149B5 /* MemoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryView.swift; sourceTree = "<group>"; };
+		2BBC96890AB82523ABDB9B89 /* ChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartView.swift; sourceTree = "<group>"; };
+		2E2B11877FBFE63F5870A5AE /* System.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = System.swift; sourceTree = "<group>"; };
+		373E731BC805F47997C243EA /* DiffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiffView.swift; sourceTree = "<group>"; };
+		3AF760EF3CF4A94A79C141C4 /* OloKit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = OloKit; path = OloKit; sourceTree = SOURCE_ROOT; };
+		3D7926AF0292AD354F27A769 /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
+		49ABEB339376A0FC65F78E68 /* ComputeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComputeView.swift; sourceTree = "<group>"; };
+		561B1E50D8CE97D501408101 /* QuickAsk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAsk.swift; sourceTree = "<group>"; };
+		6290E8ABE8F45907B4C7FD4C /* TermsGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermsGate.swift; sourceTree = "<group>"; };
+		64FD3567305288903085F7D9 /* BrainChoiceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrainChoiceView.swift; sourceTree = "<group>"; };
+		6FB0982779EEC28794E55EE8 /* OloApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OloApp.swift; sourceTree = "<group>"; };
+		77C112CC8E500D0AD37A51D8 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		8C511FF28C9C06393B2DEFF6 /* ConnectorsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectorsView.swift; sourceTree = "<group>"; };
+		929B339BEAABBD60D8C3DE28 /* CodeEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeEditor.swift; sourceTree = "<group>"; };
+		934088AD8241E0ADF61ECB09 /* SubscribeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscribeView.swift; sourceTree = "<group>"; };
+		98529371170848C283F8049A /* StoreController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreController.swift; sourceTree = "<group>"; };
+		98F0D33CB7CDC965E9ECE04A /* CodeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeView.swift; sourceTree = "<group>"; };
+		9FC22BA86F27D8B97D8FC16B /* AppModel+Brain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Brain.swift"; sourceTree = "<group>"; };
+		A23977D2C3258187A17CCF19 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A258DE8F7179BA7881D4A9D7 /* Olo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Olo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B33A3869F73B91FF190F62B2 /* EditPassageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditPassageView.swift; sourceTree = "<group>"; };
+		B754BA5C653E34EAFB469F92 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		BE8F71F245079DA20CFD51B8 /* UsageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageView.swift; sourceTree = "<group>"; };
+		BF049CC7D522DE9BC160D7F4 /* ArtifactsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtifactsView.swift; sourceTree = "<group>"; };
+		BF11D3A72ED2D39CB20DCBBE /* OloTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = OloTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1B99C807E29C389081BCB10 /* Dictation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dictation.swift; sourceTree = "<group>"; };
+		CBB58C5A2A9E51A08E8EDC0D /* ZeusGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZeusGraphView.swift; sourceTree = "<group>"; };
+		CE5A546BD07292F6957142B5 /* HeliusAtom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeliusAtom.swift; sourceTree = "<group>"; };
+		D2CB0E4BF3E58313A9C1E9C3 /* BuildWorkspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildWorkspace.swift; sourceTree = "<group>"; };
+		D537D5EE0AFECBCD30557FB1 /* AppModel+Billing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Billing.swift"; sourceTree = "<group>"; };
+		DB5C4A3BB11BB094381712BE /* AppModel+Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppModel+Library.swift"; sourceTree = "<group>"; };
+		DCCA2AF2AD16A4A51D8B00DC /* BuildFileTree.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildFileTree.swift; sourceTree = "<group>"; };
+		DFBA18BF57C1D4D9FDA29668 /* FolderWatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderWatcher.swift; sourceTree = "<group>"; };
+		E4FD2182C436AE000C4F12A4 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		ECEE3DE25F27549DE5712FE8 /* FileExtractorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExtractorTests.swift; sourceTree = "<group>"; };
+		EF513A9C37B8C3579CC8C7B4 /* BuildEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildEditor.swift; sourceTree = "<group>"; };
+		F0CAA4E26C82FF65537D6CAC /* BuildWithOloView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildWithOloView.swift; sourceTree = "<group>"; };
+		F301EB92661613FA80C182E9 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		FC510FFD3CBE595A3730C7D3 /* FileExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileExtractor.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		937464069A33B26CEE35A0CA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F51B95BC3E5D9E7F7F054253 /* OloKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1B921D07FA0A41B8BADEFD22 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				77C112CC8E500D0AD37A51D8 /* AppDelegate.swift */,
+				B754BA5C653E34EAFB469F92 /* AppModel.swift */,
+				D537D5EE0AFECBCD30557FB1 /* AppModel+Billing.swift */,
+				9FC22BA86F27D8B97D8FC16B /* AppModel+Brain.swift */,
+				DB5C4A3BB11BB094381712BE /* AppModel+Library.swift */,
+				BF049CC7D522DE9BC160D7F4 /* ArtifactsView.swift */,
+				64FD3567305288903085F7D9 /* BrainChoiceView.swift */,
+				EF513A9C37B8C3579CC8C7B4 /* BuildEditor.swift */,
+				DCCA2AF2AD16A4A51D8B00DC /* BuildFileTree.swift */,
+				F0CAA4E26C82FF65537D6CAC /* BuildWithOloView.swift */,
+				D2CB0E4BF3E58313A9C1E9C3 /* BuildWorkspace.swift */,
+				2BBC96890AB82523ABDB9B89 /* ChartView.swift */,
+				E4FD2182C436AE000C4F12A4 /* ChatView.swift */,
+				929B339BEAABBD60D8C3DE28 /* CodeEditor.swift */,
+				98F0D33CB7CDC965E9ECE04A /* CodeView.swift */,
+				49ABEB339376A0FC65F78E68 /* ComputeView.swift */,
+				8C511FF28C9C06393B2DEFF6 /* ConnectorsView.swift */,
+				C1B99C807E29C389081BCB10 /* Dictation.swift */,
+				373E731BC805F47997C243EA /* DiffView.swift */,
+				B33A3869F73B91FF190F62B2 /* EditPassageView.swift */,
+				3D7926AF0292AD354F27A769 /* ExportView.swift */,
+				FC510FFD3CBE595A3730C7D3 /* FileExtractor.swift */,
+				DFBA18BF57C1D4D9FDA29668 /* FolderWatcher.swift */,
+				CE5A546BD07292F6957142B5 /* HeliusAtom.swift */,
+				091C54A9E0039CDE98196B64 /* Libraries.swift */,
+				F301EB92661613FA80C182E9 /* LibraryView.swift */,
+				1485749BE595751D60154472 /* MainView.swift */,
+				24A71B91743A32DD747149B5 /* MemoryView.swift */,
+				03CC3ABD2D7CA4D24984FA93 /* MonitorsView.swift */,
+				6FB0982779EEC28794E55EE8 /* OloApp.swift */,
+				561B1E50D8CE97D501408101 /* QuickAsk.swift */,
+				0269EF4A329DBC5F16C74226 /* SettingsView.swift */,
+				2465FA69641D6115F857BF3B /* SkillsView.swift */,
+				98529371170848C283F8049A /* StoreController.swift */,
+				934088AD8241E0ADF61ECB09 /* SubscribeView.swift */,
+				2E2B11877FBFE63F5870A5AE /* System.swift */,
+				6290E8ABE8F45907B4C7FD4C /* TermsGate.swift */,
+				BE8F71F245079DA20CFD51B8 /* UsageView.swift */,
+				CBB58C5A2A9E51A08E8EDC0D /* ZeusGraphView.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		71B41874A665419B3573FA12 /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				3AF760EF3CF4A94A79C141C4 /* OloKit */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		82E5BDED273B3B73B524B51E /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				A23977D2C3258187A17CCF19 /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		9565A65E8C33FB5552B73EA2 /* Olo */ = {
+			isa = PBXGroup;
+			children = (
+				82E5BDED273B3B73B524B51E /* Resources */,
+				1B921D07FA0A41B8BADEFD22 /* Sources */,
+				D9B9B7CF315776E663D31C9A /* Tests */,
+			);
+			path = Olo;
+			sourceTree = "<group>";
+		};
+		BCFFAA3FD5C0C98D85A3C811 = {
+			isa = PBXGroup;
+			children = (
+				9565A65E8C33FB5552B73EA2 /* Olo */,
+				71B41874A665419B3573FA12 /* Packages */,
+				F8CC7A22C9595BC46078E69F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D9B9B7CF315776E663D31C9A /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				22E01F1B5170AD4F332FE0F5 /* BuildEditorAppTests.swift */,
+				ECEE3DE25F27549DE5712FE8 /* FileExtractorTests.swift */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		F8CC7A22C9595BC46078E69F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A258DE8F7179BA7881D4A9D7 /* Olo.app */,
+				BF11D3A72ED2D39CB20DCBBE /* OloTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		958D3F136A919BE219560849 /* Olo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F0AFCDDA824F4B5D85318A3F /* Build configuration list for PBXNativeTarget "Olo" */;
+			buildPhases = (
+				E20570DE7F67F9BABEC52C6D /* Sources */,
+				367ADBEF4D8B15750B58C403 /* Resources */,
+				937464069A33B26CEE35A0CA /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Olo;
+			packageProductDependencies = (
+				247716B9B5167585BDBA5321 /* OloKit */,
+			);
+			productName = Olo;
+			productReference = A258DE8F7179BA7881D4A9D7 /* Olo.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F9AA0E9751CC64882162104A /* OloTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 2AEE282A9FC1E4DEB89E6ACC /* Build configuration list for PBXNativeTarget "OloTests" */;
+			buildPhases = (
+				972D6FBF2CE86BA51528513E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				F0196E2EA7096D960E7A0B4B /* PBXTargetDependency */,
+			);
+			name = OloTests;
+			packageProductDependencies = (
+			);
+			productName = OloTests;
+			productReference = BF11D3A72ED2D39CB20DCBBE /* OloTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D2480AF95A65433B9CAA8A34 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					958D3F136A919BE219560849 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
+					F9AA0E9751CC64882162104A = {
+						DevelopmentTeam = "";
+					};
+				};
+			};
+			buildConfigurationList = 6C4C6468BB9C744350BC9A10 /* Build configuration list for PBXProject "Olo" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = BCFFAA3FD5C0C98D85A3C811;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				79D85F907C5C7BFA7B63AA05 /* XCLocalSwiftPackageReference "OloKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F8CC7A22C9595BC46078E69F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				958D3F136A919BE219560849 /* Olo */,
+				F9AA0E9751CC64882162104A /* OloTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		367ADBEF4D8B15750B58C403 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7A1933C1AAF11DCBCF1811CB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		972D6FBF2CE86BA51528513E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7847699A7C3A38B03CE1F819 /* BuildEditorAppTests.swift in Sources */,
+				65D51CDAAFA50187575F6A7A /* FileExtractorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E20570DE7F67F9BABEC52C6D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BDAA8E481CC04E471DB4F6E0 /* AppDelegate.swift in Sources */,
+				69DBBAC08BCB56F73BD740E2 /* AppModel+Billing.swift in Sources */,
+				023A6B158F72E7B6D2725A74 /* AppModel+Brain.swift in Sources */,
+				454EF04E5040E070D1031892 /* AppModel+Library.swift in Sources */,
+				C36290A855A8194E305698B4 /* AppModel.swift in Sources */,
+				93009E4A1C8CCEACC806A51B /* ArtifactsView.swift in Sources */,
+				C5B7B701589B6A600A6BB2A9 /* BrainChoiceView.swift in Sources */,
+				03D9EE327B758A01F4CAB54D /* BuildEditor.swift in Sources */,
+				73A63FC4974609DB0007074A /* BuildFileTree.swift in Sources */,
+				4D596BE86999B8A6533C6775 /* BuildWithOloView.swift in Sources */,
+				764758C8FFE0A21F55B38972 /* BuildWorkspace.swift in Sources */,
+				E37E7115FD823982C9F9C980 /* ChartView.swift in Sources */,
+				67624B8F71147F5F84B49C99 /* ChatView.swift in Sources */,
+				BA487CBFB366C04878C73834 /* CodeEditor.swift in Sources */,
+				2121D0D33A163E1F7B43ED9E /* CodeView.swift in Sources */,
+				F665BB2E2354E1092F71DBD9 /* ComputeView.swift in Sources */,
+				40F3A1C67E6B7A3C3B539277 /* ConnectorsView.swift in Sources */,
+				CF5FCD009C9AA4E95F632979 /* Dictation.swift in Sources */,
+				8F4F716172577BFF3083703E /* DiffView.swift in Sources */,
+				6043C7B5E30E97947FABDBCC /* EditPassageView.swift in Sources */,
+				B7C35E80897E9587C4E6A68E /* ExportView.swift in Sources */,
+				D4B4CEB9D50FDAA0F682DB02 /* FileExtractor.swift in Sources */,
+				D1C882EFC24AE71EBFF5396C /* FolderWatcher.swift in Sources */,
+				2BC11C7D9394851EE605C2A5 /* HeliusAtom.swift in Sources */,
+				A6667FC8930388199B949630 /* Libraries.swift in Sources */,
+				C92CC6193CF8798FF9F600B6 /* LibraryView.swift in Sources */,
+				5BAE60AF2622368F870B3AB1 /* MainView.swift in Sources */,
+				9F3EDB6FAE9B6F15D8B7780D /* MemoryView.swift in Sources */,
+				CCB0DEC29A2E6B378147813F /* MonitorsView.swift in Sources */,
+				385DFFF3ACD646C009204BCB /* OloApp.swift in Sources */,
+				33364384207EF2134BC75721 /* QuickAsk.swift in Sources */,
+				E05F167C99890510989CE456 /* SettingsView.swift in Sources */,
+				C3379F08412FAB0E50CF8447 /* SkillsView.swift in Sources */,
+				3C2354427E21324F2F07A17F /* StoreController.swift in Sources */,
+				AD84084BA6E6DBE764FAAEAC /* SubscribeView.swift in Sources */,
+				73665ABD7133E93FFF40FD44 /* System.swift in Sources */,
+				52506662AEB15AF6169F4D29 /* TermsGate.swift in Sources */,
+				1F1EDDB255D6F8EA4C609EFD /* UsageView.swift in Sources */,
+				F957DE6DB8B23A729E03AD7D /* ZeusGraphView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		F0196E2EA7096D960E7A0B4B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 958D3F136A919BE219560849 /* Olo */;
+			targetProxy = 41205E645C584AEB5360297E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2D737F87A49842FDA0B2B786 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Olo/Olo.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Olo/Info.plist;
+				INFOPLIST_KEY_LSUIElement = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "io.helius-olo.desktop";
+				PRODUCT_NAME = Olo;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		39D81E6EAB278D510E8480A2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "io.helius-olo.OloTests";
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Olo.app/Contents/MacOS/Olo";
+			};
+			name = Release;
+		};
+		7A9C9C10E5539F25ECE05B46 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "io.helius-olo.OloTests";
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Olo.app/Contents/MacOS/Olo";
+			};
+			name = Debug;
+		};
+		7B22B7415B617FF184FA1D21 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 7;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.3.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BB453691A7042C08D72EECBE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 7;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.3.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		E9B92690A1D54355CE2ED685 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = Olo/Olo.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = Olo/Info.plist;
+				INFOPLIST_KEY_LSUIElement = NO;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "io.helius-olo.desktop";
+				PRODUCT_NAME = Olo;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2AEE282A9FC1E4DEB89E6ACC /* Build configuration list for PBXNativeTarget "OloTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A9C9C10E5539F25ECE05B46 /* Debug */,
+				39D81E6EAB278D510E8480A2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		6C4C6468BB9C744350BC9A10 /* Build configuration list for PBXProject "Olo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BB453691A7042C08D72EECBE /* Debug */,
+				7B22B7415B617FF184FA1D21 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F0AFCDDA824F4B5D85318A3F /* Build configuration list for PBXNativeTarget "Olo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E9B92690A1D54355CE2ED685 /* Debug */,
+				2D737F87A49842FDA0B2B786 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		79D85F907C5C7BFA7B63AA05 /* XCLocalSwiftPackageReference "OloKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = OloKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		247716B9B5167585BDBA5321 /* OloKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = OloKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = D2480AF95A65433B9CAA8A34 /* Project object */;
+}
