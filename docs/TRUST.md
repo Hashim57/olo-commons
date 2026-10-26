@@ -61,6 +61,8 @@ Every ingest run (every 15 minutes) re-reads up to 3 of the oldest-observed Wiki
 | OpenAlex | CC0 1.0 metadata | papers | open-access, not retracted, with abstract; DOI kept; `OPENALEX_KEY` optional |
 | Project Gutenberg, Internet Archive | public domain / per item | books, archive | unchanged |
 | Data.gov | per dataset: open licence URL, or a federal dataset with no licence (U.S. Government Work, 17 U.S.C. 105) | government data | catalogue API v4 (CKAN was switched off in 2026); only public datasets; `DATAGOV_API_KEY` optional (api.data.gov, otherwise DEMO_KEY) |
+| Open Library | CC0 1.0 / public domain catalogue data | books | catalogue facts only (title, authors, subjects, first year, editions), written as a plain sentence; descriptions and first sentences are never read because they are often publisher blurbs or quotes from the book; trust 70 (crowd-edited catalogue); starts disabled |
+| Europe PMC | per article: CC0, CC BY or CC BY-SA only | papers | open-access subset; the licence is checked per article and NC/ND dropped; preprints and retractions left out; PMCID, PMID and DOI kept; trust 90, like PubMed; starts disabled |
 | Crossref Retraction Watch | CC0 1.0 | integrity | never a source of facts; hides retracted atoms |
 
 New sources start disabled in `olo_sources` and are enabled by a person after a run or two.
