@@ -340,10 +340,18 @@ def main():
         with open(os.path.join(args.out, f"{split}.jsonl"), "w") as f:
             for ex in data[split]:
                 f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+    # eval3: its own module and generator, over the eval atoms only (see zeus/eval3.py and DATA_CARD.md).
+    import eval3
+    ev3 = eval3.build_eval3(atoms, args.eval_share)
+    with open(os.path.join(args.out, "eval3.jsonl"), "w", encoding="utf-8") as f:
+        f.write(eval3.dumps(ev3))
+    with open(os.path.join(args.out, "eval3.manifest.json"), "w") as f:
+        json.dump(eval3.manifest(ev3, args.eval_share, "snapshot" if args.snapshot else "live"), f, indent=2)
     gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
     imported_files, n_imported = count_gold(os.path.join(args.out, "imported"), skip_eval=True)
     by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
     meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]), "eval2": len(data["eval2"]),
+            "eval3": len(ev3), "eval3_version": eval3.EVAL3_VERSION,
             "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
             "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
             "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss"),
