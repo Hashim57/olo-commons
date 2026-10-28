@@ -10,10 +10,18 @@ export type RunError = { slug: string; message: string };
 const PER_MESSAGE = 90;    // characters kept of one error message
 const TOTAL = 480;         // characters of the whole errors clause (the note column is text, but the page reads it)
 
-/** One line of text for an error thrown by a connector: no newlines, no stack, bounded. */
+/** A URL query parameter that carries a credential; its value never reaches the run note. */
+const SECRET_PARAM = /([?&](?:api_key|apikey|key|wskey|token|access_token)=)[^&\s]*/gi;
+
+/** The message with every credential-carrying query parameter value replaced by ***. */
+export function redactSecrets(s: string): string {
+  return s.replace(SECRET_PARAM, '$1***');
+}
+
+/** One line of text for an error thrown by a connector: no newlines, no stack, no credentials, bounded. */
 export function errorText(e: unknown): string {
   const raw = e instanceof Error ? e.message : typeof e === 'string' ? e : (() => { try { return JSON.stringify(e); } catch { return String(e); } })();
-  const flat = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  const flat = redactSecrets(String(raw ?? '')).replace(/\s+/g, ' ').trim();
   if (!flat) return 'unknown error';
   return flat.length > PER_MESSAGE ? flat.slice(0, PER_MESSAGE - 1) + '…' : flat;
 }
