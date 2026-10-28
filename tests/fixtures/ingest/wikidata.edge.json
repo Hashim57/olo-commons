@@ -1,0 +1,35 @@
+{
+  "entities": {
+    "Q7343": {
+      "pageid": 8212, "ns": 0, "title": "Q7343", "lastrevid": 2550001234, "modified": "2026-10-01T10:00:00Z", "type": "item", "id": "Q7343",
+      "labels": { "mul": { "language": "mul", "value": "Great Barrier Reef" } },
+      "descriptions": { "en": { "language": "en", "value": "world's largest coral reef system, off Queensland, Australia" } },
+      "sitelinks": {
+        "enwiki": { "site": "enwiki", "title": "Great Barrier Reef", "badges": [] },
+        "eswiki": { "site": "eswiki", "title": "Gran Barrera de Coral", "badges": [] },
+        "frwiki": { "site": "frwiki", "title": "Grande barrière de corail", "badges": [] },
+        "dewiki": { "site": "dewiki", "title": "Great Barrier Reef", "badges": [] }
+      }
+    },
+    "Q11292": {
+      "pageid": 12614, "ns": 0, "title": "Q11292", "lastrevid": 2549000000, "modified": "2026-09-20T10:00:00Z", "type": "item", "id": "Q11292",
+      "labels": { "en": { "language": "en", "value": "coral reef" } },
+      "descriptions": {},
+      "sitelinks": {
+        "enwiki": { "site": "enwiki", "title": "Coral reef", "badges": [] },
+        "eswiki": { "site": "eswiki", "title": "Arrecife de coral", "badges": [] },
+        "frwiki": { "site": "frwiki", "title": "Récif corallien", "badges": [] }
+      }
+    },
+    "Q130000001": {
+      "pageid": 125000001, "ns": 0, "title": "Q130000001", "lastrevid": 2400000001, "modified": "2025-01-05T10:00:00Z", "type": "item", "id": "Q130000001",
+      "labels": { "en": { "language": "en", "value": "Example Reef Survey 2024" } },
+      "descriptions": { "en": { "language": "en", "value": "scholarly dataset" } },
+      "sitelinks": {
+        "commonswiki": { "site": "commonswiki", "title": "Category:Example Reef Survey 2024", "badges": [] }
+      }
+    },
+    "Q999999999": { "id": "Q999999999", "missing": "" }
+  },
+  "success": 1
+}

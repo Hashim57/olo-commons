@@ -30,11 +30,15 @@ export function wikiSearchTitles(r: any): string[] {
   return ((r?.query?.search || []) as any[]).map(x => String(x.title || '')).filter(Boolean);
 }
 
-/** Wikidata wbgetentities response -> candidates for the given ids (entities with a label, a description and some notability). */
+/**
+ * Wikidata wbgetentities response -> candidates for the given ids (entities with a label, a description and some notability).
+ * Since 2024 many items keep their name only as the language-independent "mul" label (Q42 has no "en" label any more),
+ * so "mul" is the fallback when there is no English label.
+ */
 export function wikidataCandidates(e: any, ids: string[], n: number): Candidate[] {
   const out: Candidate[] = [];
   for (const id of ids) {
-    const ent = e?.entities?.[id]; const label = ent?.labels?.en?.value, desc = ent?.descriptions?.en?.value;
+    const ent = e?.entities?.[id]; const label = ent?.labels?.en?.value || ent?.labels?.mul?.value, desc = ent?.descriptions?.en?.value;
     if (!label || !desc) continue;
     const links = Object.keys(ent.sitelinks || {}).length;
     if (links < 3) continue;
@@ -49,9 +53,10 @@ export function wikidataSearchIds(r: any): string[] {
   return ((r?.search || []) as any[]).map(x => String(x.id || '')).filter(id => /^Q\d+$/.test(id));
 }
 
-/** Internet Archive advancedsearch docs -> candidates. */
+/** Internet Archive advancedsearch docs -> candidates (an identifier and a description of at least 100 characters). */
 export function archiveCandidates(docs: any[]): Candidate[] {
-  return (docs || []).filter((d: any) => d && d.title && d.description).map((d: any) => ({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description).slice(0, 600), content: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence: d.licenseurl ? `See ${d.licenseurl}` : 'Public domain / as stated by the Archive' }));
+  const desc = (d: any) => clean(Array.isArray(d.description) ? d.description.join(' ') : d.description);
+  return (docs || []).filter((d: any) => d && typeof d.identifier === 'string' && d.identifier && d.title && desc(d).length >= 100).map((d: any) => ({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description).slice(0, 600), content: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence: d.licenseurl ? `See ${d.licenseurl}` : 'Public domain / as stated by the Archive' }));
 }
 
 /** arXiv Atom feed -> candidates (titles and abstracts run through delatex). */
@@ -79,8 +84,14 @@ export function pubmedCandidates(xml: string): Candidate[] {
   for (const m of String(xml || '').matchAll(/<PubmedArticle>([\s\S]*?)<\/PubmedArticle>/g)) {
     const a = m[1]; const pmid = (a.match(/<PMID[^>]*>(\d+)<\/PMID>/) || [])[1]; const title = clean((a.match(/<ArticleTitle>([\s\S]*?)<\/ArticleTitle>/) || [])[1]);
     const abs = clean(Array.from(a.matchAll(/<AbstractText[^>]*>([\s\S]*?)<\/AbstractText>/g)).map(x => x[1]).join(' ')); const year = (a.match(/<PubDate>[\s\S]*?<Year>(\d{4})<\/Year>/) || [])[1];
-    const authors = Array.from(a.matchAll(/<Author[^>]*>[\s\S]*?<LastName>(.*?)<\/LastName>[\s\S]*?<ForeName>(.*?)<\/ForeName>/g)).slice(0, 8).map(x => clean(x[2] + ' ' + x[1]));
-    const doi = bareDoi((a.match(/<ArticleId IdType="doi">(.*?)<\/ArticleId>/) || [])[1]);
+    // One <Author> element at a time, so an author without a ForeName (or a CollectiveName) is not paired with the next author's ForeName.
+    const authors = Array.from(a.matchAll(/<Author\b[^>]*>([\s\S]*?)<\/Author>/g)).map(x => {
+      const last = (x[1].match(/<LastName>(.*?)<\/LastName>/) || [])[1]; const fore = (x[1].match(/<ForeName>(.*?)<\/ForeName>/) || [])[1];
+      return last ? clean(fore ? fore + ' ' + last : last) : '';
+    }).filter(Boolean).slice(0, 8);
+    // The article's own ArticleIdList (the first one in PubmedData), never the DOI of a paper in its ReferenceList.
+    const ownIds = (a.match(/<PubmedData>[\s\S]*?<ArticleIdList>([\s\S]*?)<\/ArticleIdList>/) || [])[1] || '';
+    const doi = bareDoi((ownIds.match(/<ArticleId IdType="doi">(.*?)<\/ArticleId>/) || [])[1]);
     if (!pmid || !title || abs.length < 150) continue;
     out.push({ external_id: pmid, url: `https://pubmed.ncbi.nlm.nih.gov/${pmid}/`, title, summary: abs.slice(0, 600), content: abs, authors, published_at: year ? `${year}-01-01` : undefined, licence: 'Abstract as published; citation data public domain (NLM)', pmid, doi });
   }
@@ -136,7 +147,9 @@ export function openalexCandidates(works: any[], n: number): Candidate[] {
     if (abs.length < 150) continue;
     const id = String(w.id || '').replace('https://openalex.org/', '');
     const doi = bareDoi(w.doi);
-    const url = w.primary_location?.landing_page_url || (doi ? `https://doi.org/${doi}` : (id ? `https://openalex.org/${id}` : ''));
+    // An http:// landing page falls through to the DOI or the OpenAlex page instead of dropping the work.
+    const landing = String(w.primary_location?.landing_page_url || '');
+    const url = /^https:\/\//.test(landing) ? landing : (doi ? `https://doi.org/${doi}` : (id ? `https://openalex.org/${id}` : ''));
     if (!/^https:\/\//.test(url)) continue;
     const venue = w.primary_location?.source?.display_name;
     const lic = w.primary_location?.license || w.open_access?.oa_status;

@@ -1,0 +1,23 @@
+{
+  "header": {
+    "type": "esearch",
+    "version": "0.3"
+  },
+  "esearchresult": {
+    "count": "10684",
+    "retmax": "3",
+    "retstart": "0",
+    "idlist": [
+      "42927558",
+      "42926947",
+      "42923753"
+    ],
+    "translationset": [
+      {
+        "from": "coral",
+        "to": "\"anthozoa\"[MeSH Terms] OR \"anthozoa\"[All Fields] OR \"coral\"[All Fields] OR \"corals\"[All Fields] OR \"coral's\"[All Fields]"
+      }
+    ],
+    "querytranslation": "(\"anthozoa\"[MeSH Terms] OR \"anthozoa\"[All Fields] OR \"coral\"[All Fields] OR \"corals\"[All Fields] OR \"coral s\"[All Fields]) AND \"reef\"[All Fields]"
+  }
+}

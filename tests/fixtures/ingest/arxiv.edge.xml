@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/edgecases</id>
+  <title>arXiv Query: search_query=all:edge&amp;id_list=&amp;start=0&amp;max_results=4</title>
+  <updated>2026-10-26T00:00:00Z</updated>
+  <opensearch:itemsPerPage>4</opensearch:itemsPerPage>
+  <opensearch:totalResults>4</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/hep-th/9711200v3</id>
+    <title>The Large N Limit of Superconformal Field Theories and
+  Supergravity</title>
+    <updated>1998-01-22T18:30:00Z</updated>
+    <link href="https://arxiv.org/abs/hep-th/9711200v3" rel="alternate" type="text/html"/>
+    <summary>  We show that the large $N$ limit of certain conformal field theories in
+various dimensions include in their Hilbert space a sector describing
+supergravity on the product of Anti-deSitter spacetimes, spheres and other
+compact manifolds. This is shown by taking some branes in the full M/string
+theory and then taking a low energy limit where the field theory on the brane
+decouples from the bulk.
+</summary>
+    <published>1997-11-27T19:14:12Z</published>
+    <arxiv:journal_ref>Adv.Theor.Math.Phys.2:231-252,1998</arxiv:journal_ref>
+    <arxiv:doi>10.4310/ATMP.1998.v2.n2.a1</arxiv:doi>
+    <author>
+      <name>Juan M. Maldacena</name>
+    </author>
+    <category term="hep-th" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2601.00042v1</id>
+    <title>Withdrawn</title>
+    <updated>2026-01-02T00:00:00Z</updated>
+    <summary>This paper has been withdrawn by the author.</summary>
+    <published>2026-01-01T00:00:00Z</published>
+    <author>
+      <name>A. Author</name>
+    </author>
+  </entry>
+  <entry>
+    <title>An entry with no id element at all, which cannot be given a stable URL</title>
+    <summary>This abstract is long enough to pass the one hundred character minimum, but the entry has no id element, so it has no stable URL and no external id to keep.</summary>
+    <published>2026-01-03T00:00:00Z</published>
+  </entry>
+  <entry>
+    <id>http://arxiv.org/abs/2601.00077</id>
+    <title>A $\mathcal{O}(\sqrt{n})$ bound with \textit{no} version suffix</title>
+    <summary>We prove that the error is at most $10^{-3}$ when $\alpha \leq \frac{1}{2}$, improving the previous $O(n)$ bound; the constant is explicit and the proof is short &amp; elementary.</summary>
+    <published>2026-01-04T00:00:00Z</published>
+    <author>
+      <name>B. Author</name>
+    </author>
+    <author>
+      <name>C. Author</name>
+    </author>
+  </entry>
+</feed>

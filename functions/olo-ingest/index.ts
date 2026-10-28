@@ -59,7 +59,7 @@ async function wikiByTitles(lang: string, titles: string[], n: number): Promise<
 }
 async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
   if (!ids.length) return [];
-  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en&format=json`);
+  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en|mul&format=json`);
   return wikidataCandidates(e, ids, n);
 }
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {

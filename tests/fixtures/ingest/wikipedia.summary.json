@@ -1,0 +1,49 @@
+{
+  "type": "standard",
+  "title": "Project Gutenberg",
+  "displaytitle": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Project Gutenberg</span></span>",
+  "namespace": {
+    "id": 0,
+    "text": ""
+  },
+  "wikibase_item": "Q22673",
+  "titles": {
+    "canonical": "Project_Gutenberg",
+    "normalized": "Project Gutenberg",
+    "display": "<span lang=\"en\" dir=\"ltr\"><span class=\"mw-page-title-main\">Project Gutenberg</span></span>"
+  },
+  "pageid": 23301,
+  "thumbnail": {
+    "source": "https://thumb.wikimedia.org/wikipedia/en/thumb/f/fe/Project_Gutenberg_Logo.jpg/330px-Project_Gutenberg_Logo.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail",
+    "width": 330,
+    "height": 206
+  },
+  "originalimage": {
+    "source": "https://upload.wikimedia.org/wikipedia/en/f/fe/Project_Gutenberg_Logo.jpg?utm_source=en.wikipedia.org&utm_campaign=api&utm_content=thumbnail_unscaled",
+    "width": 400,
+    "height": 250
+  },
+  "lang": "en",
+  "dir": "ltr",
+  "revision": "1379930713",
+  "tid": "5cc23ae3-c672-11f1-9b13-ada94555f4eb",
+  "timestamp": "2026-10-12T19:23:11Z",
+  "description": "Online digital book library",
+  "description_source": "local",
+  "content_urls": {
+    "desktop": {
+      "page": "https://en.wikipedia.org/wiki/Project_Gutenberg",
+      "revisions": "https://en.wikipedia.org/wiki/Project_Gutenberg?action=history",
+      "edit": "https://en.wikipedia.org/wiki/Project_Gutenberg?action=edit",
+      "talk": "https://en.wikipedia.org/wiki/Talk:Project_Gutenberg"
+    },
+    "mobile": {
+      "page": "https://en.wikipedia.org/wiki/Project_Gutenberg",
+      "revisions": "https://en.wikipedia.org/wiki/Special:History/Project_Gutenberg",
+      "edit": "https://en.wikipedia.org/wiki/Project_Gutenberg?action=edit",
+      "talk": "https://en.wikipedia.org/wiki/Talk:Project_Gutenberg"
+    }
+  },
+  "extract": "Project Gutenberg (PG) is a volunteer effort to digitize and archive cultural works, as well as to \"encourage the creation and distribution of eBooks.\" It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library. Most items in its collection are full texts of books or individual stories in the public domain. All files are free to access in an open format, available on almost any computer. As of 22 March 2026, Project Gutenberg had reached nearly 78,000 items in its collection of free eBooks.",
+  "extract_html": "<p><b>Project Gutenberg</b> (<b>PG</b>) is a volunteer effort to digitize and archive cultural works, as well as to \"encourage the creation and distribution of eBooks.\" It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library. Most items in its collection are full texts of books or individual stories in the public domain. All files are free to access in an open format, available on almost any computer. As of 22 March 2026, Project Gutenberg had reached nearly 78,000 items in its collection of free eBooks.</p>"
+}
