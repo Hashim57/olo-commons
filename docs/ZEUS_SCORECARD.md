@@ -44,7 +44,7 @@ n 200, label accuracy 100.0%, evidence hit 100.0%, JSON valid 100.0%, F1 support
 
 ## The served copy (Cloudflare Workers AI)
 
-Not measured yet.
+Served by zeus.6hnz57bf82.workers.dev: n 200, label accuracy 100.0%, JSON valid 100.0%, evidence hit 100.0%.
 
 ## How to read this
 
