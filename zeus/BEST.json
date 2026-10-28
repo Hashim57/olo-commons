@@ -1,8 +1,8 @@
 {
-  "version": "v9",
-  "date": "2026-10-25",
+  "version": "v10",
+  "date": "2026-10-28",
   "base": "mistralai/Mistral-7B-Instruct-v0.2",
-  "train_examples": "6,618",
+  "train_examples": "10,214",
   "label_accuracy": 1.0,
   "evidence_hit": 1.0,
   "json_valid": 1.0,
@@ -12,10 +12,11 @@
     "contradicted": 1.0,
     "not_covered": 1.0
   },
-  "held_out_accuracy": 0.677,
-  "promoted_at": "2026-10-25T17:52:20+00:00",
+  "held_out_accuracy": 0.697,
+  "promoted_at": "2026-10-28T10:38:16+00:00",
   "measured_versions": [
     "v0",
+    "v10",
     "v2",
     "v4",
     "v5",
@@ -25,8 +26,8 @@
     "v9"
   ],
   "cloudflare": {
-    "version": "v9",
-    "date": "2026-10-25",
+    "version": "v10",
+    "date": "2026-10-28",
     "base": "mistralai/Mistral-7B-Instruct-v0.2",
     "label_accuracy": 1.0,
     "evidence_hit": 1.0,
