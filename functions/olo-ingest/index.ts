@@ -5,7 +5,10 @@
 // source's own public API, turns each into an atom with provenance, embeds it
 // with gte-small INSIDE Supabase (no external AI key, nothing leaves the
 // project), inserts it if the content hash is new, and links it to its nearest
-// neighbours.
+// neighbours. A candidate that is the same atom as one already stored from
+// another source (same DOI or PMID, or the same or near-identical text) is not
+// stored twice: it is recorded as a sighting of that atom, which keeps its
+// provenance and counts as corroboration (dedup.ts, sql/009, docs/TRUST.md).
 //
 // Gap filling: before the random walk, the run takes the most-asked open gap
 // (a bag of topic words recorded by olo-answer when a question came back
@@ -23,6 +26,7 @@ import { dataGovApiBase, dataGovCandidates, dataGovSearchUrl, DATAGOV_TOPICS } f
 import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
+import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -197,25 +201,36 @@ Deno.serve(async (req) => {
     return (addedToday.get(src.id) || 0) >= DAILY_CAP;
   }
 
+  const embed = async (title: string, summary: string, content: string): Promise<number[]> => await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
+
   // Insert one atom with provenance and trust, link it, and score it and the neighbours that now agree with it.
-  // Returns the new id, or null when it was a duplicate or could not be stored.
-  async function store(src: Source, c: Candidate, title: string, summary: string, content: string, hash: string): Promise<string | null> {
-    const emb: number[] = await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
+  // Returns the new id, or null when it was a duplicate or could not be stored. `pre` reuses the embedding and
+  // neighbours the duplicate check already computed; `normHash` is dedup.ts normKey hashed (sql/009).
+  async function store(src: Source, c: Candidate, title: string, summary: string, content: string, hash: string, normHash?: string, pre?: { emb: number[]; nb: any[] }): Promise<string | null> {
+    const emb: number[] = pre ? pre.emb : await embed(title, summary, content);
     const row = { source_id: src.id, external_id: c.external_id || null, url: c.url, title, summary: summary || null, content: content || null, lang: c.lang || 'en', licence: c.licence || src.licence, authors: c.authors || null, published_at: c.published_at || null, content_hash: hash, quality: quality({ ...c, summary, content }, src.trust), tokens: Math.round((title + summary + content).length / 4), embedding: emb,
       // sql/002: time and provenance. A fact is assumed to hold from its publication date; observed_at is now.
-      valid_from: c.published_at || null, source_revision: c.source_revision || null, doi: c.doi || null, pmid: c.pmid || null, observed_at: new Date().toISOString() };
-    const { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
+      valid_from: c.published_at || null, source_revision: c.source_revision || null, doi: c.doi || null, pmid: c.pmid || null, observed_at: new Date().toISOString(),
+      // sql/009: the normalised-text hash the duplicate check looks up.
+      norm_hash: normHash || null };
+    const schemaMiss = (e: any) => !!e && /column|schema cache/i.test(e.message || '');
+    let { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
+    if (schemaMiss(error)) {
+      // sql/009 not run yet: store without norm_hash.
+      const { norm_hash: _n, ...pre009 } = row;
+      ({ data: atom, error } = await sb.from('olo_atoms').insert(pre009).select('id').single());
+    }
     if (error || !atom) {
       // Older schema (sql/002 not run yet): store without the new columns rather than lose the atom.
-      if (error && /column|schema cache/i.test(error.message || '')) {
-        const { valid_from: _v, source_revision: _r, doi: _d, pmid: _p, observed_at: _o, ...legacy } = row;
+      if (schemaMiss(error)) {
+        const { valid_from: _v, source_revision: _r, doi: _d, pmid: _p, observed_at: _o, norm_hash: _n, ...legacy } = row;
         const again = await sb.from('olo_atoms').insert(legacy).select('id').single();
         if (again.error || !again.data) return null;
         return again.data.id;
       }
       return null;
     }
-    const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K });
+    const nb = pre ? pre.nb : (await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K })).data;
     const near = (nb || []).filter((x: any) => x.sim >= MIN_LINK);
     const links = near.flatMap((x: any) => [{ from_atom: atom.id, to_atom: x.id, relation: 'similar', weight: x.sim }, { from_atom: x.id, to_atom: atom.id, relation: 'similar', weight: x.sim }]);
     if (links.length) { const { error: le } = await sb.from('olo_links').upsert(links, { onConflict: 'from_atom,to_atom,relation', ignoreDuplicates: true }); if (!le) stats.linked += links.length; }
@@ -224,6 +239,27 @@ Deno.serve(async (req) => {
     for (const x of near.filter((x: any) => x.sim >= AGREE).slice(0, 5)) await sb.rpc('olo_rescore_atom', { p_id: x.id }).then(() => {}, () => {});
     addedToday.set(src.id, (addedToday.get(src.id) || 0) + 1);
     return atom.id;
+  }
+
+  // Cross-source duplicates (dedup.ts): stored atoms that could be the same as this candidate, oldest first.
+  // Identifier and normalised-hash lookups are indexed and cheap; any that fails (older schema) is just empty.
+  const POOL_COLS = 'id, source_id, url, title, summary, content, doi, pmid, status, created_at';
+  async function dedupPool(doi: string | null, pmid: string | null, normHash: string): Promise<DedupExisting[]> {
+    const qs = [];
+    if (doi) qs.push(sb.from('olo_atoms').select(POOL_COLS).eq('doi', doi).neq('status', 'superseded').order('created_at').limit(5));
+    if (pmid) qs.push(sb.from('olo_atoms').select(POOL_COLS).eq('pmid', pmid).neq('status', 'superseded').order('created_at').limit(5));
+    qs.push(sb.from('olo_atoms').select(POOL_COLS).eq('norm_hash', normHash).neq('status', 'superseded').order('created_at').limit(5));
+    const rows = (await Promise.all(qs)).flatMap((r: any) => (r.error ? [] : r.data || []));
+    return [...new Map(rows.map((r: any) => [r.id, r])).values()].sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at))) as DedupExisting[];
+  }
+  // Record a duplicate as a sighting of the stored atom (sql/009). False when that is not possible (sql/009 not run),
+  // in which case the caller stores the atom as before rather than lose the second source.
+  let sightings = 0;
+  async function sight(atomId: string, src: Source, c: Candidate, reason: string, score: number): Promise<boolean> {
+    const { error } = await sb.rpc('olo_record_sighting', { p_atom: atomId, p_source: src.id, p_url: c.url, p_external_id: c.external_id || null, p_doi: normDoi(c.doi), p_pmid: normPmid(c.pmid), p_title: clean(c.title).slice(0, 300), p_licence: c.licence || src.licence || null, p_reason: reason, p_similarity: score });
+    if (error) return false;
+    sightings++;
+    return true;
   }
 
   // Insert candidates for one source: clean, hash, refuse duplicates, embed, insert, link. Returns how many were added.
@@ -237,9 +273,30 @@ Deno.serve(async (req) => {
         const title = clean(c.title).slice(0, 300), summary = clean(c.summary || '').slice(0, 1000), content = clean(c.content || '').slice(0, MAX_CONTENT);
         if (!title || !/^https:\/\//.test(c.url)) { stats.skipped++; continue; }
         const hash = await sha256(title + '\n' + summary + '\n' + content);
-        const { data: dup } = await sb.from('olo_atoms').select('id').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
-        if (dup && dup.length) { stats.skipped++; continue; }
-        const id = await store(src, c, title, summary, content, hash);
+        const { data: dup } = await sb.from('olo_atoms').select('id, source_id, url').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
+        if (dup && dup.length) {
+          // Byte-identical text from another source: keep that source as a sighting (best effort; skipped either way, as before).
+          if (dup[0].source_id !== src.id && dup[0].url !== c.url) await sight(dup[0].id, src, c, 'same_text', 1);
+          stats.skipped++; continue;
+        }
+        // Cross-source duplicate check: identifiers and normalised text first, then the closest neighbours by embedding.
+        const doi = normDoi(c.doi), pmid = normPmid(c.pmid);
+        const normHash = await sha256(normKey(title, bodyOf({ summary, content })));
+        const me = { source_id: src.id, url: c.url, title, summary, content, doi, pmid };
+        let verdict = decide(me, await dedupPool(doi, pmid, normHash));
+        let pre: { emb: number[]; nb: any[] } | undefined;
+        if (verdict.action === 'insert') {
+          const emb = await embed(title, summary, content);
+          const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: '00000000-0000-0000-0000-000000000000', p_k: LINK_K });
+          pre = { emb, nb: nb || [] };
+          const close = pre.nb.filter((x: any) => x.sim >= NEAR_EMBED).map((x: any) => x.id);
+          if (close.length) {
+            const { data: rows } = await sb.from('olo_atoms').select(POOL_COLS).in('id', close).order('created_at');
+            verdict = decide(me, (rows || []) as DedupExisting[]);
+          }
+        }
+        if (verdict.action === 'duplicate' && await sight(verdict.of, src, c, verdict.reason, verdict.score)) { stats.skipped++; continue; }
+        const id = await store(src, c, title, summary, content, hash, normHash, pre);
         if (!id) { stats.failed++; continue; }
         stats.added++; addedHere++;
         await checkpoint();
@@ -281,7 +338,8 @@ Deno.serve(async (req) => {
         const oldUrl = permalink(src.slug, String(old.url), old.source_revision ? String(old.source_revision) : null);
         const moved = await sb.from('olo_atoms').update({ url: oldUrl }).eq('id', old.id);
         if (moved.error) { fail(src.slug + ' (recheck)', moved.error.message); continue; }
-        const id = await store(src, { ...c, url: String(old.url) }, title, summary, content, hash);
+        // No duplicate check here: a changed page is always stored as the new atom its old one points to.
+        const id = await store(src, { ...c, url: String(old.url) }, title, summary, content, hash, await sha256(normKey(title, bodyOf({ summary, content }))));
         if (!id) { await sb.from('olo_atoms').update({ url: String(old.url) }).eq('id', old.id); continue; }
         await sb.rpc('olo_supersede', { p_old: old.id, p_new: id });
         changed++; stats.added++;
@@ -331,7 +389,7 @@ Deno.serve(async (req) => {
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (sightings ? ` (${sightings} duplicates recorded as sightings)` : '') + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });
