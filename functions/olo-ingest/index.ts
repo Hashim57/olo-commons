@@ -23,6 +23,8 @@ import { dataGovApiBase, dataGovCandidates, dataGovSearchUrl, DATAGOV_TOPICS } f
 import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
+import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
+import { europePmcCandidates, europePmcSearchUrl, europePmcWalkUrl, EUROPEPMC_TOPICS } from './europepmc.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -122,6 +124,19 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const s: any = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(term)}&retmax=${n}&retstart=${Math.floor(Math.random() * 500)}&sort=pub_date&retmode=json`);
     return pubmedByIds(pubmedSearchIds(s));
   },
+  // Open Library: catalogue facts only (title, authors, subjects, first year), which are CC0; never descriptions (openlibrary.ts).
+  async openlibrary(n, src) {
+    const subject = OPENLIBRARY_SUBJECTS[Math.floor(Math.random() * OPENLIBRARY_SUBJECTS.length)];
+    const r: any = await get(openLibrarySubjectUrl(src.api_base || '', subject, Math.min(n * 4, 40), 1 + Math.floor(Math.random() * 5)));
+    return pick(openLibraryCandidates(r, n * 3), n);
+  },
+  // Europe PMC: open-access papers under CC0, CC BY or CC BY-SA only, checked again per article (europepmc.ts).
+  async europepmc(n, src) {
+    const topic = EUROPEPMC_TOPICS[Math.floor(Math.random() * EUROPEPMC_TOPICS.length)];
+    const year = 2005 + Math.floor(Math.random() * (new Date().getUTCFullYear() - 2005));
+    const r: any = await get(europePmcWalkUrl(src.api_base || '', topic, year, Math.min(n * 4, 40)));
+    return pick(europePmcCandidates(r, n * 3), n);
+  },
 };
 
 /* ---------- search per source, for gap filling: the same mappers, a topic instead of chance ---------- */
@@ -133,6 +148,8 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
   async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
   async openalex(topic, n) { const r: any = await get(searchUrl('openalex', topic, n)!); return openalexCandidates(r?.results || [], n); },
+  async openlibrary(topic, n) { const r: any = await get(openLibrarySearchUrl('', topic, n * 3)); return openLibraryCandidates(r, n); },
+  async europepmc(topic, n) { const r: any = await get(europePmcSearchUrl('', topic, n * 3)); return europePmcCandidates(r, n); },
 };
 
 function quality(c: Candidate, trust: number) {
