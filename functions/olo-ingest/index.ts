@@ -38,7 +38,7 @@ type Source = { id: string; slug: string; kind?: string | null; api_base?: strin
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
-async function get(url: string, accept = 'application/json') { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
+async function get(url: string, accept = 'application/json', timeoutMs = 8000) { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
 /* ---------- discovery per source: each returns a few random candidates from the source's own API ---------- */
@@ -100,8 +100,10 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const xml: string = await get(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`, 'application/atom+xml');
     return arxivCandidates(xml);
   },
+  // gutendex is a volunteer-run service and slow on deep pages: every call timed out at 8 s on 26 October 2026
+  // (issue #17). Canonical URL (no /books -> /books/ redirect), shallower pages, and 20 s for this source only.
   async gutenberg(n) {
-    const r: any = await get(`https://gutendex.com/books?page=${1 + Math.floor(Math.random() * 60)}`);
+    const r: any = await get(`https://gutendex.com/books/?page=${1 + Math.floor(Math.random() * 30)}`, 'application/json', 20000);
     return pick(gutenbergCandidates(r.results || []), n);
   },
   // Wikinews: random articles in the main namespace, with the intro and the page's latest revision id.
