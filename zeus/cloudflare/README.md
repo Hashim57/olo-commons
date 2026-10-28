@@ -25,4 +25,8 @@ Nothing to do. When a training run finishes and `zeus/promote.py` records the be
 
 ## Honest notes
 
-The adapter is trained on a 4-bit copy of the base on the Mac (QLoRA) and served by Cloudflare on the full-precision base. That is the normal way QLoRA adapters are deployed, but the numbers can move a little, which is why the served model is scored separately and both numbers are kept. Until the first Mistral version is published, the Worker answers 503 for Zeus and every caller falls back (olo-answer to the hosted writer with the Zeus prompt, helius-olo.io to its Claude verifier), and says so.
+The adapter is trained on a 4-bit copy of the base on the Mac (QLoRA) and served by Cloudflare on the full-precision base. That is the normal way QLoRA adapters are deployed, but the numbers can move a little, which is why the served model is scored separately and both numbers are kept.
+
+The Worker can retry once when Zeus answers with something that is not a valid verdict (opt in: the Worker var `ZEUS_FORMAT_RETRY=1`, or `"format_retry": true` in a request; off by default). The retry sends the original messages, the bad answer and a short repair instruction at temperature 0, capped at 200 tokens and 15 seconds, and never repeats. The response says `"retried"` (with the first answer in `zeus_first_answer`) so `eval_endpoint.py --format-retry` keeps the first-attempt scores apart; when the retry fails too the Worker answers 502 `zeus_unparseable_answer`. Workers AI JSON mode (constrained decoding through `response_format`) is not used because the LoRA base model is not on Cloudflare's list of JSON mode models.
+
+Until the first Mistral version is published, the Worker answers 503 for Zeus and every caller falls back (olo-answer to the hosted writer with the Zeus prompt, helius-olo.io to its Claude verifier), and says so.
