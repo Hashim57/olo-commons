@@ -1,5 +1,6 @@
 train.jsonl
 eval.jsonl
+eval2.jsonl
 meta.json
 cache/
 imported/
