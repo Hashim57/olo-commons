@@ -1,0 +1,24 @@
+{
+  "base": "mistralai/Mistral-7B-Instruct-v0.2",
+  "framework": "peft-cloud",
+  "gpu": "A100-40GB",
+  "train_examples": 14419,
+  "eval_examples": 200,
+  "epochs": 1.0,
+  "steps": 901,
+  "batch": 16,
+  "lr": 0.0002,
+  "lora": {
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "v_proj"
+    ],
+    "bias": "none",
+    "task_type": "CAUSAL_LM"
+  },
+  "minutes": 50.0,
+  "system_folded": true
+}
