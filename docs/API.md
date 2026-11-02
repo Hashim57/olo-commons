@@ -103,7 +103,7 @@ Limits: 120 requests per hour per address; 3,000 with a partner key sent as `x-o
 
 ## Direct SQL functions (anon key)
 
-Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
+Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_atom_sightings(p_id)` (other sources where the same atom was found), `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_atom_sightings`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
 
 Call shape (PostgREST): `POST https://bfldflbkebyapfagsxnr.supabase.co/rest/v1/rpc/<function>` with headers `apikey: <anon key>`, `Authorization: Bearer <anon key>`, `Content-Type: application/json` and the arguments as a JSON object using the parameter names above.
 
