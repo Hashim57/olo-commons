@@ -23,10 +23,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { clean } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchUrl, DATAGOV_TOPICS } from './datagov.ts';
+import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
+import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
+import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
+import { europePmcCandidates, europePmcSearchUrl, europePmcWalkUrl, EUROPEPMC_TOPICS } from './europepmc.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -73,6 +77,10 @@ async function getOpenAlex(url: string) {
     const m = e instanceof Error ? e.message : String(e);
     throw new Error(/^429 /.test(m) ? `${m} (OpenAlex daily budget used up: set the OPENALEX_KEY secret)` : m);
   }
+}
+// Europeana takes its key in the query string; keep it out of error messages, which end up in the run note.
+async function getEuropeana(url: string) {
+  try { return await get(url); } catch (e) { throw new Error(redactKey(e instanceof Error ? e.message : String(e))); }
 }
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
   if (!ids.length) return [];
@@ -136,6 +144,34 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const s: any = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(term)}&retmax=${n}&retstart=${Math.floor(Math.random() * 500)}&sort=pub_date&retmode=json`);
     return pubmedByIds(pubmedSearchIds(s));
   },
+  // Europeana: cultural heritage records from European museums, libraries and archives (europeana.ts).
+  // Only records under PDM, CC0, CC BY or CC BY-SA are requested and kept. The key goes in the
+  // EUROPEANA_KEY secret; without one Europeana's public demo key is used.
+  async europeana(n, src) {
+    const topic = EUROPEANA_TOPICS[Math.floor(Math.random() * EUROPEANA_TOPICS.length)];
+    const rows = Math.min(n * 4, 40);
+    const r: any = await getEuropeana(europeanaSearchUrl(src.api_base || EUROPEANA_API, Deno.env.get('EUROPEANA_KEY') || EUROPEANA_DEMO_KEY, topic, rows, 1 + Math.floor(Math.random() * 200)));
+    return pick(europeanaCandidates(r, n * 3), n);
+  },
+  // DOAJ: abstracts of articles in peer-reviewed open-access journals (doaj.ts). No key; DOI kept for the retraction check.
+  async doaj(n, src) {
+    const topic = DOAJ_TOPICS[Math.floor(Math.random() * DOAJ_TOPICS.length)];
+    const r: any = await get(doajSearchUrl(src.api_base || DOAJ_API, topic, Math.min(n * 3, 30), 1 + Math.floor(Math.random() * 10)));
+    return pick(doajCandidates(r, n * 3), n);
+  },
+  // Open Library: catalogue facts only (title, authors, subjects, first year), which are CC0; never descriptions (openlibrary.ts).
+  async openlibrary(n, src) {
+    const subject = OPENLIBRARY_SUBJECTS[Math.floor(Math.random() * OPENLIBRARY_SUBJECTS.length)];
+    const r: any = await get(openLibrarySubjectUrl(src.api_base || '', subject, Math.min(n * 4, 40), 1 + Math.floor(Math.random() * 5)));
+    return pick(openLibraryCandidates(r, n * 3), n);
+  },
+  // Europe PMC: open-access papers under CC0, CC BY or CC BY-SA only, checked again per article (europepmc.ts).
+  async europepmc(n, src) {
+    const topic = EUROPEPMC_TOPICS[Math.floor(Math.random() * EUROPEPMC_TOPICS.length)];
+    const year = 2005 + Math.floor(Math.random() * (new Date().getUTCFullYear() - 2005));
+    const r: any = await get(europePmcWalkUrl(src.api_base || '', topic, year, Math.min(n * 4, 40)));
+    return pick(europePmcCandidates(r, n * 3), n);
+  },
 };
 
 /* ---------- search per source, for gap filling: the same mappers, a topic instead of chance ---------- */
@@ -147,6 +183,10 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
   async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
   async openalex(topic, n) { const r: any = await getOpenAlex(searchUrl('openalex', topic, n, Deno.env.get('OPENALEX_KEY') || '')!); return openalexCandidates(r?.results || [], n); },
+  async europeana(topic, n) { const r: any = await getEuropeana(europeanaSearchUrl(EUROPEANA_API, Deno.env.get('EUROPEANA_KEY') || EUROPEANA_DEMO_KEY, topic, n * 3, 1)); return europeanaCandidates(r, n); },
+  async doaj(topic, n) { const r: any = await get(doajSearchUrl(DOAJ_API, topic, n * 2, 1)); return doajCandidates(r, n); },
+  async openlibrary(topic, n) { const r: any = await get(openLibrarySearchUrl('', topic, n * 3)); return openLibraryCandidates(r, n); },
+  async europepmc(topic, n) { const r: any = await get(europePmcSearchUrl('', topic, n * 3)); return europePmcCandidates(r, n); },
 };
 
 function quality(c: Candidate, trust: number) {
