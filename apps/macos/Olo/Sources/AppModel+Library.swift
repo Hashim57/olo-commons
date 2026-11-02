@@ -171,41 +171,73 @@ extension AppModel {
 
     // MARK: Background builds
 
-    /// A build the server moved to the background (the "truncated" stream event) finishes minutes later
-    /// as a library artifact and a build_ready nudge. Until now the thread only showed the notice and the
-    /// file appeared on the next sign-in; this polls for it (every 15 seconds, up to 20 minutes) and puts
-    /// it in the thread, or reports the failure, so building a site or an app is one request, not two.
-    func watchBackgroundBuild(cid: UUID, tid: UUID) {
+    /// A build the server moved to the background (the "truncated" stream event) finishes minutes
+    /// later. Until now the thread only showed the notice and the file appeared on the next sign-in.
+    /// With the job id the app polls builds.get every 10 seconds (up to 20 minutes), shows the stage
+    /// in the notice, and puts the artifact into the thread (and the library) when it is done, or
+    /// reports the failure. Without a job id it watches the library for the new artifact instead.
+    /// So building a site or an app is one request, not two.
+    func watchBackgroundBuild(jobId: String?, cid: UUID, tid: UUID) {
         let known = Set(libraryArtifacts.map(\.id))
         let serverId = conversation(cid)?.serverId
+        let marker = "background build"
         Task { [weak self] in
-            for _ in 0..<80 {
-                try? await Task.sleep(nanoseconds: 15_000_000_000)
+            for tick in 0..<120 {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard let self, !Task.isCancelled else { return }
                 guard self.canReachCloud, self.api.token != nil else { continue }
+                if let jobId {
+                    guard let job = try? await self.api.buildJob(id: jobId) else { continue }
+                    if let a = job.artifact, job.status == "succeeded" {
+                        self.updateTurn(cid, tid) { t in
+                            if let i = t.artifacts.firstIndex(where: { $0.id == a.id }) { t.artifacts[i] = a } else { t.artifacts.append(a) }
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
+                            t.notices.append("The background build finished: \(a.title) is below and in Artifacts.")
+                            if let s = job.summary, !s.isEmpty, t.text.isEmpty { t.text = s }
+                        }
+                        await self.refreshLibraryArtifacts()
+                        await self.clearBuildNudges()
+                        return
+                    }
+                    if job.isFinished {
+                        self.updateTurn(cid, tid) { t in
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
+                            t.notices.append(job.status == "cancelled" ? "The background build was cancelled."
+                                             : "The background build failed\(job.error.map { ": \($0)" } ?? ""). Ask again with a shorter brief, or build it in parts.")
+                        }
+                        await self.clearBuildNudges()
+                        return
+                    }
+                    if tick % 3 == 2 {
+                        self.updateTurn(cid, tid) { t in
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
+                            t.notices.append("Background build: \(job.statusLine). The file will appear here when it is ready.")
+                        }
+                    }
+                    continue
+                }
                 guard let list = try? await self.api.listArtifacts() else { continue }
                 self.libraryArtifacts = list
                 // Newest first; one from this thread when the server says which, else any new one.
                 if let a = list.first(where: { !known.contains($0.id) && ($0.conversationId == nil || serverId == nil || $0.conversationId == serverId) }) {
                     self.updateTurn(cid, tid) { t in
                         if !t.artifacts.contains(where: { $0.id == a.id }) { t.artifacts.append(a) }
-                        t.notices.removeAll { $0.localizedCaseInsensitiveContains("background build") }
+                        t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
                         t.notices.append("The background build finished: \(a.title) is below and in Artifacts.")
                     }
-                    for n in (try? await self.api.listNudges()) ?? [] where n.kind == "build_ready" { await self.markNudge(n, status: "seen") }
-                    return
-                }
-                if let n = ((try? await self.api.listNudges()) ?? []).first(where: { $0.kind == "build_failed" }) {
-                    self.updateTurn(cid, tid) { t in
-                        t.notices.removeAll { $0.localizedCaseInsensitiveContains("background build") }
-                        t.notices.append(n.body.isEmpty ? "The background build failed. Ask again with a shorter brief, or build it in parts." : n.body)
-                    }
-                    await self.markNudge(n, status: "seen")
+                    await self.clearBuildNudges()
                     return
                 }
             }
             guard let self else { return }
             self.updateTurn(cid, tid) { $0.notices.append("The background build is taking longer than 20 minutes. It will appear in Artifacts when it is ready.") }
+        }
+    }
+
+    /// The build nudges are about the build the thread just showed, so they need no bell.
+    private func clearBuildNudges() async {
+        for n in (try? await api.listNudges()) ?? [] where n.kind == "build_ready" || n.kind == "build_failed" {
+            await markNudge(n, status: "seen")
         }
     }
 

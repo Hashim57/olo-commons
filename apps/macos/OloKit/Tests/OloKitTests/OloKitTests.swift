@@ -491,4 +491,17 @@ final class CrisisTests: XCTestCase {
         XCTAssertEqual(ExportHints.hint(for: "Make me a PowerPoint about sargassum"), ExportHints.noSlides)
         XCTAssertNil(ExportHints.hint(for: "who founded project gutenberg"))
     }
+
+    func testBuildJobDecodesEitherProgressScaleAndTheArtifact() throws {
+        let running = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"running","progress":0.4,"stage":"writing","detail":"Writing the page"}"#.utf8))
+        XCTAssertEqual(running.progress, 40)
+        XCTAssertFalse(running.isFinished)
+        XCTAssertEqual(running.statusLine, "Writing the page (40%)")
+        let done = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"succeeded","progress":100,"artifact":{"id":"a1","kind":"html","title":"Bio-LNG case","filename":"bio-lng.html","code":"<h1>x</h1>"}}"#.utf8))
+        XCTAssertTrue(done.isFinished)
+        XCTAssertEqual(done.artifact?.title, "Bio-LNG case")
+        let failed = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"failed","error":"model timed out"}"#.utf8))
+        XCTAssertTrue(failed.isFinished)
+        XCTAssertEqual(failed.error, "model timed out")
+    }
 }

@@ -430,10 +430,10 @@ final class AppModel {
                     answering[cid] = "Checking the file"
                 case .references(let r): updateTurn(cid, tid) { $0.references = r }
                 case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
-                case .truncated(_, let m):
+                case .truncated(let jobId, let m):
                     updateTurn(cid, tid) { $0.notices.append(m) }
-                    // The file arrives minutes later as a library artifact: watch for it so it lands in this thread.
-                    watchBackgroundBuild(cid: cid, tid: tid)
+                    // The file arrives minutes later from the background build: watch for it so it lands in this thread.
+                    watchBackgroundBuild(jobId: jobId, cid: cid, tid: tid)
                 case .brain(let s): updateTurn(cid, tid) { $0.brainStatus = s }
                 case .error(let message, _, let code):
                     throw OloAPI.StreamFailure(message: message, code: code, httpStatus: code == "quota_exceeded" ? 402 : 500)
