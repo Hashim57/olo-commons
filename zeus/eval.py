@@ -4,6 +4,12 @@
   python zeus/eval.py --adapter zeus/out/zeus-v1 [--base Qwen/Qwen2.5-7B-Instruct] [--data zeus/data] [--limit 300]
   python zeus/eval.py --model Qwen/Qwen2.5-7B-Instruct          # the untuned baseline, for comparison
   python zeus/eval.py --adapter zeus/out/zeus-v1 --format-retry   # also measure one format repair per bad answer
+  python zeus/eval.py --adapter zeus/out/zeus-v1 --split eval3  # a later frozen split, reported per pattern
+
+The three Commons splits are all frozen by atom id and kept side by side: eval
+(rule-made, saturated, kept for comparison with v0 to v5), eval2 (near misses,
+relation flips, true passage last) and eval3 (versioned; see zeus/eval3.py).
+Splits whose lines carry a `kind` are also reported per pattern (`by_kind`).
 
 Reports: label accuracy, per-label F1, evidence hit rate (the quoted span is a
 substring of the named passage and the passage is the right one), JSON validity.
@@ -23,6 +29,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from train_lora import SYSTEM, render_user  # noqa: E402
 
 LABELS = ("supported", "contradicted", "not_covered")
+SPLITS = {"eval": "eval.jsonl", "eval2": "eval2.jsonl", "eval3": "eval3.jsonl"}
 
 # The one repair turn a format retry adds after the bad answer. Kept identical to
 # REPAIR in zeus/cloudflare/worker.js.
@@ -111,6 +118,31 @@ def score(examples, answers):
             "binary_balanced_accuracy": bba}
 
 
+def score_by_kind(examples, answers):
+    """Label accuracy per pattern ({kind: {"n", "accuracy"}}) for splits whose lines carry a `kind`
+    (eval2, eval3). Lines without one count as "other". Same answer handling as score(): an answer
+    that does not parse is wrong."""
+    kinds = {}
+    for ex, ans in zip(examples, answers):
+        pred = ans if isinstance(ans, dict) else parse(ans or "")
+        d = kinds.setdefault(ex.get("kind", "other"), {"n": 0, "correct": 0})
+        d["n"] += 1
+        if pred and pred.get("label") == ex["label"]:
+            d["correct"] += 1
+    return {k: {"n": d["n"], "accuracy": round(d["correct"] / d["n"], 3)} for k, d in sorted(kinds.items())}
+
+
+def split_report(examples, answers):
+    """score() plus, for a split with patterns, by_kind, and the split's version when its lines carry one."""
+    r = score(examples, answers)
+    if any("kind" in ex for ex in examples):
+        r["by_kind"] = score_by_kind(examples, answers)
+    versions = sorted({ex["version"] for ex in examples if ex.get("version")})
+    if versions:
+        r["version"] = versions[0] if len(versions) == 1 else versions
+    return r
+
+
 def repair_messages(messages, bad_answer):
     """The original conversation, the answer that did not parse, and the repair instruction."""
     return list(messages) + [{"role": "assistant", "content": bad_answer or ""}, {"role": "user", "content": REPAIR}]
@@ -141,8 +173,9 @@ def retry_metrics(examples, final_answers, retried):
 
 
 def report_fields(examples, first_answers, final_answers, retried, format_retry):
-    """score() on the first answers, the mode, and (only with format_retry) the after-retry fields."""
-    out = {**score(examples, first_answers), "format_retry": bool(format_retry)}
+    """split_report() on the first answers (score() plus by_kind and version for a split with patterns),
+    the mode, and (only with format_retry) the after-retry fields."""
+    out = {**split_report(examples, first_answers), "format_retry": bool(format_retry)}
     if format_retry:
         out.update(retry_metrics(examples, final_answers, retried))
     return out
@@ -155,7 +188,8 @@ def main():
     ap.add_argument("--base", default="Qwen/Qwen2.5-7B-Instruct")
     ap.add_argument("--data", default=os.path.join(os.path.dirname(__file__), "data"))
     ap.add_argument("--limit", type=int, default=300)
-    ap.add_argument("--eval-file", help="score this jsonl instead of <data>/eval.jsonl (for example zeus/data/imported/vitaminc-eval.jsonl)")
+    ap.add_argument("--split", choices=sorted(SPLITS), default="eval", help="which frozen Commons split in --data to score (default eval)")
+    ap.add_argument("--eval-file", help="score this jsonl instead of a split in --data (for example zeus/data/imported/vitaminc-eval.jsonl)")
     ap.add_argument("--out")
     ap.add_argument("--format-retry", action="store_true",
                     help="retry once with a repair prompt when an answer does not parse; first-attempt metrics stay unchanged and the retry is reported separately")
@@ -173,7 +207,7 @@ def main():
         model = PeftModel.from_pretrained(model, args.adapter)
     model.eval()
 
-    with open(args.eval_file or os.path.join(args.data, "eval.jsonl")) as f:
+    with open(args.eval_file or os.path.join(args.data, SPLITS[args.split])) as f:
         examples = [json.loads(l) for l in f][: args.limit]
 
     def generate(msgs, retry):
@@ -189,8 +223,11 @@ def main():
         first, final, r = answer_with_retry(generate, msgs, args.format_retry)
         firsts.append(first); finals.append(final); retried.append(r)
 
+    # split_report on the first split (no kind, no version) is exactly score(), so its eval.json is unchanged.
     report = {"model": args.adapter or args.model, **report_fields(examples, firsts, finals, retried, args.format_retry)}
-    out = args.out or os.path.join(args.adapter or ".", "eval.json")
+    if not args.eval_file and args.split != "eval":
+        report["split"] = args.split
+    out = args.out or os.path.join(args.adapter or ".", "eval.json" if args.split == "eval" or args.eval_file else f"{args.split}.json")
     with open(out, "w") as f:
         json.dump(report, f, indent=2)
     print(json.dumps(report))

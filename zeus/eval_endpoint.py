@@ -3,6 +3,7 @@
 
   python3 zeus/eval_endpoint.py --url https://zeus.<you>.workers.dev/v1 --out zeus/out/zeus-v6/eval-cloudflare.json
   (the key is read from ZEUS_KEY or ~/.zeus-cf-token; it is never written anywhere)
+  add --split eval2 or --split eval3 to score a later frozen split (reported per pattern too)
 
 The same metrics as eval.py (label accuracy, evidence hit, JSON validity,
 per-label F1) for the model as it actually answers in production, which can
@@ -27,7 +28,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, os.path.dirname(__file__))
-from eval import LABELS, evidence_ok, parse, report_fields, score as shared_score  # noqa: E402
+from eval import LABELS, SPLITS, evidence_ok, parse, report_fields, score as shared_score, split_report  # noqa: E402
 from train_lora import SYSTEM, render_user  # noqa: E402
 
 
@@ -100,6 +101,7 @@ def main():
     ap.add_argument("--url", required=True)
     ap.add_argument("--model", default="default_model")
     ap.add_argument("--data", default=os.path.join(os.path.dirname(__file__), "data"))
+    ap.add_argument("--split", choices=sorted(SPLITS), default="eval", help="which frozen Commons split in --data to score (default eval)")
     ap.add_argument("--limit", type=int, default=200)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--out")
@@ -109,13 +111,14 @@ def main():
     key = os.environ.get("ZEUS_KEY") or (open(os.path.expanduser("~/.zeus-cf-token")).read().strip() if os.path.exists(os.path.expanduser("~/.zeus-cf-token")) else "")
     if not key:
         sys.exit("set ZEUS_KEY or create ~/.zeus-cf-token (zeus/cloudflare/setup.sh does)")
-    examples = [json.loads(l) for l in open(os.path.join(a.data, "eval.jsonl")) if l.strip()][: a.limit]
+    examples = [json.loads(l) for l in open(os.path.join(a.data, SPLITS[a.split])) if l.strip()][: a.limit]
     t0 = time.time()
     with ThreadPoolExecutor(a.workers) as pool:
         errors = []
         got = list(pool.map(lambda ex: ask_full(a.url, key, a.model, ex, errors=errors, format_retry=a.format_retry), examples))
     fields = report_fields(examples, [g["first"] for g in got], [g["text"] for g in got], [g["retried"] for g in got], a.format_retry)
-    report = {"served_by": a.url.split("/")[2], "model": a.model, **fields, "minutes": round((time.time() - t0) / 60, 1)}
+    measured = ({"split": a.split} if a.split != "eval" else {}) | fields
+    report = {"served_by": a.url.split("/")[2], "model": a.model, **measured, "minutes": round((time.time() - t0) / 60, 1)}
     if errors:
         report["errors"] = error_summary(errors)
         print(f"{len(errors)} of {len(examples)} requests failed; most common: {next(iter(report['errors']['kinds']))}", file=sys.stderr)
