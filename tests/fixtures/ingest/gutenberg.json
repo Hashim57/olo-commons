@@ -1,0 +1,72 @@
+{
+  "count": 76543,
+  "next": "https://gutendex.com/books/?page=3",
+  "previous": "https://gutendex.com/books/?page=1",
+  "results": [
+    {
+      "id": 84,
+      "title": "Frankenstein; Or, The Modern Prometheus",
+      "authors": [{ "name": "Shelley, Mary Wollstonecraft", "birth_year": 1797, "death_year": 1851 }],
+      "summaries": ["\"Frankenstein; Or, The Modern Prometheus\" by Mary Wollstonecraft Shelley is a novel written in the early 19th century. The story follows Victor Frankenstein, a young scientist who creates a living being from dead matter &amp; then abandons it. (This is an automatically generated summary.)"],
+      "editors": [],
+      "translators": [],
+      "subjects": ["Frankenstein's monster (Fictitious character) -- Fiction", "Gothic fiction", "Horror tales", "Monsters -- Fiction", "Science fiction"],
+      "bookshelves": ["Category: Novels", "Category: Science-Fiction & Fantasy", "Gothic Fiction"],
+      "languages": ["en"],
+      "copyright": false,
+      "media_type": "Text",
+      "formats": {
+        "text/html": "https://www.gutenberg.org/ebooks/84.html.images",
+        "application/epub+zip": "https://www.gutenberg.org/ebooks/84.epub3.images",
+        "text/plain; charset=us-ascii": "https://www.gutenberg.org/ebooks/84.txt.utf-8",
+        "image/jpeg": "https://www.gutenberg.org/cache/epub/84/pg84.cover.medium.jpg"
+      },
+      "download_count": 98765
+    },
+    {
+      "id": 2701,
+      "title": "Moby Dick; Or, The Whale",
+      "authors": [{ "name": "Melville, Herman", "birth_year": 1819, "death_year": 1891 }],
+      "summaries": [],
+      "editors": [],
+      "translators": [],
+      "subjects": ["Adventure stories", "Ahab, Captain (Fictitious character) -- Fiction", "Mentally ill -- Fiction", "Sea stories", "Whales -- Fiction", "Whaling -- Fiction", "Whaling ships -- Fiction"],
+      "bookshelves": ["Best Books Ever Listings"],
+      "languages": ["en"],
+      "copyright": false,
+      "media_type": "Text",
+      "formats": { "text/html": "https://www.gutenberg.org/ebooks/2701.html.images" },
+      "download_count": 54321
+    },
+    {
+      "id": 10,
+      "title": "The King James Version of the Bible",
+      "authors": [],
+      "summaries": [],
+      "editors": [],
+      "translators": [],
+      "subjects": [],
+      "bookshelves": [],
+      "languages": ["en"],
+      "copyright": false,
+      "media_type": "Text",
+      "formats": { "text/html": "https://www.gutenberg.org/ebooks/10.html.images" },
+      "download_count": 12345
+    },
+    {
+      "id": 99999,
+      "title": "",
+      "authors": [{ "name": "Anonymous", "birth_year": null, "death_year": null }],
+      "summaries": ["A record with a summary but an empty title is skipped."],
+      "editors": [],
+      "translators": [],
+      "subjects": ["Fiction"],
+      "bookshelves": [],
+      "languages": ["en"],
+      "copyright": null,
+      "media_type": "Text",
+      "formats": {},
+      "download_count": 1
+    }
+  ]
+}

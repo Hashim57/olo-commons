@@ -35,11 +35,11 @@ Deno.test('wikidataCandidates keeps labelled, described, notable entities in id 
 });
 
 Deno.test('archive and gutenberg mappers keep provenance and drop incomplete rows', () => {
-  const a = archiveCandidates([{ identifier: 'abc', title: 'A <b>Book</b>', description: ['Part one.', 'Part two.'], creator: 'Someone', date: '1901-02-03T00:00:00Z', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }, { identifier: 'nodesc', title: 'x' }]);
+  const a = archiveCandidates([{ identifier: 'abc', title: 'A <b>Book</b>', description: ['Part one describes the book in enough words to keep.', 'Part two adds a second paragraph of description.'], creator: 'Someone', date: '1901-02-03T00:00:00Z', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }, { identifier: 'nodesc', title: 'x' }]);
   assertEquals(a.length, 1);
   assertEquals(a[0].url, 'https://archive.org/details/abc');
   assertEquals(a[0].title, 'A Book');
-  assertEquals(a[0].summary, 'Part one. Part two.');
+  assertEquals(a[0].summary, 'Part one describes the book in enough words to keep. Part two adds a second paragraph of description.');
   assertEquals(a[0].authors, ['Someone']);
   assertEquals(a[0].published_at, '1901-02-03');
   assert(a[0].licence!.startsWith('See https://creativecommons.org'));

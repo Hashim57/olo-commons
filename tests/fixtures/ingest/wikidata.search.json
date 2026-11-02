@@ -1,0 +1,53 @@
+{
+  "searchinfo": { "search": "coral reef" },
+  "search": [
+    {
+      "id": "Q11292",
+      "title": "Q11292",
+      "pageid": 12614,
+      "concepturi": "http://www.wikidata.org/entity/Q11292",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q11292",
+      "display": {
+        "label": { "value": "coral reef", "language": "en" },
+        "description": { "value": "underwater ecosystem characterized by reef-building corals", "language": "en" }
+      },
+      "label": "coral reef",
+      "description": "underwater ecosystem characterized by reef-building corals",
+      "match": { "type": "label", "language": "en", "text": "coral reef" }
+    },
+    {
+      "id": "L7890",
+      "title": "Lexeme:L7890",
+      "pageid": 54321,
+      "concepturi": "http://www.wikidata.org/entity/L7890",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Lexeme:L7890",
+      "label": "reef",
+      "match": { "type": "label", "language": "en", "text": "reef" }
+    },
+    {
+      "id": "P2044",
+      "title": "Property:P2044",
+      "pageid": 23071551,
+      "concepturi": "http://www.wikidata.org/entity/P2044",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Property:P2044",
+      "label": "elevation above sea level",
+      "match": { "type": "alias", "language": "en", "text": "reef depth" }
+    },
+    {
+      "id": "Q7343",
+      "title": "Q7343",
+      "pageid": 8212,
+      "concepturi": "http://www.wikidata.org/entity/Q7343",
+      "repository": "wikidata",
+      "url": "//www.wikidata.org/wiki/Q7343",
+      "label": "Great Barrier Reef",
+      "description": "world's largest coral reef system, off Queensland, Australia",
+      "match": { "type": "label", "language": "en", "text": "Great Barrier Reef" }
+    }
+  ],
+  "search-continue": 4,
+  "success": 1
+}
