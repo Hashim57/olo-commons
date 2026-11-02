@@ -1,6 +1,6 @@
 // deno test tests/
 import { assertEquals } from './_assert.ts';
-import { clean, delatex } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, joinParts } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -47,4 +47,14 @@ Deno.test('delatex spells symbols and keeps unknown command names', () => {
 Deno.test('delatex then clean gives a readable arXiv title', () => {
   const raw = 'A $\\mathcal{O}(1)$ Bound for\n  $\\ell_1$-Regularised &amp; Sparse Models';
   assertEquals(clean(delatex(raw)), 'A O(1) Bound for l_1-Regularised & Sparse Models');
+});
+
+Deno.test('joinParts drops repeated parts and collapses a string written twice', () => {
+  const rec = 'Title: Rotterdamse courant Datum: 15-05-1802 Editie: Dag Plaats van uitgave: Rotterdam Nummer: 58';
+  assertEquals(joinParts([rec, rec]), rec);
+  assertEquals(joinParts(rec + ' ' + rec), rec);
+  assertEquals(joinParts(['Part one.', 'Part two.']), 'Part one. Part two.');
+  assertEquals(joinParts(['Same.', '<b>same.</b>', 'Other.']), 'Same. Other.');
+  assertEquals(joinParts('Short ok. Short ok.'), 'Short ok. Short ok.');
+  assertEquals(joinParts(undefined), '');
 });

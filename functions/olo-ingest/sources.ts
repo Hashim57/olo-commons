@@ -2,7 +2,7 @@
 // search URLs the gap filler uses. No I/O here, so `deno test tests/` covers
 // them without the network. index.ts does the fetching.
 
-import { clean, delatex } from './text.ts';
+import { clean, delatex, joinParts } from './text.ts';
 
 export type Candidate = {
   external_id?: string; url: string; title: string; summary?: string; content?: string; authors?: string[]; published_at?: string; licence?: string; lang?: string;
@@ -51,7 +51,7 @@ export function wikidataSearchIds(r: any): string[] {
 
 /** Internet Archive advancedsearch docs -> candidates. */
 export function archiveCandidates(docs: any[]): Candidate[] {
-  return (docs || []).filter((d: any) => d && d.title && d.description).map((d: any) => ({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description).slice(0, 600), content: clean(Array.isArray(d.description) ? d.description.join(' ') : d.description), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence: d.licenseurl ? `See ${d.licenseurl}` : 'Public domain / as stated by the Archive' }));
+  return (docs || []).filter((d: any) => d && d.title && d.description).map((d: any) => ({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: joinParts(d.description).slice(0, 600), content: joinParts(d.description), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence: d.licenseurl ? `See ${d.licenseurl}` : 'Public domain / as stated by the Archive' }));
 }
 
 /** arXiv Atom feed -> candidates (titles and abstracts run through delatex). */

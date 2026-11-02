@@ -14,6 +14,25 @@ export function clean(s: unknown): string {
     .trim();
 }
 
+/**
+ * Join a field that may be a string or a list of strings into one cleaned
+ * string, dropping parts that repeat an earlier part. The Internet Archive
+ * often returns the same description twice (Delpher newspaper records carry
+ * it once per metadata copy), which doubled the text of most archive_org
+ * atoms. A single string that is one block written twice in a row is
+ * collapsed the same way.
+ */
+export function joinParts(v: unknown): string {
+  const parts = (Array.isArray(v) ? v : [v]).map(clean).filter(Boolean);
+  const seen = new Set<string>();
+  const kept: string[] = [];
+  for (const p of parts) { const k = p.toLowerCase(); if (!seen.has(k)) { seen.add(k); kept.push(p); } }
+  const s = kept.join(' ');
+  const h = Math.floor((s.length - 1) / 2);
+  if (s.length > 40 && s[h] === ' ' && s.slice(0, h) === s.slice(h + 1)) return s.slice(0, h);
+  return s;
+}
+
 // LaTeX commands that are safe to replace by a plain-text spelling. Anything
 // not listed is kept as its name without the backslash (\alpha -> alpha), which
 // reads better in a summary than a stray backslash and still carries meaning.
