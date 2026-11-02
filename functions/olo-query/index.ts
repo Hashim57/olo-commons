@@ -10,7 +10,8 @@
 // Returns atoms with full provenance (source, URL, licence, retrieved_at,
 // content hash) so the caller can cite. Meaning search (embedding computed in
 // Supabase with gte-small) merged with keyword search by reciprocal rank fusion
-// (see rank.ts): an atom both retrievers find comes first. Each result says
+// (see rank.ts), then reranked for the question's words (coverage, title,
+// proximity) with near duplicates moved last. Each result says
 // which retriever found it (`match`: both, semantic or keyword).
 //
 // Deploy:  supabase functions deploy olo-query --no-verify-jwt
@@ -21,7 +22,7 @@
 // callers 3000. Query text is never stored; only its length and result count.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { citation, fuse, looseQuery } from './rank.ts';
+import { citation, looseQuery, rank } from './rank.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400;
@@ -105,8 +106,9 @@ Deno.serve(async (req) => {
     if (!keyword.length) { const loose = looseQuery(q); if (loose) { const { data: d2 } = await sb.rpc('olo_search_text', { p_q: loose, p_k: want }); keyword = Array.isArray(d2) ? d2 : []; } }
   }
 
-  // merge by reciprocal rank fusion: an atom found by both retrievers rises to the top
-  const results = fuse(semantic, keyword, k).map((r: any) => ({
+  // merge by reciprocal rank fusion (an atom found by both retrievers rises), then rerank the whole
+  // pool for the question: distinct words covered, title over summary, words close together, near duplicates last
+  const results = rank(q, semantic, keyword, k).map((r: any) => ({
     id: r.id, title: r.title, summary: r.summary, content: r.content || null, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence,
     published_at: r.published_at || null, retrieved_at: r.retrieved_at, similarity: typeof r.similarity === 'number' ? r.similarity : null, match: r.match, citation: citation(r),
   }));

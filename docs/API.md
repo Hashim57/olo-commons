@@ -10,7 +10,7 @@ Base: `https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query`
 - `k`: 1 to 20 results.
 - `mode`: `hybrid` (default: meaning search merged with keyword search), `semantic`, or `keyword`. Anything else is treated as `hybrid`.
 
-In `hybrid` mode the two result lists are merged by reciprocal rank fusion: each retriever contributes `1 / (60 + position)` and an atom found by both is placed first. Each result carries `match` (`both`, `semantic` or `keyword`) so you can see which retriever found it. `similarity` is the cosine score from the meaning search and is `null` for keyword-only hits.
+In `hybrid` mode the two result lists are merged by reciprocal rank fusion: each retriever contributes `1 / (60 + position)` and an atom found by both rises. The merged pool is then reranked for the question's words: atoms whose title and summary hold more of the distinct words asked (rarer words count more, a word in the title more than one in the summary, repeating a word earns nothing) and hold them close together move up, and near duplicates (same url, or same title with a largely identical summary) move to the end. Each result carries `match` (`both`, `semantic` or `keyword`) so you can see which retriever found it. `similarity` is the cosine score from the meaning search and is `null` for keyword-only hits.
 
 Response:
 

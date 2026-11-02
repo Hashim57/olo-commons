@@ -6,7 +6,7 @@
 //   GET  /functions/v1/olo-answer?q=...&k=8
 //
 // Steps: retrieve passages exactly as olo-query does (meaning search merged
-// with keyword search by reciprocal rank fusion), ask a hosted open-weight
+// with keyword search by reciprocal rank fusion, then reranked), ask a hosted open-weight
 // model for two to four sentences that cite passage ids, then ask the verifier
 // for every sentence whether its passages support, contradict or do not cover
 // it. The response carries the answer, each sentence with its verdict and
@@ -34,7 +34,7 @@
 // time-limited so a slow provider cannot hold the function open.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { citation, fuse, looseQuery } from './rank.ts';
+import { citation, looseQuery, rank } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
 import { applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive } from './hygiene.ts';
 
@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
     // the strict query ANDs every word; when it finds nothing, retry with the content words ORed
     if (!keyword.length) { const loose = looseQuery(q); if (loose) { const { data: d2 } = await sb.rpc('olo_search_text', { p_q: loose, p_k: want }); keyword = Array.isArray(d2) ? d2 : []; } }
   }
-  const results = fuse(semantic, keyword, k);
+  const results = rank(q, semantic, keyword, k);
   const passages: Passage[] = labelPassages(results);
   const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, summary: r.summary || null, url: r.url, source: r.source, source_slug: r.source_slug, source_kind: r.source_kind || null, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at,
     // sql/002: trust and time (null until the migration has run)
