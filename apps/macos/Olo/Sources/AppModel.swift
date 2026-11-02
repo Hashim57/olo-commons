@@ -428,7 +428,10 @@ final class AppModel {
                     answering[cid] = "Checking the file"
                 case .references(let r): updateTurn(cid, tid) { $0.references = r }
                 case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
-                case .truncated(_, let m): updateTurn(cid, tid) { $0.notices.append(m) }
+                case .truncated(_, let m):
+                    updateTurn(cid, tid) { $0.notices.append(m) }
+                    // The file arrives minutes later as a library artifact: watch for it so it lands in this thread.
+                    watchBackgroundBuild(cid: cid, tid: tid)
                 case .brain(let s): updateTurn(cid, tid) { $0.brainStatus = s }
                 case .error(let message, _, let code):
                     throw OloAPI.StreamFailure(message: message, code: code, httpStatus: code == "quota_exceeded" ? 402 : 500)
@@ -508,6 +511,12 @@ final class AppModel {
 
     /// No connection: quote what is saved here and queue the question.
     private func answerOffline(question: String, content: String, attachments: [Attachment], cid: UUID, tid: UUID) {
+        // A request to build something has nothing to quote: say so, and let the queue below ask it properly later.
+        if attachments.isEmpty, QuotedAnswer.looksLikeBuildRequest(question) {
+            updateTurn(cid, tid) { t in t.text = QuotedAnswer.needsConnection; t.origin = .offline; t.sources = [] }
+            queueOffline(question: question, content: content, cid: cid, tid: tid)
+            return
+        }
         var passages: [Passage] = []
         // Attached files come first: a question about a document is answered from it.
         for a in attachments {
@@ -523,6 +532,11 @@ final class AppModel {
             t.origin = .offline
             t.sources = quoted.sources
         }
+        queueOffline(question: question, content: content, cid: cid, tid: tid)
+    }
+
+    /// Queues an offline question to be asked properly when the connection returns (never a private chat).
+    private func queueOffline(question: String, content: String, cid: UUID, tid: UUID) {
         if conversation(cid)?.isPrivate == true {
             // The queue is a plain file, so a private question is never put in it.
             updateTurn(cid, tid) { $0.notices.append("Private chats are not queued. Ask again when the Mac is online.") }

@@ -33,9 +33,14 @@ struct ArtifactsView: View {
     private var all: [Artifact] { thread + library }
 
     var body: some View {
-        HSplitView {
-            list.frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
-            detail.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geo in
+            // The list takes a quarter of the width between 200 and 320 points; the detail gets the rest.
+            let listWidth = min(320, max(200, geo.size.width * 0.27))
+            HStack(spacing: 0) {
+                list.frame(width: listWidth).frame(maxHeight: .infinity).clipped()
+                Divider()
+                detail.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+            }
         }
         .task {
             loading = true
@@ -60,7 +65,9 @@ struct ArtifactsView: View {
             }
             if !shares.isEmpty { sharesSection }
         }
-        .listStyle(.sidebar)
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func row(_ a: Artifact) -> some View {

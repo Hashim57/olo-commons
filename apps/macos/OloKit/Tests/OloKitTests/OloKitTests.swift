@@ -210,6 +210,26 @@ final class SearchTests: XCTestCase {
         XCTAssertEqual(a.text, QuotedAnswer.notCovered)
     }
 
+    func testQuotedAnswerNeedsMoreThanOneSharedWordForALongBrief() {
+        // A long build brief shares odd words ("table", "section") with unrelated atoms; none of them is an answer.
+        let brief = "Build a single-page HTML site called bio-lng-vs-evs-trucking.html, a case document for why bio-LNG beats electric for heavy-duty trucking fleets. Include a hero section, a comparison table with range, refuel time and upfront cost, a bar chart, a citations section."
+        let a = QuotedAnswer.compose(question: brief, passages: atoms + [
+            Passage(title: "Rugby World Cup 2007", text: "South Africa defeated England in the final. The table of results includes every section of the tournament.", url: "https://r", origin: "Commons"),
+        ])
+        XCTAssertFalse(a.covered)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 1), 1)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 3), 2)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 40), 8)
+    }
+
+    func testBuildRequestsAreRecognised() {
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Build a single-page HTML site for my bakery"))
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Please make me a landing page with a contact form"))
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Write a business plan document for a cafe"))
+        XCTAssertFalse(QuotedAnswer.looksLikeBuildRequest("who founded project gutenberg"))
+        XCTAssertFalse(QuotedAnswer.looksLikeBuildRequest("what does current research say about sargassum as a biofuel"))
+    }
+
     func testChunkerSplitsLongTextAtSentences() {
         let text = (1...60).map { "Sentence number \($0) is here." }.joined(separator: " ")
         let chunks = Chunker.chunks(text, size: 200)
