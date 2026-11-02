@@ -48,10 +48,11 @@ struct MainView: View {
         .onChange(of: model.showTerms) { if !model.showTerms { model.considerBrainChoice() } }
         .overlay(alignment: .top) {
             if let b = model.banner {
-                Text(b).font(.callout).padding(10).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                Text(b).font(.callout).multilineTextAlignment(.center).frame(maxWidth: 560)
+                    .padding(10).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
                     .padding(.top, 8)
                     .onTapGesture { model.banner = nil }
-                    .task { try? await Task.sleep(nanoseconds: 6_000_000_000); model.banner = nil }
+                    .task { try? await Task.sleep(nanoseconds: b.count > 120 ? 20_000_000_000 : 6_000_000_000); model.banner = nil }
             }
         }
     }

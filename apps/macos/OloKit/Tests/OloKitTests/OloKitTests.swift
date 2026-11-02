@@ -554,4 +554,14 @@ final class CrisisTests: XCTestCase {
         XCTAssertEqual(MarkdownBlocks.parse("one\ntwo"), [.paragraph("one two")])
         XCTAssertEqual(MarkdownBlocks.parse(""), [])
     }
+
+    func testWellbeingNotesOnceAtEachThreshold() {
+        XCTAssertNil(Wellbeing.note(minutesToday: 90, lastNotedMinutes: 0))
+        XCTAssertNotNil(Wellbeing.note(minutesToday: 121, lastNotedMinutes: 0))
+        XCTAssertNil(Wellbeing.note(minutesToday: 150, lastNotedMinutes: 121), "already noted at two hours")
+        XCTAssertTrue(Wellbeing.note(minutesToday: 301, lastNotedMinutes: 121)?.contains("Five hours") ?? false)
+        XCTAssertTrue(Wellbeing.note(minutesToday: 601, lastNotedMinutes: 301)?.contains("Ten hours") ?? false)
+        XCTAssertEqual(Wellbeing.minutesToAdd(gapMinutes: 4), 4)
+        XCTAssertEqual(Wellbeing.minutesToAdd(gapMinutes: 45), 1, "a long gap counts as one minute, not as time with Olo")
+    }
 }
