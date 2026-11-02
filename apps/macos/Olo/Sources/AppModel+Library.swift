@@ -208,6 +208,16 @@ extension AppModel {
                 guard self.canReachCloud, self.api.token != nil else { continue }
                 if let jobId {
                     guard let job = try? await self.api.buildJob(id: jobId) else { continue }
+                    if let text = job.finishedAnswer {
+                        // The server finished the cut answer in place: show the whole text.
+                        self.updateTurn(cid, tid) { t in
+                            t.text = text
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) || $0.localizedCaseInsensitiveContains("finishing it in the background") || $0.localizedCaseInsensitiveContains("length limit") }
+                            t.notices.append("Olo finished this answer in the background.")
+                        }
+                        await self.clearBuildNudges()
+                        return
+                    }
                     if let a = job.artifact, job.status == "succeeded" {
                         self.updateTurn(cid, tid) { t in
                             if let i = t.artifacts.firstIndex(where: { $0.id == a.id }) { t.artifacts[i] = a } else { t.artifacts.append(a) }
@@ -229,9 +239,11 @@ extension AppModel {
                         return
                     }
                     if tick % 3 == 2 {
+                        let answer = job.mode == "answer"
                         self.updateTurn(cid, tid) { t in
-                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
-                            t.notices.append("Background build: \(job.statusLine). The file will appear here when it is ready.")
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) || $0.localizedCaseInsensitiveContains("finishing it in the background") }
+                            t.notices.append(answer ? "Finishing the answer: \(job.statusLine). The rest appears here when it is ready."
+                                                    : "Background build: \(job.statusLine). The file will appear here when it is ready.")
                         }
                     }
                     continue

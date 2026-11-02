@@ -564,4 +564,16 @@ final class CrisisTests: XCTestCase {
         XCTAssertEqual(Wellbeing.minutesToAdd(gapMinutes: 4), 4)
         XCTAssertEqual(Wellbeing.minutesToAdd(gapMinutes: 45), 1, "a long gap counts as one minute, not as time with Olo")
     }
+
+    func testAnswerJobsAndHoursDecode() throws {
+        let job = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j2","status":"succeeded","progress":100,"mode":"answer","messageId":42,"summary":"The whole answer."}"#.utf8))
+        XCTAssertEqual(job.finishedAnswer, "The whole answer.")
+        XCTAssertEqual(job.messageId, 42)
+        let file = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j3","status":"succeeded","progress":100,"summary":"prose around a file"}"#.utf8))
+        XCTAssertNil(file.finishedAnswer, "an artifact job's summary is not an answer")
+        let e = try JSONDecoder().decode(Entitlement.self, from: Data(#"{"tier":"starter","subscribed":true,"messagesUsed":3,"messageLimit":500,"hoursToday":2.5,"hoursThisWeek":12,"hoursPerDay":10,"hoursPerWeek":30}"#.utf8))
+        XCTAssertEqual(e.hoursLine, "2.5 h today of 10, 12 h this week of 30")
+        let old = try JSONDecoder().decode(Entitlement.self, from: Data(#"{"tier":"free","messagesUsed":1,"messageLimit":5}"#.utf8))
+        XCTAssertNil(old.hoursLine)
+    }
 }
