@@ -169,6 +169,26 @@ extension AppModel {
         }
     }
 
+    /// Opens a file in the Artifacts panel, selected, from its card in the thread.
+    func openArtifact(_ a: Artifact) {
+        pendingArtifactSelection = a.id
+        panel = .artifacts
+    }
+
+    /// An answer that is itself the document someone asked for (a report, a plan, a case) becomes a
+    /// file in the thread, so it can be opened, exported as PDF or Word and found in Artifacts later.
+    /// Only when the question asked for a document or a build and the answer has the shape of one.
+    func fileAnswerAsDocument(question: String, cid: UUID, tid: UUID) {
+        guard let c = conversation(cid), let t = c.turns.first(where: { $0.id == tid }), t.artifacts.isEmpty,
+              ExportHints.hint(for: question) != nil || QuotedAnswer.looksLikeBuildRequest(question),
+              MarkdownBlocks.isStructured(t.text), t.text.count >= 400 else { return }
+        let title = MarkdownBlocks.title(of: t.text) ?? String(question.prefix(60))
+        let base = TranscriptExport.safeFilename(title, fallback: "document").replacingOccurrences(of: " ", with: "-").lowercased()
+        let a = Artifact(id: "local-" + UUID().uuidString.lowercased(), kind: "markdown", language: "markdown", title: title,
+                         filename: base + ".md", code: t.text, validated: true, conversationId: c.serverId)
+        updateTurn(cid, tid) { $0.artifacts.append(a) }
+    }
+
     // MARK: Background builds
 
     /// A build the server moved to the background (the "truncated" stream event) finishes minutes

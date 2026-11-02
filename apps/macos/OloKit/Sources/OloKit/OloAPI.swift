@@ -10,6 +10,11 @@ public final class OloAPI: @unchecked Sendable {
     public let base: URL
     /// Shared by the extensions in the other files of OloKit (streams for fixes, jobs).
     let session: URLSession
+    /// For the answer stream only. The shared session gives a whole transfer 180 seconds, which a
+    /// long answer or a live build outran: URLSession then cut the connection and the app saw
+    /// "the network connection was lost" mid-answer. A stream may run 20 minutes, with up to
+    /// 3 minutes between bytes while a model thinks.
+    let streamSession: URLSession
     private let tokenLock = NSLock()
     private var _token: String?
 
@@ -18,6 +23,7 @@ public final class OloAPI: @unchecked Sendable {
         self._token = token
         if let session {
             self.session = session
+            self.streamSession = session
         } else {
             let cfg = URLSessionConfiguration.default
             cfg.waitsForConnectivity = false
@@ -25,6 +31,26 @@ public final class OloAPI: @unchecked Sendable {
             cfg.timeoutIntervalForResource = 180
             cfg.httpAdditionalHeaders = ["User-Agent": "Olo-macOS/1.0"]
             self.session = URLSession(configuration: cfg)
+            let stream = URLSessionConfiguration.default
+            stream.waitsForConnectivity = true
+            stream.timeoutIntervalForRequest = 180
+            stream.timeoutIntervalForResource = 1200
+            stream.httpAdditionalHeaders = ["User-Agent": "Olo-macOS/1.0"]
+            self.streamSession = URLSession(configuration: stream)
+        }
+    }
+
+    /// True for the errors a dropped or stalled connection produces, which are worth one quiet
+    /// retry before giving up on helius-olo.io: the connection was lost, it timed out, or the
+    /// host was briefly unreachable. Not for a server answer (a 4xx or 5xx) or a cancellation.
+    public static func isTransientNetworkError(_ error: Error) -> Bool {
+        guard let u = error as? URLError else {
+            let ns = error as NSError
+            return ns.domain == NSURLErrorDomain && [NSURLErrorNetworkConnectionLost, NSURLErrorTimedOut, NSURLErrorCannotConnectToHost, NSURLErrorNotConnectedToInternet].contains(ns.code)
+        }
+        switch u.code {
+        case .networkConnectionLost, .timedOut, .cannotConnectToHost, .notConnectedToInternet, .cannotFindHost, .dnsLookupFailed, .secureConnectionFailed: return true
+        default: return false
         }
     }
 
@@ -173,7 +199,7 @@ public final class OloAPI: @unchecked Sendable {
 
     /// Asks a question and streams the answer as it is written and checked.
     public func ask(_ input: AskInput) -> AsyncThrowingStream<StreamEvent, Error> {
-        let session = self.session
+        let session = self.streamSession
         let url = base.appendingPathComponent("api/chat/stream")
         let token = self.token
         return AsyncThrowingStream { continuation in
@@ -181,7 +207,7 @@ public final class OloAPI: @unchecked Sendable {
                 do {
                     var req = URLRequest(url: url)
                     req.httpMethod = "POST"
-                    req.timeoutInterval = 120
+                    req.timeoutInterval = 180
                     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     req.setValue("application/x-ndjson, application/json", forHTTPHeaderField: "Accept")
                     if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }

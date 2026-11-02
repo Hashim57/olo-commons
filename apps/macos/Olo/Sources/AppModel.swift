@@ -56,6 +56,8 @@ final class AppModel {
     var libraryArtifacts: [Artifact] = []
     /// The conversation whose artifacts inspector is open.
     var showArtifacts = false
+    /// An artifact the Artifacts panel should select when it opens (a card's Open button).
+    var pendingArtifactSelection: String?
     // The Olo brain and private chats (see AppModel+Brain.swift for the behaviour).
     /// The default for "Add to Olo brain": the account's (auth.me) when signed in, this Mac's otherwise; nil until asked.
     var brainSharing: Bool?
@@ -375,8 +377,11 @@ final class AppModel {
         do {
             try await ensureSession()
             try await streamFromOlo(content: composed.content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: true)
-            // Asked for a PDF, a Word file or a spreadsheet: the Mac makes those from the answer itself.
-            if let hint = ExportHints.hint(for: question) { updateTurn(cid, tid) { if !$0.notices.contains(hint) { $0.notices.append(hint) } } }
+            // Asked for a document: the answer becomes a file in the thread, exportable as PDF or Word.
+            fileAnswerAsDocument(question: question, cid: cid, tid: tid)
+            if let hint = ExportHints.hint(for: question), conversation(cid)?.turns.first(where: { $0.id == tid })?.artifacts.isEmpty ?? true {
+                updateTurn(cid, tid) { if !$0.notices.contains(hint) { $0.notices.append(hint) } }
+            }
         } catch is CancellationError {
             updateTurn(cid, tid) { $0.notices.append("Stopped.") }
         } catch let f as OloAPI.StreamFailure where f.isQuota {
@@ -445,6 +450,13 @@ final class AppModel {
             api.token = nil
             Keychain.write("session", nil)
             try await ensureSession()
+            try await streamFromOlo(content: content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: false)
+            return
+        } catch let e where OloAPI.isTransientNetworkError(e) && outcome.text.isEmpty && retryOnAuth && !Task.isCancelled {
+            // The connection dropped before a word arrived: ask once more after a moment, quietly,
+            // before falling back to the Commons or to offline quotes.
+            answering[cid] = "Reconnecting"
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             try await streamFromOlo(content: content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: false)
             return
         } catch {
