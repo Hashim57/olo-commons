@@ -210,6 +210,26 @@ final class SearchTests: XCTestCase {
         XCTAssertEqual(a.text, QuotedAnswer.notCovered)
     }
 
+    func testQuotedAnswerNeedsMoreThanOneSharedWordForALongBrief() {
+        // A long build brief shares odd words ("table", "section") with unrelated atoms; none of them is an answer.
+        let brief = "Build a single-page HTML site called bio-lng-vs-evs-trucking.html, a case document for why bio-LNG beats electric for heavy-duty trucking fleets. Include a hero section, a comparison table with range, refuel time and upfront cost, a bar chart, a citations section."
+        let a = QuotedAnswer.compose(question: brief, passages: atoms + [
+            Passage(title: "Rugby World Cup 2007", text: "South Africa defeated England in the final. The table of results includes every section of the tournament.", url: "https://r", origin: "Commons"),
+        ])
+        XCTAssertFalse(a.covered)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 1), 1)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 3), 2)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 40), 8)
+    }
+
+    func testBuildRequestsAreRecognised() {
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Build a single-page HTML site for my bakery"))
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Please make me a landing page with a contact form"))
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Write a business plan document for a cafe"))
+        XCTAssertFalse(QuotedAnswer.looksLikeBuildRequest("who founded project gutenberg"))
+        XCTAssertFalse(QuotedAnswer.looksLikeBuildRequest("what does current research say about sargassum as a biofuel"))
+    }
+
     func testChunkerSplitsLongTextAtSentences() {
         let text = (1...60).map { "Sentence number \($0) is here." }.joined(separator: " ")
         let chunks = Chunker.chunks(text, size: 200)
@@ -448,5 +468,40 @@ final class CrisisTests: XCTestCase {
         XCTAssertTrue(Crisis.helplines.contains { $0.detail.contains("116 123") })
         XCTAssertTrue(Crisis.helplines.contains { $0.detail.contains("85258") })
         XCTAssertTrue(Crisis.emergency.contains("999") && Crisis.emergency.contains("112"))
+    }
+
+    func testMarkdownTablesBecomeCSV() {
+        let text = """
+        Here is the comparison.
+
+        | Metric | Bio-LNG | Electric |
+        |---|:--:|---|
+        | Range, km | 1,000 | 400 |
+        | Refuel time | "10 min" | 90 min |
+
+        Done.
+        """
+        XCTAssertTrue(MarkdownTables.hasTable(text))
+        XCTAssertEqual(MarkdownTables.csv(from: text), "Metric,Bio-LNG,Electric\n\"Range, km\",\"1,000\",400\nRefuel time,\"\"\"10 min\"\"\",90 min\n")
+        XCTAssertNil(MarkdownTables.csv(from: "No table here. | not | a table"))
+    }
+
+    func testExportHintsNameWhatTheMacCanAndCannotMake() {
+        XCTAssertEqual(ExportHints.hint(for: "Can you make pdfs for me to download??"), ExportHints.canExport)
+        XCTAssertEqual(ExportHints.hint(for: "Make me a PowerPoint about sargassum"), ExportHints.noSlides)
+        XCTAssertNil(ExportHints.hint(for: "who founded project gutenberg"))
+    }
+
+    func testBuildJobDecodesEitherProgressScaleAndTheArtifact() throws {
+        let running = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"running","progress":0.4,"stage":"writing","detail":"Writing the page"}"#.utf8))
+        XCTAssertEqual(running.progress, 40)
+        XCTAssertFalse(running.isFinished)
+        XCTAssertEqual(running.statusLine, "Writing the page (40%)")
+        let done = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"succeeded","progress":100,"artifact":{"id":"a1","kind":"html","title":"Bio-LNG case","filename":"bio-lng.html","code":"<h1>x</h1>"}}"#.utf8))
+        XCTAssertTrue(done.isFinished)
+        XCTAssertEqual(done.artifact?.title, "Bio-LNG case")
+        let failed = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"failed","error":"model timed out"}"#.utf8))
+        XCTAssertTrue(failed.isFinished)
+        XCTAssertEqual(failed.error, "model timed out")
     }
 }

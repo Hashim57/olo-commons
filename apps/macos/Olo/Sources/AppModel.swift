@@ -375,6 +375,8 @@ final class AppModel {
         do {
             try await ensureSession()
             try await streamFromOlo(content: composed.content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: true)
+            // Asked for a PDF, a Word file or a spreadsheet: the Mac makes those from the answer itself.
+            if let hint = ExportHints.hint(for: question) { updateTurn(cid, tid) { if !$0.notices.contains(hint) { $0.notices.append(hint) } } }
         } catch is CancellationError {
             updateTurn(cid, tid) { $0.notices.append("Stopped.") }
         } catch let f as OloAPI.StreamFailure where f.isQuota {
@@ -428,7 +430,10 @@ final class AppModel {
                     answering[cid] = "Checking the file"
                 case .references(let r): updateTurn(cid, tid) { $0.references = r }
                 case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
-                case .truncated(_, let m): updateTurn(cid, tid) { $0.notices.append(m) }
+                case .truncated(let jobId, let m):
+                    updateTurn(cid, tid) { $0.notices.append(m) }
+                    // The file arrives minutes later from the background build: watch for it so it lands in this thread.
+                    watchBackgroundBuild(jobId: jobId, cid: cid, tid: tid)
                 case .brain(let s): updateTurn(cid, tid) { $0.brainStatus = s }
                 case .error(let message, _, let code):
                     throw OloAPI.StreamFailure(message: message, code: code, httpStatus: code == "quota_exceeded" ? 402 : 500)
@@ -484,8 +489,9 @@ final class AppModel {
 
     /// helius-olo.io failed: the Commons' own service, then offline quotes.
     private func fallBack(question: String, content: String, attachments: [Attachment], cid: UUID, tid: UUID, error: Error) async {
-        // A question about attached text needs Olo itself; the Commons only answers from its own facts.
-        if attachments.isEmpty {
+        // A question about attached text needs Olo itself; the Commons only answers from its own facts,
+        // and a request to build something is not a question the Commons can answer at all.
+        if attachments.isEmpty, !QuotedAnswer.looksLikeBuildRequest(question) {
             answering[cid] = "Asking Olo Commons"
             if let a = try? await CommonsAnswer.ask(question), a.covered != false {
                 updateTurn(cid, tid) { t in
@@ -508,6 +514,12 @@ final class AppModel {
 
     /// No connection: quote what is saved here and queue the question.
     private func answerOffline(question: String, content: String, attachments: [Attachment], cid: UUID, tid: UUID) {
+        // A request to build something has nothing to quote: say so, and let the queue below ask it properly later.
+        if attachments.isEmpty, QuotedAnswer.looksLikeBuildRequest(question) {
+            updateTurn(cid, tid) { t in t.text = QuotedAnswer.needsConnection; t.origin = .offline; t.sources = [] }
+            queueOffline(question: question, content: content, cid: cid, tid: tid)
+            return
+        }
         var passages: [Passage] = []
         // Attached files come first: a question about a document is answered from it.
         for a in attachments {
@@ -523,6 +535,11 @@ final class AppModel {
             t.origin = .offline
             t.sources = quoted.sources
         }
+        queueOffline(question: question, content: content, cid: cid, tid: tid)
+    }
+
+    /// Queues an offline question to be asked properly when the connection returns (never a private chat).
+    private func queueOffline(question: String, content: String, cid: UUID, tid: UUID) {
         if conversation(cid)?.isPrivate == true {
             // The queue is a plain file, so a private question is never put in it.
             updateTurn(cid, tid) { $0.notices.append("Private chats are not queued. Ask again when the Mac is online.") }

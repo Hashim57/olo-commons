@@ -33,9 +33,14 @@ struct ArtifactsView: View {
     private var all: [Artifact] { thread + library }
 
     var body: some View {
-        HSplitView {
-            list.frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
-            detail.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geo in
+            // The list takes a quarter of the width between 200 and 320 points; the detail gets the rest.
+            let listWidth = min(320, max(200, geo.size.width * 0.27))
+            HStack(spacing: 0) {
+                list.frame(width: listWidth).frame(maxHeight: .infinity).clipped()
+                Divider()
+                detail.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+            }
         }
         .task {
             loading = true
@@ -60,7 +65,9 @@ struct ArtifactsView: View {
             }
             if !shares.isEmpty { sharesSection }
         }
-        .listStyle(.sidebar)
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func row(_ a: Artifact) -> some View {
@@ -166,7 +173,22 @@ struct ArtifactDetail: View {
                     .help("Off: JavaScript and every network request are blocked. On: the page runs as the web preview does.")
             }
             Button { copyCode() } label: { Image(systemName: "doc.on.doc") }.help("Copy the code")
-            Button { save() } label: { Image(systemName: "square.and.arrow.down") }.help("Save as a file")
+            Menu {
+                Button("Save as \(artifact.suggestedFilename)...") { save() }
+                Button("Export as PDF...") {
+                    if artifact.isPreviewable && !artifact.needsScripts {
+                        Task { await DocumentWriter.savePDF(html: ArtifactPreview.document(for: artifact), name: baseName) }
+                    } else {
+                        DocumentWriter.savePDF(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName)
+                    }
+                }
+                Button("Export as Word (.docx)...") { DocumentWriter.saveWord(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName) }
+                    .disabled(artifact.isPreviewable)
+                Button("Export Tables as CSV...") { DocumentWriter.saveCSV(from: artifact.code, name: baseName) }
+                    .disabled(!MarkdownTables.hasTable(artifact.code))
+            } label: { Image(systemName: "square.and.arrow.down") }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help("Save the file, or export it as PDF, Word or CSV")
             if inLibrary {
                 Button {
                     busy = true
@@ -225,6 +247,11 @@ struct ArtifactDetail: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var baseName: String {
+        let n = (artifact.suggestedFilename as NSString).deletingPathExtension
+        return TranscriptExport.safeFilename(n.isEmpty ? artifact.title : n, fallback: "artifact")
     }
 
     private func copyCode() {

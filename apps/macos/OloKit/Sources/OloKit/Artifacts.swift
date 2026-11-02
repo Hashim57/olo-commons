@@ -232,3 +232,56 @@ extension OloAPI {
         _ = try await run(req, as: JSONValue.self)
     }
 }
+
+/// A background build (server/builds.ts BuildJob): what the "truncated" stream event hands a
+/// large build to. Only the fields the Mac reads; the artifact arrives when status is "succeeded".
+public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    /// "queued", "running", "succeeded", "failed" or "cancelled".
+    public var status: String
+    /// 0 to 100.
+    public var progress: Int
+    public var stage: String?
+    public var detail: String?
+    public var summary: String?
+    public var artifact: Artifact?
+    public var error: String?
+
+    public init(id: String, status: String, progress: Int = 0, stage: String? = nil, detail: String? = nil,
+                summary: String? = nil, artifact: Artifact? = nil, error: String? = nil) {
+        self.id = id; self.status = status; self.progress = progress; self.stage = stage; self.detail = detail
+        self.summary = summary; self.artifact = artifact; self.error = error
+    }
+
+    enum CodingKeys: String, CodingKey { case id, status, progress, stage, detail, summary, artifact, error }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        status = (try? c.decode(String.self, forKey: .status)) ?? "queued"
+        if let p = try? c.decode(Int.self, forKey: .progress) { progress = p }
+        else if let p = try? c.decode(Double.self, forKey: .progress) { progress = Int(p <= 1 ? p * 100 : p) }
+        else { progress = 0 }
+        stage = try? c.decodeIfPresent(String.self, forKey: .stage)
+        detail = try? c.decodeIfPresent(String.self, forKey: .detail)
+        summary = try? c.decodeIfPresent(String.self, forKey: .summary)
+        artifact = try? c.decodeIfPresent(Artifact.self, forKey: .artifact)
+        error = try? c.decodeIfPresent(String.self, forKey: .error)
+    }
+
+    public var isFinished: Bool { status == "succeeded" || status == "failed" || status == "cancelled" }
+
+    /// "Writing the page (40%)": the stage or detail the server recorded, with the progress.
+    public var statusLine: String {
+        let what = (detail?.isEmpty == false ? detail : stage) ?? "Building in the background"
+        return "\(what) (\(max(0, min(100, progress)))%)"
+    }
+}
+
+extension OloAPI {
+    /// One background build by id (builds.get).
+    public func buildJob(id: String) async throws -> BuildJob {
+        let req = try TRPC.queryRequest(base: base, path: "builds.get", input: JobIdInput(jobId: id), token: token)
+        return try await run(req, as: BuildJob.self)
+    }
+}
