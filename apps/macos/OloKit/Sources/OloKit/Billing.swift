@@ -19,6 +19,11 @@ public struct Entitlement: Codable, Equatable, Sendable {
     public var refillsAt: String?
     /// Why sending is refused, when it is.
     public var blockedReason: String?
+    /// Hours with Olo (v62 servers): used today and this week, and the plan's caps (nil when uncapped or unknown).
+    public var hoursToday: Double?
+    public var hoursThisWeek: Double?
+    public var hoursPerDay: Double?
+    public var hoursPerWeek: Double?
 
     public init(tier: String = "free", subscribed: Bool = false, messagesUsed: Int = 0, messageLimit: Int = 0, messagesRemaining: Int = 0,
                 computeUsed: Int = 0, computeLimit: Int = 0, computeRemaining: Int = 0, canSendMessage: Bool = true, canRunCompute: Bool = true,
@@ -32,7 +37,7 @@ public struct Entitlement: Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case tier, subscribed, messagesUsed, messageLimit, messagesRemaining, computeUsed, computeLimit, computeRemaining
-        case canSendMessage, canRunCompute, refillsAt, blockedReason
+        case canSendMessage, canRunCompute, refillsAt, blockedReason, hoursToday, hoursThisWeek, hoursPerDay, hoursPerWeek
     }
 
     /// Reads what the server sends, filling anything missing with safe defaults, so a
@@ -51,6 +56,19 @@ public struct Entitlement: Codable, Equatable, Sendable {
         canRunCompute = (try? c.decodeIfPresent(Bool.self, forKey: .canRunCompute)) ?? true
         refillsAt = try? c.decodeIfPresent(String.self, forKey: .refillsAt)
         blockedReason = try? c.decodeIfPresent(String.self, forKey: .blockedReason)
+        hoursToday = try? c.decodeIfPresent(Double.self, forKey: .hoursToday)
+        hoursThisWeek = try? c.decodeIfPresent(Double.self, forKey: .hoursThisWeek)
+        hoursPerDay = try? c.decodeIfPresent(Double.self, forKey: .hoursPerDay)
+        hoursPerWeek = try? c.decodeIfPresent(Double.self, forKey: .hoursPerWeek)
+    }
+
+    /// "2.5 h today of 10, 12 h this week of 30", or nil when the server sends no hours.
+    public var hoursLine: String? {
+        guard let today = hoursToday else { return nil }
+        func h(_ v: Double) -> String { v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v) }
+        var s = "\(h(today)) h today" + (hoursPerDay.map { " of \(h($0))" } ?? "")
+        if let week = hoursThisWeek { s += ", \(h(week)) h this week" + (hoursPerWeek.map { " of \(h($0))" } ?? "") }
+        return s
     }
 
     /// "Free", "Starter", "Growth", "Enterprise".

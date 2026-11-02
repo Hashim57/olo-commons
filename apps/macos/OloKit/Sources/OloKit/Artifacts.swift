@@ -246,14 +246,17 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
     public var summary: String?
     public var artifact: Artifact?
     public var error: String?
+    /// "artifact" builds a file; "answer" (v62 servers) finishes a cut prose answer, whose whole text is `summary`.
+    public var mode: String
+    public var messageId: Int?
 
     public init(id: String, status: String, progress: Int = 0, stage: String? = nil, detail: String? = nil,
-                summary: String? = nil, artifact: Artifact? = nil, error: String? = nil) {
+                summary: String? = nil, artifact: Artifact? = nil, error: String? = nil, mode: String = "artifact", messageId: Int? = nil) {
         self.id = id; self.status = status; self.progress = progress; self.stage = stage; self.detail = detail
-        self.summary = summary; self.artifact = artifact; self.error = error
+        self.summary = summary; self.artifact = artifact; self.error = error; self.mode = mode; self.messageId = messageId
     }
 
-    enum CodingKeys: String, CodingKey { case id, status, progress, stage, detail, summary, artifact, error }
+    enum CodingKeys: String, CodingKey { case id, status, progress, stage, detail, summary, artifact, error, mode, messageId }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -267,6 +270,14 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
         summary = try? c.decodeIfPresent(String.self, forKey: .summary)
         artifact = try? c.decodeIfPresent(Artifact.self, forKey: .artifact)
         error = try? c.decodeIfPresent(String.self, forKey: .error)
+        mode = (try? c.decodeIfPresent(String.self, forKey: .mode)) ?? "artifact"
+        messageId = try? c.decodeIfPresent(Int.self, forKey: .messageId)
+    }
+
+    /// The finished answer of an answer job, when it succeeded.
+    public var finishedAnswer: String? {
+        guard mode == "answer", status == "succeeded", let s = summary, !s.isEmpty else { return nil }
+        return s
     }
 
     public var isFinished: Bool { status == "succeeded" || status == "failed" || status == "cancelled" }
