@@ -115,10 +115,44 @@ export const DATAGOV_TOPICS = [
   'nutrition', 'pollution', 'solar', 'geology', 'satellite', 'drinking water', 'hospitals', 'crime', 'weather',
 ];
 
-/** The search URL for one run: a random topic, federal and other public publishers alike. */
-export function dataGovSearchUrl(api: string, topic: string, perPage: number): string {
+// Sort orders the v4 search accepts (resources.data.gov/catalog-api). Each gives a
+// different first page for the same topic, and last_harvested_date keeps turning
+// up datasets the catalogue has just (re)harvested, so the source does not go
+// quiet once the relevance pages are exhausted.
+export const DATAGOV_SORTS = ['relevance', 'popularity', 'last_harvested_date'] as const;
+
+// org_type values the v4 search accepts. The two blanks mean "no filter", so half
+// the runs search the whole catalogue and half one publisher type. Federal
+// datasets are kept even without a licence URL (U.S. Government Work); the other
+// types are kept only with an open licence URL, which state and city portals
+// often publish as an opendefinition.org link.
+export const DATAGOV_ORG_TYPES: ReadonlyArray<string | undefined> = [
+  undefined, undefined, 'Federal Government', 'State Government', 'City Government', 'County Government', 'University',
+];
+
+export type DataGovPlan = { topic: string; sort: typeof DATAGOV_SORTS[number]; orgType?: string };
+
+/**
+ * What one run searches for. With a fixed sort and no filter, each topic has one
+ * first page, so after a few days every run returned datasets the Commons already
+ * had (data_gov added 27, 25, 12, 6, 5, 6, 2 and then 0 atoms a day in the week
+ * to 2 November 2026). Combining topic, sort and publisher type gives about 700
+ * distinct first pages for one call per run, which is all DEMO_KEY allows.
+ * `random` is injectable so the choice can be tested.
+ */
+export function dataGovSearchPlan(random: () => number = Math.random): DataGovPlan {
+  const at = <T>(arr: ReadonlyArray<T>): T => arr[Math.min(arr.length - 1, Math.max(0, Math.floor(random() * arr.length)))];
+  const orgType = at(DATAGOV_ORG_TYPES);
+  return { topic: at(DATAGOV_TOPICS), sort: at(DATAGOV_SORTS), ...(orgType ? { orgType } : {}) };
+}
+
+/** The search URL for one run: a topic alone (sorted by relevance) or a full plan. */
+export function dataGovSearchUrl(api: string, plan: string | DataGovPlan, perPage: number): string {
   const base = (api || DATAGOV_API).replace(/\/+$/, '');
-  return `${base}/search?q=${encodeURIComponent(topic)}&per_page=${Math.max(1, Math.min(perPage, 50))}&sort=relevance`;
+  const p: DataGovPlan = typeof plan === 'string' ? { topic: plan, sort: 'relevance' } : plan;
+  const sort = (DATAGOV_SORTS as ReadonlyArray<string>).includes(p.sort) ? p.sort : 'relevance';
+  const org = p.orgType ? `&org_type=${encodeURIComponent(p.orgType)}` : '';
+  return `${base}/search?q=${encodeURIComponent(p.topic)}&per_page=${Math.max(1, Math.min(perPage, 50))}&sort=${sort}${org}`;
 }
 
 /** The registry may still hold the dead CKAN base; anything that is not a v4 base is replaced. */
