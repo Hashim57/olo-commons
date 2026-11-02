@@ -13,16 +13,18 @@ values ('europeana', 'Europeana', 'archive', 'https://www.europeana.eu', 'https:
 
 ## 2. The discover function
 
+Put the mapping in a pure module next to `index.ts` (no I/O, so `deno test tests/` covers it), and keep the fetch in `index.ts`. The Europeana connector is a complete example: `europeana.ts` maps a search response to candidates, `tests/europeana_test.ts` tests it, and `index.ts` does the call:
+
 ```ts
-async europeana(n) {
-  const r: any = await get(`https://api.europeana.eu/record/v2/search.json?wskey=${Deno.env.get('EUROPEANA_KEY')}&query=*&rows=${n}&start=${1 + Math.floor(Math.random() * 1000)}&profile=rich`);
-  return (r.items || []).filter((i: any) => i.title && i.dcDescription).map((i: any) => ({
-    external_id: i.id, url: i.guid, title: clean(i.title[0]).slice(0, 200),
-    summary: clean(i.dcDescription[0]).slice(0, 600), content: clean(i.dcDescription.join(' ')),
-    authors: i.dcCreator, published_at: undefined, licence: i.rights?.[0] || 'See record',
-  }));
+async europeana(n, src) {
+  const topic = EUROPEANA_TOPICS[Math.floor(Math.random() * EUROPEANA_TOPICS.length)];
+  const rows = Math.min(n * 4, 40);
+  const r: any = await getEuropeana(europeanaSearchUrl(src.api_base || EUROPEANA_API, Deno.env.get('EUROPEANA_KEY') || EUROPEANA_DEMO_KEY, topic, rows, 1 + Math.floor(Math.random() * 200)));
+  return pick(europeanaCandidates(r, n * 3), n);
 }
 ```
+
+Europeana's `guid` carries the API key in its tracking parameters, so the connector builds the URL from the record id instead, and redacts the key from error messages. Watch for the same in any API that takes its key in the query string.
 
 Rules that keep the Commons safe and clean:
 
@@ -33,7 +35,7 @@ Rules that keep the Commons safe and clean:
 - Return at most `n` candidates. Randomise the window so repeated runs discover new items.
 - `url` must be https and stable; `external_id` is the source's own identifier.
 - Everything passes through `clean()` (in `text.ts`): tags stripped, entities decoded, whitespace collapsed. Never return HTML. If the source carries LaTeX (arXiv does), wrap the field in `delatex()` first so summaries read as plain text.
-- `licence` must be a real licence string for that item or the source's default.
+- `licence` must be a real licence string for that item or the source's default. When the source mixes licences per item (Europeana, data.gov), check each item and drop the ones that are not open.
 - Keys go in Supabase secrets (`supabase secrets set EUROPEANA_KEY=...`), never in code.
 - Respect the source's rate limits; the ingester runs hourly with a small budget per source.
 

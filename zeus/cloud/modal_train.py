@@ -61,7 +61,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     sys.path.insert(0, os.path.join(work, "zeus"))
     sys.path.insert(0, os.path.join(work, "zeus", "cloud"))
     import recipe  # noqa: E402
-    from eval import evidence_ok, parse, score, LABELS  # noqa: E402
+    from eval import evidence_ok, parse, score, score_by_kind, LABELS  # noqa: E402
 
     data = os.path.join(work, "zeus", "data")
 
@@ -173,17 +173,22 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
         try:
             a, _ = run(ev2)
             r2 = score(ev2, a)
-            kinds = {}
-            for ex, ans in zip(ev2, a):
-                k = ex.get("kind", "other")
-                d = kinds.setdefault(k, {"n": 0, "correct": 0})
-                d["n"] += 1
-                if ans and ans.get("label") == ex["label"]:
-                    d["correct"] += 1
-            r2["by_kind"] = {k: {"n": d["n"], "accuracy": round(d["correct"] / d["n"], 3)} for k, d in sorted(kinds.items())}
+            r2["by_kind"] = score_by_kind(ev2, a)
             external["eval_v2"] = {"n": len(ev2), **r2, "note": "frozen harder split: near-miss not covered, relation-flip contradictions, true passage last"}
         except Exception as e:
             external["eval_v2"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    # eval3 (zeus/eval3.py): the versioned split over the same eval atoms, every passage from an eval atom too,
+    # in six gold-style patterns. Scored beside eval and eval2, which stay as they were for comparison.
+    ev3 = load(os.path.join(data, "eval3.jsonl"))[:eval_limit]
+    if ev3:
+        try:
+            a, _ = run(ev3)
+            r3 = score(ev3, a)
+            r3["by_kind"] = score_by_kind(ev3, a)
+            external["eval_v3"] = {"n": len(ev3), "version": ev3[0].get("version"), **r3,
+                                   "note": "frozen versioned split: near misses naming everything, relation and before/after flips, modal shifts, two-passage support, decade paraphrases"}
+        except Exception as e:
+            external["eval_v3"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     # Held-out VitaminC dev (Wikipedia revisions, human-written claims): the first number to trust once the rule-made split saturates.
     vit = load(os.path.join(data, "imported", "vitaminc-eval.jsonl"))
     if vit:
@@ -236,7 +241,7 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
         subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--split", "dev", "--n", "300", "--out", "zeus/data/imported/vitaminc-eval.jsonl"], check=False)
     subprocess.run([py, "zeus/build_dataset.py"], check=True)
     # Only what training needs: the splits, gold and imported sets, and the helpers (not the corpus cache).
-    parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl", "eval2.jsonl") if os.path.exists(f"zeus/data/{f}")]
+    parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl", "eval2.jsonl", "eval3.jsonl", "eval3.manifest.json") if os.path.exists(f"zeus/data/{f}")]
     parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported") if os.path.isdir(f"zeus/data/{d}")]
     parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
     payload = _tar(parts)

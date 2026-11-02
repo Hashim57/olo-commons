@@ -1,0 +1,45 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "pages": {
+      "2001": {
+        "pageid": 2001,
+        "ns": 0,
+        "title": "Solar eclipse seen across the Pacific",
+        "extract": "A total solar eclipse was seen on Tuesday by observers on ships and islands across the Pacific Ocean, the first visible from the region in more than a decade. Astronomers said the sky was clear along most of the path of totality, and that the event lasted a little over four minutes at its longest point.",
+        "contentmodel": "wikitext",
+        "pagelanguage": "en",
+        "touched": "2026-07-14T09:00:00Z",
+        "lastrevid": 4830001,
+        "length": 1900
+      },
+      "2002": {
+        "pageid": 2002,
+        "ns": 4,
+        "title": "Wikinews:Water cooler/policy",
+        "extract": "Wednesday, October 21, 2026 This page is where contributors discuss the policies of the project. It is not a news article and must never be stored as one, however long the discussion gets and however many dates it contains.",
+        "touched": "2026-10-21T00:00:00Z",
+        "lastrevid": 4830002,
+        "fullurl": "https://en.wikinews.org/wiki/Wikinews:Water_cooler/policy"
+      },
+      "2003": {
+        "pageid": 2003,
+        "ns": 0,
+        "title": "Stub",
+        "extract": "Monday, March 2, 2026 Short.",
+        "touched": "2026-03-02T00:00:00Z",
+        "lastrevid": 4830003,
+        "fullurl": "https://en.wikinews.org/wiki/Stub"
+      },
+      "2004": {
+        "pageid": 2004,
+        "ns": 0,
+        "title": "Smarch report",
+        "extract": "Smarch 13, 2026 The dateline of this page names a month that does not exist, so the touched date is used instead; the article is otherwise a normal news story, long enough to keep, about a town that renamed a month.",
+        "touched": "2026-05-01T12:00:00Z",
+        "lastrevid": 4830004,
+        "fullurl": "https://en.wikinews.org/wiki/Smarch_report"
+      }
+    }
+  }
+}

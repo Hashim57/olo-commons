@@ -1,0 +1,41 @@
+{
+  "batchcomplete": "",
+  "continue": {
+    "sroffset": 5,
+    "continue": "-||"
+  },
+  "query": {
+    "searchinfo": {
+      "totalhits": 13026
+    },
+    "search": [
+      {
+        "ns": 0,
+        "title": "Coral reef",
+        "pageid": 87410,
+        "size": 172288,
+        "wordcount": 18619,
+        "snippet": "A <span class=\"searchmatch\">coral</span> <span class=\"searchmatch\">reef</span> is an underwater ecosystem characterized by <span class=\"searchmatch\">reef</span>-building <span class=\"searchmatch\">corals</span>. <span class=\"searchmatch\">Reefs</span> are formed of colonies of <span class=\"searchmatch\">coral</span> polyps held together by calcium carbonate",
+        "timestamp": "2026-10-26T05:07:22Z"
+      },
+      {
+        "ns": 0,
+        "title": "Coral bleaching",
+        "pageid": 399912,
+        "size": 148445,
+        "wordcount": 15989,
+        "snippet": "killed <span class=\"searchmatch\">coral</span> on an unprecedented scale for the time. In 2016, bleaching of <span class=\"searchmatch\">coral</span> on the Great Barrier <span class=\"searchmatch\">Reef</span> killed 29 to 50 percent of the <span class=\"searchmatch\">reef&#039;s</span> <span class=\"searchmatch\">coral</span>. Bleaching",
+        "timestamp": "2026-10-21T10:57:12Z"
+      },
+      {
+        "ns": 0,
+        "title": "Great Barrier Reef",
+        "pageid": 70983,
+        "size": 124026,
+        "wordcount": 12004,
+        "snippet": "The Great Barrier <span class=\"searchmatch\">Reef</span> is the world&#039;s largest <span class=\"searchmatch\">coral</span> <span class=\"searchmatch\">reef</span> system, composed of over 2,900 individual <span class=\"searchmatch\">reefs</span> and 900 islands stretching for over 2,300 kilometres",
+        "timestamp": "2026-10-25T17:44:46Z"
+      }
+    ]
+  }
+}

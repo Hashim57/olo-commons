@@ -101,3 +101,87 @@ Deno.test('the Worker falls back to the raw Mistral prompt when the chat form an
   assertEquals(n, 2);
   assert(j.choices[0].message.content.includes('not_covered'));
 });
+
+// Format retry: one repair attempt when the answer is not a valid verdict, never more.
+// @ts-ignore plain JS module
+import { parseVerdict, formatRetryOn, REPAIR, RETRY_MAX_TOKENS } from '../zeus/cloudflare/worker.js';
+
+const GOOD = '{"label":"supported","evidence":[{"passage":"p1","quote":"q"}],"rationale":"r"}';
+function scripted(answers: unknown[], over: Record<string, unknown> = {}) {
+  const calls: any[] = [];
+  return env({ calls, AI: { run: (model: string, input: any) => { calls.push({ model, input }); const a = answers[calls.length - 1]; return typeof a === 'function' ? a() : Promise.resolve(a); } }, ...over }) as any;
+}
+const verify = (e: unknown, extra: Record<string, unknown> = {}) => worker.fetch(req('/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'default_model', messages: [{ role: 'system', content: 'SYS' }, { role: 'user', content: 'Claim: x' }], ...extra }) }), e);
+
+Deno.test('parseVerdict accepts only a JSON object with one of the three labels', () => {
+  assertEquals(parseVerdict('Sure: ' + GOOD).label, 'supported');
+  for (const bad of ['', 'supported', '{bad}', '{"label":"Supported"}', '{"label":"maybe"}', 'null']) assertEquals(parseVerdict(bad), null);
+});
+
+Deno.test('format retry is off unless the env or the request turns it on', () => {
+  assertEquals(formatRetryOn({}, {}), false);
+  assertEquals(formatRetryOn({ ZEUS_FORMAT_RETRY: '1' }, {}), true);
+  assertEquals(formatRetryOn({ ZEUS_FORMAT_RETRY: '1' }, { format_retry: false }), false);
+  assertEquals(formatRetryOn({}, { format_retry: true }), true);
+  assertEquals(formatRetryOn({}, { format_retry: 'yes' }), false);
+});
+
+Deno.test('with retry off an unparseable answer is passed through as before, with retried false', async () => {
+  const e = scripted([{ response: 'I think it is supported' }]);
+  const j = await (await verify(e)).json();
+  assertEquals(e.calls.length, 1);
+  assertEquals(j.retried, false);
+  assertEquals(j.choices[0].message.content, 'I think it is supported');
+});
+
+Deno.test('an unparseable answer is retried once with the repair turn, capped and at temperature 0', async () => {
+  const e = scripted([{ response: 'I think it is supported' }, { response: GOOD }]);
+  const r = await verify(e, { format_retry: true });
+  assertEquals(r.status, 200);
+  const j = await r.json();
+  assertEquals(e.calls.length, 2);
+  assertEquals(j.retried, true);
+  assertEquals(j.zeus_first_answer, 'I think it is supported');
+  assertEquals(j.choices[0].message.content, GOOD);
+  const fix = e.calls[1].input;
+  assertEquals(fix.messages, [{ role: 'user', content: 'SYS\n\nClaim: x' }, { role: 'assistant', content: 'I think it is supported' }, { role: 'user', content: REPAIR }]);
+  assertEquals(fix.max_tokens, RETRY_MAX_TOKENS); assertEquals(fix.temperature, 0); assertEquals(fix.lora, 'zeus-v6');
+  assertEquals(e.calls[0].input.max_tokens, 200);
+});
+
+Deno.test('the retry uses the raw Mistral prompt when the raw path answered', async () => {
+  const e = scripted([{ response: '' }, { response: 'nope' }, { response: GOOD }], { ZEUS_FORMAT_RETRY: '1' });
+  const j = await (await verify(e)).json();
+  assertEquals(e.calls.length, 3); assertEquals(j.zeus_path, 'raw'); assertEquals(j.retried, true);
+  assert(e.calls[2].input.raw === true && e.calls[2].input.prompt.endsWith(`nope</s>[INST] ${REPAIR} [/INST]`));
+});
+
+Deno.test('a valid first answer makes no retry call', async () => {
+  const e = scripted([{ response: GOOD }]);
+  const j = await (await verify(e, { format_retry: true })).json();
+  assertEquals(e.calls.length, 1); assertEquals(j.retried, false); assertEquals(j.zeus_first_answer, undefined);
+});
+
+Deno.test('two unparseable answers give a clear error object, after exactly one retry', async () => {
+  const e = scripted([{ response: 'bad' }, { response: '{"label":"true"}' }, { response: GOOD }]);
+  const r = await verify(e, { format_retry: true });
+  assertEquals(r.status, 502);
+  const j = await r.json();
+  assertEquals(e.calls.length, 2);
+  assertEquals(j.error, 'zeus_unparseable_answer'); assertEquals(j.retried, true);
+  assertEquals(j.first_answer, 'bad'); assertEquals(j.retry_answer, '{"label":"true"}');
+});
+
+Deno.test('the retry is cut off at its time cap', async () => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const hang = () => new Promise(res => { timer = setTimeout(() => res({ response: GOOD }), 2000); });
+  const e = scripted([{ response: 'bad' }, hang], { ZEUS_RETRY_TIMEOUT_MS: '20' });
+  const t0 = Date.now();
+  const r = await verify(e, { format_retry: true });
+  clearTimeout(timer);
+  assert(Date.now() - t0 < 1500, 'retry not cut off');
+  assertEquals(r.status, 502);
+  const j = await r.json();
+  assertEquals(j.error, 'zeus_unparseable_answer');
+  assert(j.detail.includes('timed out after 20 ms'));
+});

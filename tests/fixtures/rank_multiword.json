@@ -1,0 +1,107 @@
+{
+  "about": "Candidate pool and multi-word questions for rank(). Each question lists what the two retrievers return for it (semantic: [id, cosine similarity] best first, as olo_match gives; keyword: [id, ts_rank] best first, as olo_search_text gives, after the loose retry when the strict query found nothing). expect_top must all be in the top k; forbid_top must not be. fails_before marks the cases plain fusion (fuse) gets wrong. The atoms are written for this test, modelled on real Commons records; urls are examples.",
+  "atoms": [
+    { "id": "coral-general", "title": "Coral reef", "summary": "Coral reefs are underwater ecosystems built by colonies of coral polyps held together by calcium carbonate. They cover less than one percent of the ocean floor yet shelter about a quarter of marine species.", "source": "Wikipedia", "url": "https://example.org/wiki/Coral_reef", "credibility": 70 },
+    { "id": "coral-bleaching", "title": "Coral bleaching", "summary": "When water stays too warm, corals expel the algae living in their tissues and turn white. Bleached corals are not dead but starve and become prone to disease.", "source": "Wikipedia", "url": "https://example.org/wiki/Coral_bleaching", "credibility": 70 },
+    { "id": "coral-recovery", "title": "Recovery of coral reefs after mass bleaching events", "summary": "Long term surveys show reefs can recover within ten to fifteen years after bleaching when local fishing pressure and pollution are low and larvae arrive from connected reefs.", "source": "OpenAlex", "url": "https://example.org/works/W100", "credibility": 82 },
+    { "id": "coral-recovery-mirror", "title": "Recovery of coral reefs after mass bleaching events", "summary": "Long term surveys show reefs can recover within ten to fifteen years after bleaching when local fishing pressure and pollution are low and larvae arrive from connected reefs.", "source": "Europe PMC", "url": "https://example.org/europepmc/PMC100", "credibility": 60 },
+    { "id": "reef-fish", "title": "Reef fish diversity", "summary": "Reef fish are the most diverse vertebrates on coral reefs, with several thousand species in the Indo Pacific alone.", "source": "Wikipedia", "url": "https://example.org/wiki/Coral_reef_fish", "credibility": 65 },
+    { "id": "ocean-acid", "title": "Ocean acidification", "summary": "The ocean absorbs about a quarter of the carbon dioxide people emit, lowering its pH and making it harder for corals and shellfish to build skeletons.", "source": "Wikipedia", "url": "https://example.org/wiki/Ocean_acidification", "credibility": 70 },
+    { "id": "great-barrier", "title": "Great Barrier Reef", "summary": "The world's largest coral reef system, off Queensland, Australia, made of nearly three thousand individual reefs.", "source": "Wikipedia", "url": "https://example.org/wiki/Great_Barrier_Reef", "credibility": 70 },
+
+    { "id": "gutenberg-bible", "title": "Gutenberg Bible", "summary": "The Gutenberg Bible was the first major book printed in Europe with movable metal type. Gutenberg's workshop printed about 180 copies of the Gutenberg Bible in Mainz.", "source": "Wikipedia", "url": "https://example.org/wiki/Gutenberg_Bible", "credibility": 70 },
+    { "id": "johannes-gutenberg", "title": "Johannes Gutenberg", "summary": "Johannes Gutenberg was a German goldsmith and printer. Gutenberg introduced movable type printing to Europe around 1440.", "source": "Wikipedia", "url": "https://example.org/wiki/Johannes_Gutenberg", "credibility": 70 },
+    { "id": "pg-catalogue", "title": "Project Gutenberg ebook catalogue", "summary": "Machine readable catalogue of the Project Gutenberg collection in RDF and CSV, updated weekly.", "source": "Project Gutenberg", "url": "https://example.org/pg/catalog", "credibility": 60 },
+    { "id": "project-gutenberg", "title": "Project Gutenberg", "summary": "A volunteer effort to digitise and archive cultural works, founded in 1971 by Michael Hart. It is the oldest digital library.", "source": "Wikipedia", "url": "https://example.org/wiki/Project_Gutenberg", "credibility": 72 },
+    { "id": "open-projects", "title": "Open data projects", "summary": "A list of community projects that publish open data under free licences.", "source": "Wikipedia", "url": "https://example.org/wiki/Open_data_projects", "credibility": 55 },
+    { "id": "printing-press", "title": "Printing press", "summary": "A device that applies pressure to an inked surface resting on paper, spreading printed books across Europe from the fifteenth century.", "source": "Wikipedia", "url": "https://example.org/wiki/Printing_press", "credibility": 70 },
+
+    { "id": "microplastics-ocean", "title": "Microplastics in the ocean", "summary": "Fragments of plastic smaller than five millimetres are found from the surface to the deep sea floor.", "source": "Wikipedia", "url": "https://example.org/wiki/Marine_microplastics", "credibility": 68 },
+    { "id": "microplastics-health", "title": "Health effects of microplastic exposure in humans", "summary": "A review of the evidence on how ingested and inhaled microplastics affect human health, including inflammation and the uncertainty in current measurements.", "source": "OpenAlex", "url": "https://example.org/works/W200", "credibility": 80 },
+    { "id": "air-health", "title": "Air pollution and human health", "summary": "Fine particles in polluted air raise the risk of heart and lung disease; the WHO estimates millions of early deaths a year.", "source": "Wikipedia", "url": "https://example.org/wiki/Air_pollution_health", "credibility": 70 },
+    { "id": "plastic-recycling", "title": "Plastic recycling", "summary": "Only a small share of plastic waste is recycled; most is landfilled, burned or leaks into the environment.", "source": "Wikipedia", "url": "https://example.org/wiki/Plastic_recycling", "credibility": 66 },
+
+    { "id": "photosynthesis", "title": "Photosynthesis", "summary": "The process by which plants, algae and some bacteria use sunlight, water and carbon dioxide to make sugars and release oxygen.", "source": "Wikipedia", "url": "https://example.org/wiki/Photosynthesis", "credibility": 75 },
+    { "id": "chlorophyll", "title": "Chlorophyll", "summary": "The green pigment in plants that absorbs light, mostly blue and red.", "source": "Wikipedia", "url": "https://example.org/wiki/Chlorophyll", "credibility": 70 },
+    { "id": "solar-power", "title": "Solar power: turning sunlight into electricity", "summary": "Photovoltaic panels and concentrated solar plants convert the energy in sunlight into electric power.", "source": "Wikipedia", "url": "https://example.org/wiki/Solar_power", "credibility": 68 },
+    { "id": "food-security", "title": "Food security", "summary": "Food security means that all people at all times have access to enough safe and nutritious food.", "source": "Wikipedia", "url": "https://example.org/wiki/Food_security", "credibility": 66 },
+
+    { "id": "sea-level-rise", "title": "Sea level rise", "summary": "Global mean sea level has risen about 20 centimetres since 1900, caused mainly by thermal expansion of warming sea water and melting glaciers and ice sheets.", "source": "Wikipedia", "url": "https://example.org/wiki/Sea_level_rise", "credibility": 76 },
+    { "id": "sea-ice", "title": "Arctic sea ice decline", "summary": "Arctic sea ice in September has shrunk by about thirteen percent per decade since satellite records began in 1979.", "source": "Wikipedia", "url": "https://example.org/wiki/Arctic_sea_ice_decline", "credibility": 70 },
+    { "id": "rising-temps", "title": "Global temperature rise", "summary": "The Earth's surface is about 1.2 degrees warmer than before industrialisation, caused by greenhouse gases.", "source": "Wikipedia", "url": "https://example.org/wiki/Global_warming", "credibility": 72 },
+    { "id": "tides", "title": "Tides", "summary": "Tides are the daily rise and fall of sea level caused by the pull of the Moon and the Sun.", "source": "Wikipedia", "url": "https://example.org/wiki/Tide", "credibility": 70 },
+    { "id": "glacier-melt", "title": "Retreat of glaciers since 1850", "summary": "Mountain glaciers worldwide are shrinking. Glacier melt causes about a fifth of current sea level rise and threatens water supplies; the rise in glacier melt has accelerated since the 1990s as the level of warming grew.", "source": "Wikipedia", "url": "https://example.org/wiki/Retreat_of_glaciers", "credibility": 70 },
+
+    { "id": "mmr-vaccine", "title": "MMR vaccine", "summary": "A combined vaccine against measles, mumps and rubella. Common side effects are fever, a mild rash and a sore arm; serious reactions are rare.", "source": "Wikipedia", "url": "https://example.org/wiki/MMR_vaccine", "credibility": 78 },
+    { "id": "vaccine-general", "title": "Vaccine", "summary": "A biological preparation that trains the immune system to recognise a pathogen.", "source": "Wikipedia", "url": "https://example.org/wiki/Vaccine", "credibility": 72 },
+    { "id": "adverse-drug", "title": "Adverse drug reaction", "summary": "Harmful, unintended side effects of a medicine taken at a normal dose.", "source": "Wikipedia", "url": "https://example.org/wiki/Adverse_drug_reaction", "credibility": 70 },
+    { "id": "measles", "title": "Measles", "summary": "A highly contagious viral disease that causes fever and a rash, preventable by vaccination.", "source": "Wikipedia", "url": "https://example.org/wiki/Measles", "credibility": 72 },
+
+    { "id": "python-snake", "title": "Python (genus)", "summary": "Python is a genus of constricting snakes. The reticulated python and the Burmese python are among the longest snakes; python species live in Africa and Asia.", "source": "Wikipedia", "url": "https://example.org/wiki/Python_(genus)", "credibility": 70 },
+    { "id": "list-langs", "title": "List of programming languages", "summary": "An alphabetical list of notable programming languages, from ABAP to Zig.", "source": "Wikipedia", "url": "https://example.org/wiki/List_of_programming_languages", "credibility": 65 },
+    { "id": "python-lang", "title": "Python (programming language)", "summary": "A high level, general purpose programming language whose design emphasises readable syntax and significant indentation.", "source": "Wikipedia", "url": "https://example.org/wiki/Python_(programming_language)", "credibility": 72 },
+    { "id": "list-comprehension", "title": "List comprehension", "summary": "A syntactic construct for building a list from an existing list, written in Python as [expression for item in iterable if condition].", "source": "Wikipedia", "url": "https://example.org/wiki/List_comprehension", "credibility": 70 },
+
+    { "id": "penicillin", "title": "Penicillin", "summary": "The first widely used antibiotic, discovered by Alexander Fleming in 1928 when mould killed bacteria on a culture plate.", "source": "Wikipedia", "url": "https://example.org/wiki/Penicillin", "credibility": 76 },
+    { "id": "fleming", "title": "Alexander Fleming", "summary": "Scottish physician and microbiologist who discovered penicillin; he shared the 1945 Nobel Prize.", "source": "Wikipedia", "url": "https://example.org/wiki/Alexander_Fleming", "credibility": 74 },
+    { "id": "antibiotic-resistance", "title": "Antimicrobial resistance", "summary": "Bacteria that survive antibiotics spread resistance genes, making common infections harder to treat.", "source": "Wikipedia", "url": "https://example.org/wiki/Antimicrobial_resistance", "credibility": 72 }
+  ],
+  "questions": [
+    {
+      "q": "how do coral reefs recover after bleaching",
+      "note": "duplicates: a mirror of the recovery paper takes a top place",
+      "semantic": [["coral-general", 0.84], ["coral-bleaching", 0.835], ["great-barrier", 0.83], ["coral-recovery-mirror", 0.828], ["coral-recovery", 0.826], ["ocean-acid", 0.82], ["reef-fish", 0.81]],
+      "keyword": [["coral-recovery", 0.31], ["coral-recovery-mirror", 0.31]],
+      "k": 3, "expect_top": ["coral-recovery", "coral-bleaching"], "forbid_top": ["coral-recovery-mirror"], "fails_before": true
+    },
+    {
+      "q": "when was project gutenberg founded",
+      "note": "loose OR retry ordered by ts_rank: atoms repeating 'gutenberg' beat the one naming project, gutenberg and founded",
+      "semantic": [["johannes-gutenberg", 0.83], ["gutenberg-bible", 0.825], ["printing-press", 0.82], ["pg-catalogue", 0.815], ["project-gutenberg", 0.81]],
+      "keyword": [["gutenberg-bible", 0.42], ["johannes-gutenberg", 0.33], ["pg-catalogue", 0.3], ["project-gutenberg", 0.24], ["open-projects", 0.06]],
+      "k": 1, "expect_top": ["project-gutenberg"], "forbid_top": [], "fails_before": true
+    },
+    {
+      "q": "effects of microplastics on human health",
+      "note": "guard: the only strict keyword hit is also the right answer",
+      "semantic": [["microplastics-ocean", 0.85], ["plastic-recycling", 0.84], ["air-health", 0.835], ["microplastics-health", 0.83]],
+      "keyword": [["microplastics-health", 0.5]],
+      "k": 1, "expect_top": ["microplastics-health"], "forbid_top": [], "fails_before": false
+    },
+    {
+      "q": "how do leaves make sugar from light",
+      "note": "guard for paraphrase: few words in common with any atom, so the meaning retriever must still decide",
+      "semantic": [["photosynthesis", 0.86], ["chlorophyll", 0.845], ["solar-power", 0.82], ["food-security", 0.8]],
+      "keyword": [["chlorophyll", 0.1], ["photosynthesis", 0.08]],
+      "k": 1, "expect_top": ["photosynthesis"], "forbid_top": [], "fails_before": false
+    },
+    {
+      "q": "causes of sea level rise",
+      "note": "title and phrase: the glacier article mentions every word but the sea level rise article is about exactly that",
+      "semantic": [["sea-ice", 0.84], ["rising-temps", 0.835], ["glacier-melt", 0.833], ["tides", 0.83], ["sea-level-rise", 0.828]],
+      "keyword": [["glacier-melt", 0.46], ["sea-level-rise", 0.4]],
+      "k": 1, "expect_top": ["sea-level-rise"], "forbid_top": [], "fails_before": true
+    },
+    {
+      "q": "side effects of the mmr vaccine",
+      "note": "guard: a rare term (mmr) and a strict keyword hit",
+      "semantic": [["vaccine-general", 0.86], ["measles", 0.85], ["adverse-drug", 0.845], ["mmr-vaccine", 0.84]],
+      "keyword": [["mmr-vaccine", 0.55]],
+      "k": 1, "expect_top": ["mmr-vaccine"], "forbid_top": [], "fails_before": false
+    },
+    {
+      "q": "python list comprehension syntax",
+      "note": "one term dominating: the snake article repeats 'python'; the list comprehension article covers the most distinct words",
+      "semantic": [["python-lang", 0.87], ["list-langs", 0.85], ["list-comprehension", 0.845], ["python-snake", 0.8]],
+      "keyword": [["python-snake", 0.5], ["list-langs", 0.3], ["python-lang", 0.25], ["list-comprehension", 0.22]],
+      "k": 2, "expect_top": ["list-comprehension"], "forbid_top": ["python-snake"], "fails_before": true
+    },
+    {
+      "q": "who discovered penicillin",
+      "note": "guard: short question, both retrievers agree",
+      "semantic": [["antibiotic-resistance", 0.85], ["penicillin", 0.845], ["fleming", 0.84]],
+      "keyword": [["penicillin", 0.6], ["fleming", 0.5]],
+      "k": 2, "expect_top": ["penicillin", "fleming"], "forbid_top": ["antibiotic-resistance"], "fails_before": false
+    }
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "responseHeader": {
+    "status": 0,
+    "QTime": 633,
+    "params": {
+      "query": "mediatype:texts AND description:*",
+      "qin": "mediatype:texts AND description:*",
+      "fields": "identifier,title,description,creator,date,licenseurl",
+      "wt": "json",
+      "rows": 6,
+      "start": 12
+    }
+  },
+  "response": {
+    "numFound": 40638988,
+    "start": 12,
+    "docs": [
+      {
+        "creator": "salah berkani",
+        "date": "2015-02-24T00:00:00Z",
+        "description": "neurone",
+        "identifier": "neurone-fr",
+        "title": "neurone-fr"
+      },
+      {
+        "creator": "Williams, Kate",
+        "date": "2004-01-01T00:00:00Z",
+        "description": [
+          "1 online resource (xii, 348 pages) :",
+          "This book explains the principles and practice of management and is ideal for both new and existing managers to assist them in their role. It provides underpinning knowledge, based on management concepts and theories and explores the key responsibilities of a manager: people, activities, information and resources",
+          "Includes bibliographical references and index",
+          "Cover -- Copyright Page -- Contents -- Preface -- Learning Structure -- Section 1: Managing in Context -- Chapter 1. Achieving results -- Chapter 2. Managing resources -- Chapter 3. Focusing on customers -- Chapter 4. Understanding the culture -- Chapter 5. Understanding the environment -- Section 2: Managing People -- Chapter 6. Motivating people -- Chapter 7. Leading and delegating -- Chapter 8. Managing teams -- Chapter 9. Improving performance -- Chapter 10. Managing change -- Section 3: Managing Activities -- Chapter 11. Changing inputs into outputs -- Chapter 12. Meeting customer needs -- Chapter 13. Planning, organizing and controlling work -- Chapter 14. Managing the workplace -- Chapter 15. Making improvements -- Section 4: Managing Information -- Chapter 16. Solving problems and making decisions -- Chapter 17. Recording, storing and retrieving information -- Chapter 18. Principles of effective communication -- Chapter 19. Communicating effectively -- in writing -- Chapter 20. Communicating effectively -- face-to-face -- Section 5: Managing Resources -- Chapter 21. Financial information and management control -- Chapter 22. Understanding financial accounts -- Chapter 23. Preparing and using budgets -- Chapter 24. Managing and controlling costs and resources -- Answers to review questions -- Glossary -- Index -- Last Page",
+          "Print version record"
+        ],
+        "identifier": "introducingmanag0002will",
+        "title": "Introducing management : a development guide"
+      },
+      {
+        "description": "misarh",
+        "identifier": "20210110_20210110_1909..misarh",
+        "title": "بيان عن العلاقات بين المملكة العربية السعودية والامام يحيى حميد الدين (١٩٣٤م)"
+      },
+      {
+        "description": "barbaro",
+        "identifier": "lalo_20191007",
+        "title": "Melate REVIZADO"
+      },
+      {
+        "creator": "Tilghman, Christopher",
+        "date": "1996-01-01T00:00:00Z",
+        "description": "After many years in England an impoverished, upper-class American family return to an inherited estate on Chesapeake Bay. The novel describes their reaction to the new surroundings--country living versus city living, America versus Europe--and the resulting conflicts. The father returns to England, one son wants to follow, another wants to remain, and the mother is torn. By the author of In a Father's Place",
+        "identifier": "masonsretreat00tilgrich",
+        "title": "Mason's retreat"
+      }
+    ]
+  }
+}

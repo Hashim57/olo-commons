@@ -35,14 +35,18 @@ Deno.test('wikidataCandidates keeps labelled, described, notable entities in id 
 });
 
 Deno.test('archive and gutenberg mappers keep provenance and drop incomplete rows', () => {
-  const a = archiveCandidates([{ identifier: 'abc', title: 'A <b>Book</b>', description: ['Part one.', 'Part two.'], creator: 'Someone', date: '1901-02-03T00:00:00Z', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }, { identifier: 'nodesc', title: 'x' }]);
+  const a = archiveCandidates([{ identifier: 'abc', title: 'A <b>Book</b>', description: ['Part one describes the book in enough words to keep.', 'Part two adds a second paragraph of description.'], creator: 'Someone', date: '1901-02-03T00:00:00Z', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }, { identifier: 'nodesc', title: 'x' }]);
   assertEquals(a.length, 1);
   assertEquals(a[0].url, 'https://archive.org/details/abc');
   assertEquals(a[0].title, 'A Book');
-  assertEquals(a[0].summary, 'Part one. Part two.');
+  assertEquals(a[0].summary, 'Part one describes the book in enough words to keep. Part two adds a second paragraph of description.');
   assertEquals(a[0].authors, ['Someone']);
   assertEquals(a[0].published_at, '1901-02-03');
   assert(a[0].licence!.startsWith('See https://creativecommons.org'));
+  const rec = 'Title: Algemeen Handelsblad Datum: 29-07-1859 Editie: Dag Plaats van uitgave: Amsterdam Nummer: 8613';
+  const dup = archiveCandidates([{ identifier: 'ddd_1', title: 'Algemeen Handelsblad', description: [rec, rec] }]);
+  assertEquals(dup[0].summary, rec);
+  assertEquals(dup[0].content, rec);
   const g = gutenbergCandidates([{ id: 7, title: 'Tale', summaries: ['A tale of two cities.'], subjects: ['Fiction'], authors: [{ name: 'Dickens, Charles' }] }, { id: 8, title: 'Empty' }]);
   assertEquals(g.length, 1);
   assertEquals(g[0].url, 'https://www.gutenberg.org/ebooks/7');

@@ -1,0 +1,96 @@
+{
+  "entities": {
+    "Q42": {
+      "pageid": 138,
+      "ns": 0,
+      "title": "Q42",
+      "lastrevid": 2560674217,
+      "modified": "2026-10-25T12:21:08Z",
+      "type": "item",
+      "id": "Q42",
+      "labels": {},
+      "descriptions": {
+        "en": {
+          "language": "en",
+          "value": "British science fiction writer and humorist (1952-2001)"
+        }
+      },
+      "sitelinks": {
+        "abstractwiki": {
+          "site": "abstractwiki",
+          "title": "Q42",
+          "badges": []
+        },
+        "afwiki": {
+          "site": "afwiki",
+          "title": "Douglas Adams",
+          "badges": []
+        },
+        "arwiki": {
+          "site": "arwiki",
+          "title": "دوغلاس آدمز",
+          "badges": []
+        },
+        "arwikiquote": {
+          "site": "arwikiquote",
+          "title": "دوجلاس آدامز",
+          "badges": []
+        },
+        "arzwiki": {
+          "site": "arzwiki",
+          "title": "دوجلاس ادامز",
+          "badges": []
+        }
+      }
+    },
+    "Q1": {
+      "pageid": 129,
+      "ns": 0,
+      "title": "Q1",
+      "lastrevid": 2560305619,
+      "modified": "2026-10-24T13:49:51Z",
+      "type": "item",
+      "id": "Q1",
+      "labels": {
+        "en": {
+          "language": "en",
+          "value": "universe"
+        }
+      },
+      "descriptions": {
+        "en": {
+          "language": "en",
+          "value": "totality consisting of space, time, matter and energy"
+        }
+      },
+      "sitelinks": {
+        "abstractwiki": {
+          "site": "abstractwiki",
+          "title": "Q1",
+          "badges": []
+        },
+        "abwiki": {
+          "site": "abwiki",
+          "title": "Адунеи",
+          "badges": []
+        },
+        "afwiki": {
+          "site": "afwiki",
+          "title": "Heelal",
+          "badges": []
+        },
+        "alswiki": {
+          "site": "alswiki",
+          "title": "Universum",
+          "badges": []
+        },
+        "amwiki": {
+          "site": "amwiki",
+          "title": "ጠፈር",
+          "badges": []
+        }
+      }
+    }
+  },
+  "success": 1
+}

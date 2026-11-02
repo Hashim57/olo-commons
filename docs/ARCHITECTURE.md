@@ -17,7 +17,7 @@
             heliusnetwork.app/olo    helius-olo.io    Helius app (Olo)    your project
 ```
 
-**Write path.** Only `olo-ingest` writes, with the service role. It reads the registry, calls each enabled source's discover function, cleans and caps the text, computes a SHA-256 of title + summary + content, refuses duplicates (unique on hash and URL), embeds the title and summary with `gte-small` (384 dimensions) inside the Supabase Edge runtime, inserts the atom, then asks `olo_neighbours` for the five closest atoms by cosine similarity and links any above 0.72 in both directions. It logs the run and snapshots counts.
+**Write path.** Only `olo-ingest` writes, with the service role. It reads the registry, calls each enabled source's discover function, cleans and caps the text, computes a SHA-256 of title + summary + content, refuses duplicates (unique on hash and URL), embeds the title and summary with `gte-small` (384 dimensions) inside the Supabase Edge runtime, checks whether another source already gave the same atom (same DOI or PMID, or the same or near-identical text; `dedup.ts`) and if so records a sighting of that atom instead of a second copy (docs/TRUST.md, Duplicates), otherwise inserts the atom, then asks `olo_neighbours` for the five closest atoms by cosine similarity and links any above 0.72 in both directions. It logs the run and snapshots counts.
 
 **Read path.** `olo-query` embeds the question the same way, calls `olo_match` (HNSW index, cosine), merges with a keyword search (`tsvector`), and returns atoms with provenance and a ready citation. Rate limited per hashed address. The SQL functions are callable directly with the anon key for stats, graph samples, single atoms and bulk export.
 
