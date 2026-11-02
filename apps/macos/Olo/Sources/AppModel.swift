@@ -375,6 +375,8 @@ final class AppModel {
         do {
             try await ensureSession()
             try await streamFromOlo(content: composed.content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: true)
+            // Asked for a PDF, a Word file or a spreadsheet: the Mac makes those from the answer itself.
+            if let hint = ExportHints.hint(for: question) { updateTurn(cid, tid) { if !$0.notices.contains(hint) { $0.notices.append(hint) } } }
         } catch is CancellationError {
             updateTurn(cid, tid) { $0.notices.append("Stopped.") }
         } catch let f as OloAPI.StreamFailure where f.isQuota {
@@ -487,8 +489,9 @@ final class AppModel {
 
     /// helius-olo.io failed: the Commons' own service, then offline quotes.
     private func fallBack(question: String, content: String, attachments: [Attachment], cid: UUID, tid: UUID, error: Error) async {
-        // A question about attached text needs Olo itself; the Commons only answers from its own facts.
-        if attachments.isEmpty {
+        // A question about attached text needs Olo itself; the Commons only answers from its own facts,
+        // and a request to build something is not a question the Commons can answer at all.
+        if attachments.isEmpty, !QuotedAnswer.looksLikeBuildRequest(question) {
             answering[cid] = "Asking Olo Commons"
             if let a = try? await CommonsAnswer.ask(question), a.covered != false {
                 updateTurn(cid, tid) { t in

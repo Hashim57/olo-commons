@@ -173,7 +173,22 @@ struct ArtifactDetail: View {
                     .help("Off: JavaScript and every network request are blocked. On: the page runs as the web preview does.")
             }
             Button { copyCode() } label: { Image(systemName: "doc.on.doc") }.help("Copy the code")
-            Button { save() } label: { Image(systemName: "square.and.arrow.down") }.help("Save as a file")
+            Menu {
+                Button("Save as \(artifact.suggestedFilename)...") { save() }
+                Button("Export as PDF...") {
+                    if artifact.isPreviewable && !artifact.needsScripts {
+                        Task { await DocumentWriter.savePDF(html: ArtifactPreview.document(for: artifact), name: baseName) }
+                    } else {
+                        DocumentWriter.savePDF(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName)
+                    }
+                }
+                Button("Export as Word (.docx)...") { DocumentWriter.saveWord(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName) }
+                    .disabled(artifact.isPreviewable)
+                Button("Export Tables as CSV...") { DocumentWriter.saveCSV(from: artifact.code, name: baseName) }
+                    .disabled(!MarkdownTables.hasTable(artifact.code))
+            } label: { Image(systemName: "square.and.arrow.down") }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .help("Save the file, or export it as PDF, Word or CSV")
             if inLibrary {
                 Button {
                     busy = true
@@ -232,6 +247,11 @@ struct ArtifactDetail: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var baseName: String {
+        let n = (artifact.suggestedFilename as NSString).deletingPathExtension
+        return TranscriptExport.safeFilename(n.isEmpty ? artifact.title : n, fallback: "artifact")
     }
 
     private func copyCode() {

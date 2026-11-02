@@ -469,4 +469,26 @@ final class CrisisTests: XCTestCase {
         XCTAssertTrue(Crisis.helplines.contains { $0.detail.contains("85258") })
         XCTAssertTrue(Crisis.emergency.contains("999") && Crisis.emergency.contains("112"))
     }
+
+    func testMarkdownTablesBecomeCSV() {
+        let text = """
+        Here is the comparison.
+
+        | Metric | Bio-LNG | Electric |
+        |---|:--:|---|
+        | Range, km | 1,000 | 400 |
+        | Refuel time | "10 min" | 90 min |
+
+        Done.
+        """
+        XCTAssertTrue(MarkdownTables.hasTable(text))
+        XCTAssertEqual(MarkdownTables.csv(from: text), "Metric,Bio-LNG,Electric\n\"Range, km\",\"1,000\",400\nRefuel time,\"\"\"10 min\"\"\",90 min\n")
+        XCTAssertNil(MarkdownTables.csv(from: "No table here. | not | a table"))
+    }
+
+    func testExportHintsNameWhatTheMacCanAndCannotMake() {
+        XCTAssertEqual(ExportHints.hint(for: "Can you make pdfs for me to download??"), ExportHints.canExport)
+        XCTAssertEqual(ExportHints.hint(for: "Make me a PowerPoint about sargassum"), ExportHints.noSlides)
+        XCTAssertNil(ExportHints.hint(for: "who founded project gutenberg"))
+    }
 }
