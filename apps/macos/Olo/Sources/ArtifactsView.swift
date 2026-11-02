@@ -246,7 +246,7 @@ struct ArtifactDetail: View {
         model.banner = "Copied."
     }
 
-    private func save() { ArtifactExportMenu.save(artifact) }
+    private func save() { ArtifactFiles.save(artifact) }
 }
 
 /// Everything a file Olo built can become: itself, a website folder for Netlify, a PDF, a Word
@@ -262,9 +262,9 @@ struct ArtifactExportMenu<MenuLabel: View>: View {
 
     var body: some View {
         Menu {
-            Button("Save as \(artifact.suggestedFilename)...") { ArtifactExportMenu.save(artifact) }
+            Button("Save as \(artifact.suggestedFilename)...") { ArtifactFiles.save(artifact) }
             if artifact.kind == "html" {
-                Button("Save as Website Folder for Netlify...") { ArtifactExportMenu.saveSiteFolder(artifact, name: baseName) }
+                Button("Save as Website Folder for Netlify...") { ArtifactFiles.saveSiteFolder(artifact, name: baseName) }
             }
             Divider()
             Button("Export as PDF...") {
@@ -280,7 +280,10 @@ struct ArtifactExportMenu<MenuLabel: View>: View {
                 .disabled(!MarkdownTables.hasTable(artifact.code))
         } label: { label() }
     }
+}
 
+/// Writing an artifact to disk, as itself or as a website folder.
+enum ArtifactFiles {
     @MainActor
     static func save(_ artifact: Artifact) {
         let panel = NSSavePanel()
