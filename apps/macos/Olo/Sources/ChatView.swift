@@ -17,15 +17,41 @@ struct ChatView: View {
     private var conversation: LocalConversation? { model.conversation(conversationId) }
     private var status: String? { model.answering[conversationId] }
 
+    private var lastTurnId: UUID? { conversation?.turns.last?.id }
+    private var lastTextCount: Int { conversation?.turns.last?.text.count ?? 0 }
+    private var artifactCount: Int { conversation?.turns.reduce(0) { $0 + $1.artifacts.count } ?? 0 }
+    private var latestArtifact: Artifact? { conversation?.turns.last(where: { !$0.artifacts.isEmpty })?.artifacts.last }
+
     var body: some View {
         @Bindable var model = model
+        thread
+        .navigationTitle(conversation?.title ?? "Olo")
+        .toolbar { toolbarItems }
+        .inspector(isPresented: $model.showSample) {
+            SamplePanel().inspectorColumnWidth(min: 360, ideal: 520, max: 760)
+        }
+        .onChange(of: artifactCount) { sampleLanded() }
+        .dropDestination(for: URL.self) { urls, _ in
+            attach(urls)
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .overlay { dropOverlay }
+        .onChange(of: model.requestAttachFiles) {
+            if model.requestAttachFiles { model.requestAttachFiles = false; pickFiles() }
+        }
+        .onChange(of: model.focusComposer) { composerFocused = true }
+        .onAppear { composerFocused = true }
+    }
+
+    /// The transcript above the composer.
+    private var thread: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         if conversation?.turns.isEmpty ?? true { NewConversationEmptyState() }
                         ForEach(conversation?.turns ?? []) { turn in
-                            TurnView(turn: turn, status: turn.id == conversation?.turns.last?.id ? status : nil, compact: false, conversationId: conversationId) { follow in
+                            TurnView(turn: turn, status: turn.id == lastTurnId ? status : nil, compact: false, conversationId: conversationId) { follow in
                                 model.ask(follow, in: conversationId)
                             }
                             .id(turn.id)
@@ -37,33 +63,33 @@ struct ChatView: View {
                     .frame(maxWidth: 860)
                     .frame(maxWidth: .infinity)
                 }
-                .onChange(of: conversation?.turns.last?.text.count ?? 0) { proxy.scrollTo("bottom", anchor: .bottom) }
+                .onChange(of: lastTextCount) { proxy.scrollTo("bottom", anchor: .bottom) }
                 .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             Divider()
             composer
                 .layoutPriority(1)
         }
-        .navigationTitle(conversation?.title ?? "Olo")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) { ExportMenu(conversationId: conversationId) }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) { ExportMenu(conversationId: conversationId) }
+        ToolbarItem(placement: .primaryAction) { SampleToggle() }
+    }
+
+    /// A new file in this conversation opens in the Sample panel as soon as it lands.
+    private func sampleLanded() {
+        if let a = latestArtifact, a.id != model.sample?.id { model.openSample(a) }
+    }
+
+    @ViewBuilder
+    private var dropOverlay: some View {
+        if dropTargeted {
+            RoundedRectangle(cornerRadius: 12).strokeBorder(.tint, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                .overlay(Text("Drop files to ask Olo about them").font(.title3))
+                .padding(8)
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            attach(urls)
-            return true
-        } isTargeted: { dropTargeted = $0 }
-        .overlay {
-            if dropTargeted {
-                RoundedRectangle(cornerRadius: 12).strokeBorder(.tint, style: StrokeStyle(lineWidth: 2, dash: [6]))
-                    .overlay(Text("Drop files to ask Olo about them").font(.title3))
-                    .padding(8)
-            }
-        }
-        .onChange(of: model.requestAttachFiles) {
-            if model.requestAttachFiles { model.requestAttachFiles = false; pickFiles() }
-        }
-        .onChange(of: model.focusComposer) { composerFocused = true }
-        .onAppear { composerFocused = true }
     }
 
     private var composer: some View {
@@ -263,6 +289,11 @@ struct TurnView: View {
                 }
                 ForEach(Array(turn.notices.enumerated()), id: \.offset) { _, n in
                     Label(n, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                }
+                if let cid = conversationId, status == nil, turn.notices.contains(where: { $0.localizedCaseInsensitiveContains("length limit") || $0.localizedCaseInsensitiveContains("cut short") }) {
+                    Button { model.continueAnswer(in: cid) } label: { Label("Continue the answer", systemImage: "arrow.turn.down.right") }
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .help("Olo carries on from where it stopped")
                 }
                 if let v = turn.verification, !v.claims.isEmpty { verification(v) }
                 if !turn.sources.isEmpty { sources }
@@ -565,5 +596,52 @@ struct MarkdownText: View {
         case .rule:
             Divider().padding(.vertical, 2)
         }
+    }
+}
+
+/// The Olo Sample: the document or page Olo made, open beside the conversation for review, with
+/// Preview and Code, Export, and a way into the Artifacts library. The same detail view as the
+/// library, so what you see here is what you export.
+struct SamplePanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.richtext").foregroundStyle(.tint)
+                Text("Olo Sample").font(.headline)
+                Text("for review").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if let a = model.sample {
+                    Button("Open in Artifacts") { model.openArtifact(a) }.controlSize(.small)
+                }
+                Button { model.showSample = false } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).help("Close the Sample panel")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            Divider()
+            if let a = model.sample {
+                ArtifactDetail(artifact: a, inLibrary: false).id(a.id)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.richtext").font(.largeTitle).foregroundStyle(.secondary)
+                    Text("Nothing to review yet").foregroundStyle(.secondary)
+                    Text("Ask Olo to build a page, a document, a chart or a plan and it opens here.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+/// The toolbar switch for the Olo Sample panel.
+struct SampleToggle: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Toggle(isOn: $model.showSample) { Label("Olo Sample", systemImage: "sidebar.right") }
+            .disabled(model.sample == nil)
+            .help("Show or hide the Olo Sample: the document or page Olo made, beside the conversation")
     }
 }

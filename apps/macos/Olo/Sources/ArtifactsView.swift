@@ -338,7 +338,7 @@ struct ArtifactCard: View {
                 }
             }
             Spacer(minLength: 8)
-            Button("Open") { model.openArtifact(artifact) }.controlSize(.small)
+            Button("Open") { model.openSample(artifact) }.controlSize(.small).help("Review it in the Olo Sample panel")
             ArtifactExportMenu(artifact: artifact) { Label("Export", systemImage: "square.and.arrow.down") }
                 .menuStyle(.borderlessButton).fixedSize().controlSize(.small)
         }

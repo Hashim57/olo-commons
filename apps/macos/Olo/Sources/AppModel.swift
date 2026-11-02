@@ -58,6 +58,11 @@ final class AppModel {
     var showArtifacts = false
     /// An artifact the Artifacts panel should select when it opens (a card's Open button).
     var pendingArtifactSelection: String?
+    /// The Olo Sample: the document or page Olo made, open for review in the panel beside the conversation.
+    var sample: Artifact?
+    var showSample = false
+    /// When the last question was asked, for the time-with-Olo count.
+    private var lastAskAt: Date?
     // The Olo brain and private chats (see AppModel+Brain.swift for the behaviour).
     /// The default for "Add to Olo brain": the account's (auth.me) when signed in, this Mac's otherwise; nil until asked.
     var brainSharing: Bool?
@@ -330,6 +335,7 @@ final class AppModel {
     func ask(_ question: String, attachments: [Attachment] = [], in conversationId: UUID? = nil, searchWeb: Bool = false, useFolders: Bool = false) {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty || !attachments.isEmpty else { return }
+        noteTimeWithOlo()
         let cid = conversationId ?? selection ?? newConversation()
         if conversation(cid) == nil { return }
         guard answering[cid] == nil else { return }
@@ -584,5 +590,36 @@ final class AppModel {
             answering[cid] = nil
         }
         persist()
+    }
+
+    // MARK: Time with Olo
+
+    /// Adds the minutes since the last ask (when close enough to count), and shows the day's note once.
+    private func noteTimeWithOlo() {
+        let d = UserDefaults.standard
+        let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
+        if d.string(forKey: Prefs.timeDay) != today {
+            d.set(today, forKey: Prefs.timeDay); d.set(0.0, forKey: Prefs.timeMinutes); d.set(0.0, forKey: Prefs.timeNoted)
+        }
+        let now = Date()
+        let gap = lastAskAt.map { now.timeIntervalSince($0) / 60 } ?? 1
+        lastAskAt = now
+        let minutes = d.double(forKey: Prefs.timeMinutes) + Wellbeing.minutesToAdd(gapMinutes: gap)
+        d.set(minutes, forKey: Prefs.timeMinutes)
+        if let note = Wellbeing.note(minutesToday: minutes, lastNotedMinutes: d.double(forKey: Prefs.timeNoted)) {
+            d.set(minutes, forKey: Prefs.timeNoted)
+            banner = note
+        }
+    }
+
+    /// Opens a file Olo made in the Olo Sample panel beside the conversation.
+    func openSample(_ a: Artifact) {
+        sample = a
+        showSample = true
+    }
+
+    /// Asks Olo to carry on from where a cut answer stopped.
+    func continueAnswer(in cid: UUID) {
+        ask("Continue exactly where you stopped, without repeating what you already wrote.", in: cid)
     }
 }
