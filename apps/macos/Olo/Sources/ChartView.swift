@@ -82,16 +82,16 @@ struct InlineChartView: View {
 }
 
 /// An answer's text with its charts in place of the ```chart blocks.
-struct AnswerBody: View {
+struct AnswerBody<Rendered: View>: View {
     let content: String
-    let render: (String) -> Text
+    @ViewBuilder let render: (String) -> Rendered
 
     var body: some View {
         let segments = ChartBlocks.segments(of: content)
         VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(segments.enumerated()), id: \.offset) { _, seg in
                 switch seg {
-                case .text(let t): render(t).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                case .text(let t): render(t)
                 case .chart(let spec): InlineChartView(spec: spec)
                 case .broken: Label("A chart in this answer could not be drawn; its figures did not add up to a chart.", systemImage: "chart.bar.xaxis").font(.caption).foregroundStyle(.secondary)
                 }

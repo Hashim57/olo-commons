@@ -248,10 +248,18 @@ struct TurnView: View {
             VStack(alignment: .leading, spacing: 10) {
                 if turn.text.isEmpty {
                     HStack(spacing: 10) { HeliusAtomView(mode: .loader, size: 56); Text(status ?? "Thinking").foregroundStyle(.secondary) }
-                } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons {
+                } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons,
+                          !MarkdownBlocks.isStructured(turn.text) {
                     answerText(checked: v)
                 } else {
-                    AnswerBody(content: turn.text, render: { Text(markdown($0)) })
+                    // A document, a list or code is read whole: hiding its unverified sentences would leave
+                    // holes in it. The checks still appear below, claim by claim.
+                    AnswerBody(content: turn.text, render: { MarkdownText(text: $0) })
+                }
+                if !turn.artifacts.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(turn.artifacts) { a in ArtifactCard(artifact: a) }
+                    }
                 }
                 ForEach(Array(turn.notices.enumerated()), id: \.offset) { _, n in
                     Label(n, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
@@ -282,9 +290,7 @@ struct TurnView: View {
         }
     }
 
-    private func markdown(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
-    }
+    private func markdown(_ s: String) -> AttributedString { MarkdownText.inline(s) }
 
     /// Only the sentences Zeus could support are shown; the rest wait behind a button, labelled.
     private func answerText(checked v: AnswerVerification) -> some View {
@@ -459,5 +465,105 @@ struct CrisisBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// An answer drawn as a document: headings at three sizes, bullets and numbers with a hanging
+/// indent, quotes with a bar, code in a monospaced box, tables as a grid, and inline bold,
+/// italic, code and links everywhere. The structure comes from OloKit's MarkdownBlocks.
+struct MarkdownText: View {
+    let text: String
+
+    /// Inline Markdown (bold, italic, code, links) as styled text; the raw text when it does not parse.
+    static func inline(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+    }
+
+    var body: some View {
+        let blocks = MarkdownBlocks.parse(text)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                view(for: block)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func view(for block: MarkdownBlock) -> some View {
+        switch block {
+        case .heading(let level, let t):
+            Text(MarkdownText.inline(t))
+                .font(level <= 1 ? .title2.weight(.semibold) : level == 2 ? .title3.weight(.semibold) : .headline)
+                .padding(.top, level <= 2 ? 6 : 2)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        case .paragraph(let t):
+            Text(MarkdownText.inline(t)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        case .bullets(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\u{2022}").foregroundStyle(.secondary).frame(width: 12, alignment: .trailing)
+                        Text(MarkdownText.inline(item)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.leading, 4)
+        case .numbered(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(i + 1).").foregroundStyle(.secondary).monospacedDigit().frame(width: 22, alignment: .trailing)
+                        Text(MarkdownText.inline(item)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.leading, 4)
+        case .quote(let t):
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(0.5)).frame(width: 3)
+                Text(MarkdownText.inline(t)).italic().foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+        case .code(let language, let code):
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(language.isEmpty ? "code" : language).font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).controlSize(.small).help("Copy the code")
+                }
+                .padding(.horizontal, 10).padding(.top, 6)
+                ScrollView(.horizontal) {
+                    Text(code).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                }
+            }
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+        case .table(let header, let rows):
+            ScrollView(.horizontal) {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                    GridRow {
+                        ForEach(Array(header.enumerated()), id: \.offset) { _, h in
+                            Text(MarkdownText.inline(h)).font(.callout.weight(.semibold))
+                        }
+                    }
+                    Divider()
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        GridRow {
+                            ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                                Text(MarkdownText.inline(cell)).font(.callout).textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+            }
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+        case .rule:
+            Divider().padding(.vertical, 2)
+        }
     }
 }

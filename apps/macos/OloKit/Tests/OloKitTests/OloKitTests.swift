@@ -504,4 +504,54 @@ final class CrisisTests: XCTestCase {
         XCTAssertTrue(failed.isFinished)
         XCTAssertEqual(failed.error, "model timed out")
     }
+
+    func testMarkdownBlocksParseAnAnswer() {
+        let text = """
+        # LNG vs Diesel
+
+        LNG trucks offer **advantages** in cost.
+
+        ## 1. Cost
+        - Fuel price: lower
+        - Upfront cost: higher
+          than diesel
+
+        1. First
+        2. Second
+
+        | Metric | LNG | Diesel |
+        |---|---|---|
+        | Range | 1,000 | 1,500 |
+
+        > A quote
+
+        ```swift
+        let x = 1
+        ```
+        ---
+        Plain closing line.
+        """
+        let blocks = MarkdownBlocks.parse(text)
+        XCTAssertEqual(blocks[0], .heading(level: 1, text: "LNG vs Diesel"))
+        XCTAssertEqual(blocks[1], .paragraph("LNG trucks offer **advantages** in cost."))
+        XCTAssertEqual(blocks[2], .heading(level: 2, text: "1. Cost"))
+        XCTAssertEqual(blocks[3], .bullets(["Fuel price: lower", "Upfront cost: higher than diesel"]))
+        XCTAssertEqual(blocks[4], .numbered(["First", "Second"]))
+        XCTAssertEqual(blocks[5], .table(header: ["Metric", "LNG", "Diesel"], rows: [["Range", "1,000", "1,500"]]))
+        XCTAssertEqual(blocks[6], .quote("A quote"))
+        XCTAssertEqual(blocks[7], .code(language: "swift", text: "let x = 1"))
+        XCTAssertEqual(blocks[8], .rule)
+        XCTAssertEqual(blocks[9], .paragraph("Plain closing line."))
+        XCTAssertEqual(blocks.count, 10)
+        XCTAssertTrue(MarkdownBlocks.isStructured(text))
+        XCTAssertFalse(MarkdownBlocks.isStructured("Just a sentence. And another one."))
+        XCTAssertEqual(MarkdownBlocks.title(of: text), "LNG vs Diesel")
+        XCTAssertEqual(MarkdownBlocks.strip("**Bold** and [a link](https://x)"), "Bold and a link")
+    }
+
+    func testMarkdownBlocksKeepUnclosedCodeAndPlainText() {
+        XCTAssertEqual(MarkdownBlocks.parse("```\nabc"), [.code(language: "", text: "abc")])
+        XCTAssertEqual(MarkdownBlocks.parse("one\ntwo"), [.paragraph("one two")])
+        XCTAssertEqual(MarkdownBlocks.parse(""), [])
+    }
 }

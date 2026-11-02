@@ -16,7 +16,7 @@ struct ArtifactsView: View {
     @State private var loading = false
 
     private var thread: [Artifact] {
-        guard let id = conversationId, let c = model.conversation(id) else { return [] }
+        guard let id = conversationId ?? model.selection, let c = model.conversation(id) else { return [] }
         var seen = Set<String>()
         var out: [Artifact] = []
         for t in c.turns.reversed() { for a in t.artifacts where !seen.contains(a.id) { seen.insert(a.id); out.append(a) } }
@@ -47,7 +47,11 @@ struct ArtifactsView: View {
             await model.refreshLibraryArtifacts()
             shares = (try? await model.api.listShares()) ?? []
             loading = false
+            if let want = model.pendingArtifactSelection { selected = want; model.pendingArtifactSelection = nil }
             if selected == nil { selected = all.first?.id }
+        }
+        .onChange(of: model.pendingArtifactSelection) {
+            if let want = model.pendingArtifactSelection { selected = want; model.pendingArtifactSelection = nil }
         }
     }
 
@@ -173,22 +177,9 @@ struct ArtifactDetail: View {
                     .help("Off: JavaScript and every network request are blocked. On: the page runs as the web preview does.")
             }
             Button { copyCode() } label: { Image(systemName: "doc.on.doc") }.help("Copy the code")
-            Menu {
-                Button("Save as \(artifact.suggestedFilename)...") { save() }
-                Button("Export as PDF...") {
-                    if artifact.isPreviewable && !artifact.needsScripts {
-                        Task { await DocumentWriter.savePDF(html: ArtifactPreview.document(for: artifact), name: baseName) }
-                    } else {
-                        DocumentWriter.savePDF(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName)
-                    }
-                }
-                Button("Export as Word (.docx)...") { DocumentWriter.saveWord(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName) }
-                    .disabled(artifact.isPreviewable)
-                Button("Export Tables as CSV...") { DocumentWriter.saveCSV(from: artifact.code, name: baseName) }
-                    .disabled(!MarkdownTables.hasTable(artifact.code))
-            } label: { Image(systemName: "square.and.arrow.down") }
-            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .help("Save the file, or export it as PDF, Word or CSV")
+            ArtifactExportMenu(artifact: artifact) { Image(systemName: "square.and.arrow.down") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("Save the file, or export it as PDF, Word or CSV")
             if inLibrary {
                 Button {
                     busy = true
@@ -249,24 +240,108 @@ struct ArtifactDetail: View {
         }
     }
 
-    private var baseName: String {
-        let n = (artifact.suggestedFilename as NSString).deletingPathExtension
-        return TranscriptExport.safeFilename(n.isEmpty ? artifact.title : n, fallback: "artifact")
-    }
-
     private func copyCode() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(artifact.code, forType: .string)
         model.banner = "Copied."
     }
 
-    private func save() {
+    private func save() { ArtifactExportMenu.save(artifact) }
+}
+
+/// Everything a file Olo built can become: itself, a website folder for Netlify, a PDF, a Word
+/// document or a CSV. One menu, used in the Artifacts panel and on the card in the thread.
+struct ArtifactExportMenu<MenuLabel: View>: View {
+    let artifact: Artifact
+    @ViewBuilder let label: () -> MenuLabel
+
+    private var baseName: String {
+        let n = (artifact.suggestedFilename as NSString).deletingPathExtension
+        return TranscriptExport.safeFilename(n.isEmpty ? artifact.title : n, fallback: "artifact")
+    }
+
+    var body: some View {
+        Menu {
+            Button("Save as \(artifact.suggestedFilename)...") { ArtifactExportMenu.save(artifact) }
+            if artifact.kind == "html" {
+                Button("Save as Website Folder for Netlify...") { ArtifactExportMenu.saveSiteFolder(artifact, name: baseName) }
+            }
+            Divider()
+            Button("Export as PDF...") {
+                if artifact.isPreviewable && !artifact.needsScripts {
+                    Task { await DocumentWriter.savePDF(html: ArtifactPreview.document(for: artifact), name: baseName) }
+                } else {
+                    DocumentWriter.savePDF(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName)
+                }
+            }
+            Button("Export as Word (.docx)...") { DocumentWriter.saveWord(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName) }
+                .disabled(artifact.isPreviewable)
+            Button("Export Tables as CSV...") { DocumentWriter.saveCSV(from: artifact.code, name: baseName) }
+                .disabled(!MarkdownTables.hasTable(artifact.code))
+        } label: { label() }
+    }
+
+    @MainActor
+    static func save(_ artifact: Artifact) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = artifact.suggestedFilename
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try Data(artifact.code.utf8).write(to: url, options: [.atomic]) }
-        catch { model.banner = "Could not save: \(error.localizedDescription)" }
+        do { try Data(artifact.code.utf8).write(to: url, options: [.atomic]); AppModel.shared.banner = "Saved \(url.lastPathComponent)." }
+        catch { AppModel.shared.banner = "Could not save: \(error.localizedDescription)" }
+    }
+
+    /// A folder with index.html inside, which Netlify's drop zone (or any static host) takes as a site.
+    @MainActor
+    static func saveSiteFolder(_ artifact: Artifact, name: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.canCreateDirectories = true
+        panel.prompt = "Save Folder"
+        panel.message = "A folder with index.html inside. Drag the folder onto app.netlify.com/drop to publish it."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data(artifact.code.utf8).write(to: url.appendingPathComponent("index.html"), options: [.atomic])
+            AppModel.shared.banner = "Saved \(url.lastPathComponent)/index.html. Drag the folder onto Netlify to publish."
+        } catch { AppModel.shared.banner = "Could not save the folder: \(error.localizedDescription)" }
+    }
+}
+
+/// A file Olo built, shown in the thread under the answer that made it: what it is, Open to
+/// preview it, and the export menu. This is where the download lives.
+struct ArtifactCard: View {
+    let artifact: Artifact
+    @Environment(AppModel.self) private var model
+
+    private var symbol: String {
+        switch artifact.kind {
+        case "html", "react": return "globe"
+        case "svg": return "photo"
+        case "markdown": return "doc.text"
+        default: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.title2).foregroundStyle(.tint).frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(artifact.title).font(.callout.weight(.medium)).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(artifact.suggestedFilename).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if !artifact.validated { Text("has errors").font(.caption2).foregroundStyle(.orange) }
+                    else if artifact.repaired { Text("repaired").font(.caption2).foregroundStyle(.secondary) }
+                }
+            }
+            Spacer(minLength: 8)
+            Button("Open") { model.openArtifact(artifact) }.controlSize(.small)
+            ArtifactExportMenu(artifact: artifact) { Label("Export", systemImage: "square.and.arrow.down") }
+                .menuStyle(.borderlessButton).fixedSize().controlSize(.small)
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
     }
 }
 
