@@ -152,8 +152,9 @@ export function openalexCandidates(works: any[], n: number): Candidate[] {
  * Search URLs for a gap topic (a few lower-case words). One per source that
  * has a public search API; sources without one (gutenberg, archive_org, CKAN)
  * are skipped by the gap filler. The words are joined the way each API likes.
+ * `key` is sent only where the API takes one in the query (OpenAlex `api_key`).
  */
-export function searchUrl(slug: string, topic: string, n: number): string | null {
+export function searchUrl(slug: string, topic: string, n: number, key = ''): string | null {
   const words = topic.split(/\s+/).filter(Boolean);
   if (!words.length) return null;
   const q = encodeURIComponent(words.join(' '));
@@ -162,7 +163,7 @@ export function searchUrl(slug: string, topic: string, n: number): string | null
     case 'wikipedia_es': return `https://es.wikipedia.org/w/api.php?action=query&list=search&srsearch=${q}&srlimit=${n}&format=json`;
     case 'wikidata': return `https://www.wikidata.org/w/api.php?action=wbsearchentities&search=${q}&language=en&limit=${n}&format=json`;
     case 'wikinews': return `https://en.wikinews.org/w/api.php?action=query&generator=search&gsrsearch=${q}&gsrnamespace=0&gsrlimit=${n}&prop=extracts|info&exintro=1&explaintext=1&exlimit=${n}&inprop=url&format=json`;
-    case 'openalex': return `https://api.openalex.org/works?search=${q}&filter=has_abstract:true,is_retracted:false&per-page=${n}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com`;
+    case 'openalex': return `https://api.openalex.org/works?search=${q}&filter=has_abstract:true,is_retracted:false&per-page=${n}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com${key ? `&api_key=${encodeURIComponent(key)}` : ''}`;
     case 'arxiv': return `https://export.arxiv.org/api/query?search_query=${words.map(w => 'all:' + encodeURIComponent(w)).join('+AND+')}&max_results=${n}`;
     case 'pubmed': return `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${words.map(w => encodeURIComponent(w)).join('+AND+')}&retmax=${n}&sort=relevance&retmode=json`;
     default: return null;
