@@ -23,6 +23,9 @@ import argparse, hashlib, json, os, random, re, sys
 from datetime import datetime, timezone
 import requests
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import quality  # noqa: E402  (zeus/quality.py: the ingester's stub and Wikidata housekeeping rules)
+
 YEAR_RE = re.compile(r"\b(1[5-9]\d\d|20[0-3]\d)\b")
 NUM_RE = re.compile(r"\b(\d{2,}(?:[.,]\d+)?)\b")
 SENT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
@@ -58,6 +61,20 @@ def fetch_atoms_keyless(export_url, max_atoms):
             break
         after = nxt
     return atoms[:max_atoms]
+
+
+SNAPSHOT_URL = "https://raw.githubusercontent.com/Hashim57/olo-commons/snapshot/commons.json"
+
+
+def load_snapshot(path_or_url):
+    """The snapshot's JSON from a local file, or downloaded when given a URL (what `--snapshot` with no value does).
+    The training workflow falls back to `--snapshot` when the live export is down; before this it had nothing to open."""
+    if re.match(r"^https?://", str(path_or_url)):
+        r = requests.get(path_or_url, timeout=120, headers={"User-Agent": "zeus-build-dataset/1"})
+        r.raise_for_status()
+        return r.json()
+    with open(path_or_url, encoding="utf-8") as f:
+        return json.load(f)
 
 
 def atoms_from_snapshot(snap):
@@ -936,17 +953,20 @@ def main():
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
-    ap.add_argument("--snapshot", help="build offline from a copy of the snapshot branch's commons.json instead of the live Commons")
+    ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
+                    help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
     args = ap.parse_args()
     # With the public anon key, read through PostgREST; without it, through the keyless export;
-    # with --snapshot, from the offline file (no network).
+    # with --snapshot, from the offline file or its published copy (the workflow's fallback when the export is down).
     if args.snapshot:
-        with open(args.snapshot, encoding="utf-8") as f:
-            atoms = atoms_from_snapshot(json.load(f))[: args.max_atoms]
+        atoms = atoms_from_snapshot(load_snapshot(args.snapshot))[: args.max_atoms]
     elif args.anon_key:
         atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
     else:
         atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", args.max_atoms)
+    # The same quality rules the ingester applies (zeus/quality.py): each id once, no stubs, no Wikidata
+    # categories or templates. Applied before any split, so a junk atom is neither a claim nor a passage.
+    atoms, dropped = quality.usable_atoms(atoms)
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     hard = [] if args.no_hard_negatives else add_hard_negatives(data["train"], atoms, args.eval_share)
     data["eval2"] = build_eval2(atoms, args.eval_share)
@@ -965,7 +985,7 @@ def main():
     gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
     imported_files, n_imported = count_gold(os.path.join(args.out, "imported"), skip_eval=True)
     by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
-    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "train": len(data["train"]), "eval": len(data["eval"]), "eval2": len(data["eval2"]),
+    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "atoms_dropped": dropped, "train": len(data["train"]), "eval": len(data["eval"]), "eval2": len(data["eval2"]),
             "eval3": len(ev3), "eval3_version": eval3.EVAL3_VERSION,
             "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
             "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
