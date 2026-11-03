@@ -256,6 +256,8 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
     public var createdAt: String?
     /// Who is writing or wrote the file (v63): "Olo", or "Olo's backup model" via a provider.
     public var answeredBy: AnsweredBy?
+    /// What was asked, so a failed build can be started again (v63 servers send it).
+    public var prompt: String?
 
     public init(id: String, status: String, progress: Int = 0, stage: String? = nil, detail: String? = nil,
                 summary: String? = nil, artifact: Artifact? = nil, error: String? = nil, mode: String = "artifact", messageId: Int? = nil) {
@@ -263,7 +265,7 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
         self.summary = summary; self.artifact = artifact; self.error = error; self.mode = mode; self.messageId = messageId
     }
 
-    enum CodingKeys: String, CodingKey { case id, status, progress, stage, detail, summary, artifact, error, mode, messageId, steps, startedAt, createdAt, answeredBy }
+    enum CodingKeys: String, CodingKey { case id, status, progress, stage, detail, summary, artifact, error, mode, messageId, steps, startedAt, createdAt, answeredBy, prompt }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -283,6 +285,7 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
         startedAt = try? c.decodeIfPresent(String.self, forKey: .startedAt)
         createdAt = try? c.decodeIfPresent(String.self, forKey: .createdAt)
         answeredBy = try? c.decodeIfPresent(AnsweredBy.self, forKey: .answeredBy)
+        prompt = try? c.decodeIfPresent(String.self, forKey: .prompt)
         // Servers without the answered_by column carry the record on the finished artifact.
         if answeredBy == nil, let a = try? c.decodeIfPresent(ArtifactAnsweredBy.self, forKey: .artifact)?.answeredBy { answeredBy = a }
     }
@@ -295,7 +298,14 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
         try c.encodeIfPresent(error, forKey: .error); try c.encode(mode, forKey: .mode); try c.encodeIfPresent(messageId, forKey: .messageId)
         try c.encode(steps, forKey: .steps); try c.encodeIfPresent(startedAt, forKey: .startedAt)
         try c.encodeIfPresent(createdAt, forKey: .createdAt); try c.encodeIfPresent(answeredBy, forKey: .answeredBy)
+        try c.encodeIfPresent(prompt, forKey: .prompt)
     }
+
+    /// Who wrote the result, for the card: only a finished build was answered by anyone.
+    public var finishedAnsweredBy: AnsweredBy? { status == "succeeded" ? answeredBy : nil }
+
+    /// A failed file build can be asked for again; an answer job finishes a message and cannot.
+    public var canRetry: Bool { status == "failed" && mode != "answer" && !(prompt ?? "").isEmpty }
 
     public var isRunning: Bool { status == "queued" || status == "running" }
 
@@ -395,7 +405,7 @@ public struct BuildTimelineRow: Equatable, Sendable, Identifiable {
 
     static func isNotice(_ s: String) -> Bool {
         let l = s.lowercased()
-        return ["main model is unavailable", "trying once more", "asking once more", "carrying on", "paused", "token ceiling", "stopped early"].contains { l.contains($0) }
+        return ["main model is unavailable", "trying once more", "asking once more", "carrying on", "paused", "token ceiling", "stopped early", "no writer answered"].contains { l.contains($0) }
     }
 
     /// "0:48", "4:12".

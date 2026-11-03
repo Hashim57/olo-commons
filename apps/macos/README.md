@@ -45,6 +45,13 @@ A native SwiftUI app (not a website in a window) on the same account as helius-o
   - A server without `code.edit`, `code.complete` or `code.allowance` (before olo-web v61) answers NOT_FOUND: the notice "helius-olo.io needs the v61 update for this" shows once, suggestions stop for the session, and the editor, saving and reviews keep working. "Build with Olo allowance used for today" pauses suggestions until the next day.
   - Always private: code is sent only to be reviewed, completed or rewritten, never stored, never trained on, never added to the brain. Code: `OloKit/CodeReview.swift`, `CodeAssist.swift`, `LineDiff.swift`, `EditorText.swift` (all pure, with tests), `Olo/Sources/BuildWorkspace.swift` (folder, bookmark, watching), `BuildEditor.swift` (tabs, saving, reviews, suggestions, edits), `BuildFileTree.swift`, `CodeEditor.swift`, `DiffView.swift`, `FolderWatcher.swift`, `BuildWithOloView.swift`. `CodeView.swift` now only holds `SeverityStyle`; its read-only `CodeView` is no longer shown.
 
+## 1.3 build 13: a failed build can be tried again, and says who answered once
+
+A failed background build card has Try again, which starts the same request as a new job and follows it in the
+same card. "Answered by Olo" appears once under a reply (the server's line, not that plus the app's own), and not
+at all under a build that failed. The server side of the fix (olo-web v64) drops a writer that goes silent and asks
+the next, which is what made builds fail live.
+
 ## 1.3 build 12: builds that finish, a browser, no more window crash
 
 - **The window crash with a large build.** A request like "build a website on all dog breeds" streamed until the platform cut it at 60 seconds, left half an HTML file in the thread, and that text was also filed as a ".md document" and opened in the Olo Sample. The Sample's code view was one SwiftUI Text inside a two-way ScrollView with an infinite width; with a long file AppKit re-ran the window's constraints until it stopped the app ("The window has been marked as needing another Update Constraints in Window pass"). The code view is now an AppKit text view (`ReadOnlyCodeView` in `ArtifactsView.swift`), a code block in the thread shows its first 40 lines with "Show all" (`CodeBlockBody` in `ChatView.swift`), the Sample opens only once an answer has finished (not while text is still arriving), and a half file is never filed as a document.

@@ -53,6 +53,27 @@ final class BackgroundBuildTests: XCTestCase {
         XCTAssertEqual(BuildTimelineRow.clock(48), "0:48")
     }
 
+    func testAFailedBuildCanBeAskedForAgainAndNamesNoWriter() throws {
+        let json = #"""
+        {"id":"j2","status":"failed","progress":100,"mode":"artifact","prompt":"build me a website on all dog breeds",
+         "error":"None of Olo's writers answered, after three tries through all of them.",
+         "answeredBy":{"writer":"Olo","writer_provider":"","verifier":null,"mode":"olo"},
+         "steps":[{"stage":"writing","detail":"No writer answered, trying the chain again","at":"2026-11-03T21:00:00.000Z"}]}
+        """#
+        let job = try JSONDecoder().decode(BuildJob.self, from: Data(json.utf8))
+        XCTAssertTrue(job.canRetry)
+        XCTAssertEqual(job.prompt, "build me a website on all dog breeds")
+        XCTAssertNil(job.finishedAnsweredBy)
+        XCTAssertTrue(job.timeline[0].notice)
+        var done = job
+        done.status = "succeeded"
+        XCTAssertFalse(done.canRetry)
+        XCTAssertEqual(done.finishedAnsweredBy?.writer, "Olo")
+        var answer = job
+        answer.mode = "answer"
+        XCTAssertFalse(answer.canRetry)
+    }
+
     func testHalfAFileIsDroppedFromTheThread() {
         let cut = "A literal every breed is a few hundred.\n\n```html\n<!DOCTYPE html>\n<html><head>"
         XCTAssertTrue(ReplyFile.endsInsideFence(cut))

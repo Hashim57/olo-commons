@@ -464,7 +464,8 @@ struct TurnView: View {
 
     private var footerRow: some View {
         HStack(spacing: 12) {
-            if let o = turn.origin, !turn.text.isEmpty {
+            // "Answered by Olo" once: the line above already says it when the server named the writer.
+            if let o = turn.origin, !turn.text.isEmpty, !(o == .olo && turn.answeredBy?.line != nil) {
                 Text(o.label).font(.caption2).foregroundStyle(o == .offline ? Color.orange : Color.secondary)
             }
             if !turn.text.isEmpty {
