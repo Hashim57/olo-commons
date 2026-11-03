@@ -22,6 +22,7 @@
 // callers 3000. Query text is never stored; only its length and result count.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { exportAfter, exportLimit } from './export.ts';
 import { citation, looseQuery, rank } from './rank.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -49,11 +50,12 @@ Deno.serve(async (req) => {
   // GET ?export=1&after=<timestamp>&limit=<1..500>. Read-only, bounded, cacheable for five minutes.
   if (req.method === 'GET' && new URL(req.url).searchParams.has('export')) {
     const u = new URL(req.url);
-    const after = u.searchParams.get('after') || '1970-01-01';
-    if (isNaN(Date.parse(after))) return new Response(JSON.stringify({ error: 'after must be a timestamp' }), { status: 400, headers: H });
-    const limit = Math.max(1, Math.min(Number(u.searchParams.get('limit')) || 500, 500));
+    // The cursor keeps its microseconds (export.ts): rounding it to milliseconds made every page repeat its last atom.
+    const after = exportAfter(u.searchParams.get('after'));
+    if (after === null) return new Response(JSON.stringify({ error: 'after must be a timestamp' }), { status: 400, headers: H });
+    const limit = exportLimit(u.searchParams.get('limit'));
     const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
-    const { data, error } = await sb.rpc('olo_export', { p_after: new Date(after).toISOString(), p_limit: limit });
+    const { data, error } = await sb.rpc('olo_export', { p_after: after, p_limit: limit });
     if (error) return new Response(JSON.stringify({ error: 'export_unavailable' }), { status: 503, headers: H });
     return new Response(JSON.stringify(data), { headers: { ...H, 'Cache-Control': 'public, max-age=300' } });
   }

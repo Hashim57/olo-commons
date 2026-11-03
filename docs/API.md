@@ -141,7 +141,7 @@ Call the API first, pass the `results` to the model as context, and ask it to ci
 
 ## Bulk export without a key
 
-`GET https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query?export=1&after=1970-01-01&limit=500` returns the same pages as the `olo_export` RPC (atoms in creation order, `next_after` for the next page) with no key, cacheable for five minutes. The offline snapshot is built from it.
+`GET https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query?export=1&after=1970-01-01&limit=500` returns the same pages as the `olo_export` RPC (atoms in creation order, `next_after` for the next page) with no key, cacheable for five minutes. The offline snapshot is built from it. Pass `next_after` back exactly as you received it (it carries microseconds); a reader that rounds it to milliseconds sees the last atom of each page again, so dedupe by `id` if you do.
 
 ## Offline snapshot
 
