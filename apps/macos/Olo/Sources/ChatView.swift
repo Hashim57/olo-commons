@@ -31,6 +31,7 @@ struct ChatView: View {
             SamplePanel().inspectorColumnWidth(min: 360, ideal: 520, max: 760)
         }
         .onChange(of: artifactCount) { sampleLanded() }
+        .onChange(of: status == nil) { sampleLanded() }
         .dropDestination(for: URL.self) { urls, _ in
             attach(urls)
             return true
@@ -79,7 +80,10 @@ struct ChatView: View {
     }
 
     /// A new file in this conversation opens in the Sample panel as soon as it lands.
+    /// Opens the newest file in the Olo Sample, once the answer has finished: opening the inspector
+    /// while text is still streaming in resized the thread on every word.
     private func sampleLanded() {
+        guard status == nil else { return }
         if let a = latestArtifact, a.id != model.sample?.id { model.openSample(a) }
     }
 
@@ -272,7 +276,9 @@ struct TurnView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                if turn.text.isEmpty {
+                if turn.text.isEmpty, let job = model.buildJobs[turn.id] {
+                    BuildProgressView(job: job, turnId: turn.id)
+                } else if turn.text.isEmpty {
                     HStack(spacing: 10) { HeliusAtomView(mode: .loader, size: 56); Text(status ?? "Thinking").foregroundStyle(.secondary) }
                 } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons,
                           !MarkdownBlocks.isStructured(turn.text) {
@@ -281,6 +287,9 @@ struct TurnView: View {
                     // A document, a list or code is read whole: hiding its unverified sentences would leave
                     // holes in it. The checks still appear below, claim by claim.
                     AnswerBody(content: turn.text, render: { MarkdownText(text: $0) })
+                }
+                if !turn.text.isEmpty, let job = model.buildJobs[turn.id] {
+                    BuildProgressView(job: job, turnId: turn.id)
                 }
                 if !turn.artifacts.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -566,10 +575,7 @@ struct MarkdownText: View {
                     } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).controlSize(.small).help("Copy the code")
                 }
                 .padding(.horizontal, 10).padding(.top, 6)
-                ScrollView(.horizontal) {
-                    Text(code).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                }
+                CodeBlockBody(code: code)
             }
             .background(Color(nsColor: .textBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
@@ -595,6 +601,32 @@ struct MarkdownText: View {
             .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
         case .rule:
             Divider().padding(.vertical, 2)
+        }
+    }
+}
+
+/// A code block in the thread. A long one shows its first 40 lines with "Show all": a whole page
+/// of code laid out as one SwiftUI text inside a scrolling thread is what hung and crashed the window
+/// ("needing another Update Constraints in Window pass") when a cut build streamed into it.
+struct CodeBlockBody: View {
+    let code: String
+    @State private var expanded = false
+    private static let preview = 40
+
+    private var lines: [Substring] { code.split(separator: "\n", omittingEmptySubsequences: false) }
+
+    var body: some View {
+        let all = lines
+        let shown = expanded || all.count <= Self.preview ? code : all.prefix(Self.preview).joined(separator: "\n")
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal) {
+                Text(shown).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+            }
+            if all.count > Self.preview {
+                Button(expanded ? "Show fewer lines" : "Show all \(all.count) lines") { expanded.toggle() }
+                    .buttonStyle(.borderless).font(.caption).padding(.horizontal, 10).padding(.bottom, 6)
+            }
         }
     }
 }

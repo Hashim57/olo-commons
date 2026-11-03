@@ -61,6 +61,10 @@ final class AppModel {
     /// The Olo Sample: the document or page Olo made, open for review in the panel beside the conversation.
     var sample: Artifact?
     var showSample = false
+    /// Background builds being followed, by the answer turn they belong to (not saved: the job lives on the server).
+    var buildJobs: [UUID: BuildJob] = [:]
+    /// The built-in browser (see BrowserView.swift): the page it should open next, a web address or a file Olo built.
+    var browserRequest: BrowserRequest?
     /// When the last question was asked, for the time-with-Olo count.
     private var lastAskAt: Date?
     // The Olo brain and private chats (see AppModel+Brain.swift for the behaviour).
@@ -380,6 +384,24 @@ final class AppModel {
             answerOffline(question: question, content: composed.content, attachments: attached, cid: cid, tid: tid)
             return
         }
+        // A whole site, app or guide goes straight to a background build, as on the web: streaming it
+        // was cut at the platform's 60 seconds, left half a file in the thread and moved the build to the
+        // background anyway. Private chats are never stored on the server, so they stream.
+        if attached.isEmpty, !(conversation(cid)?.isPrivate ?? false), BuildRouting.runsInBackground(question) {
+            do {
+                try await ensureSession()
+                if try await startBackgroundBuild(prompt: composed.content, cid: cid, tid: tid) { return }
+            } catch is CancellationError {
+                updateTurn(cid, tid) { $0.notices.append("Stopped.") }
+                return
+            } catch let e as TRPC.RemoteError where e.code == "FORBIDDEN" {
+                let notice = await quotaRefused()
+                updateTurn(cid, tid) { t in t.text = e.message; t.notices.append(notice) }
+                return
+            } catch {
+                // Background builds unavailable on this server, or a passing failure: stream as before.
+            }
+        }
         do {
             try await ensureSession()
             try await streamFromOlo(content: composed.content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: true)
@@ -442,7 +464,11 @@ final class AppModel {
                 case .references(let r): updateTurn(cid, tid) { $0.references = r }
                 case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
                 case .truncated(let jobId, let m):
-                    updateTurn(cid, tid) { $0.notices.append(m) }
+                    updateTurn(cid, tid) { t in
+                        t.notices.append(m)
+                        // Half a file is not an answer: keep only the prose before the open code fence.
+                        if BuildText.endsInsideFence(t.text) { t.text = BuildText.proseBeforeOpenFence(t.text) }
+                    }
                     // The file arrives minutes later from the background build: watch for it so it lands in this thread.
                     watchBackgroundBuild(jobId: jobId, cid: cid, tid: tid)
                 case .brain(let s): updateTurn(cid, tid) { $0.brainStatus = s }
