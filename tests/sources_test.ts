@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataHousekeeping, wikidataSearchIds, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 
 const EXTRACT = 'Project Gutenberg is a volunteer effort to digitize and archive cultural works, as well as to encourage the creation and distribution of eBooks. It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library.';
 
@@ -32,6 +32,25 @@ Deno.test('wikidataCandidates keeps labelled, described, notable entities in id 
   assertEquals(out[0].summary, 'Universe: all of space and time.');
   assertEquals(out[0].licence, 'CC0 1.0');
   assertEquals(wikidataCandidates(e, ['Q1', 'Q4'], 1).length, 1);
+});
+
+Deno.test('wikidataCandidates drops categories, templates and disambiguation pages, which describe Wikimedia pages and not the world', () => {
+  const links = { a: 1, b: 1, c: 1, d: 1 };
+  const e = { entities: {
+    Q10: { labels: { en: { value: 'Category:Buildings in Trapani' } }, descriptions: { en: { value: 'Wikimedia category' } }, sitelinks: links },
+    Q11: { labels: { en: { value: 'Kelen' } }, descriptions: { en: { value: 'Wikimedia disambiguation page' } }, sitelinks: links },
+    Q12: { labels: { en: { value: 'Template:Taxonomy/Trissexodon' } }, descriptions: { en: { value: 'taxonomy template' } }, sitelinks: links },
+    Q13: { labels: { en: { value: 'List of sovereign states' } }, descriptions: { en: { value: 'Wikimedia list article' } }, sitelinks: links },
+    Q14: { labels: { en: { value: 'Trapani' } }, descriptions: { en: { value: 'city in Sicily, Italy' } }, sitelinks: links },
+    Q15: { labels: { en: { value: 'Categorical imperative' } }, descriptions: { en: { value: 'central concept in Kantian ethics' } }, sitelinks: links },
+  } };
+  assertEquals(wikidataCandidates(e, ['Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15'], 10).map(c => c.external_id), ['Q14', 'Q15']);
+  // the rule itself: namespace prefixes on the label, Wikimedia page kinds in the description
+  assert(wikidataHousekeeping('Portal:Science', 'Wikimedia portal'));
+  assert(wikidataHousekeeping('Smith', 'Wikimedia human name disambiguation page'));
+  assert(wikidataHousekeeping('Infobox person', 'infobox template'));
+  assert(!wikidataHousekeeping('Wikipedia', 'free multilingual online encyclopedia'));
+  assert(!wikidataHousekeeping('Template Gothic', 'typeface designed in 2001'));
 });
 
 Deno.test('archive and gutenberg mappers keep provenance and drop incomplete rows', () => {

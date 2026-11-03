@@ -64,5 +64,28 @@ using public.olo_sources s
 where s.id = a.source_id and s.slug = 'archive_org'
   and public.olo_is_stub(a.title, a.summary, a.content);
 
--- Recount the source's atoms so the registry and the page agree with the table.
-update public.olo_sources s set atoms = (select count(*) from public.olo_atoms a where a.source_id = s.id) where s.slug = 'archive_org';
+-- ---------------------------------------------------------------------------
+-- 4. Wikidata items that describe a Wikimedia page, not a thing in the world:
+--    categories, templates, disambiguation pages, list articles. The random
+--    walk returned them freely (39 of 174 wikidata atoms in the 2026-11-03
+--    snapshot); the connector now refuses them (wikidataHousekeeping in
+--    functions/olo-ingest/sources.ts). A wikidata summary is "<label>: <description>."
+--    so the description is what follows the title.
+-- ---------------------------------------------------------------------------
+create or replace function public.olo_is_wikidata_housekeeping(p_title text, p_summary text)
+returns boolean language sql immutable as $$
+  select coalesce(p_title, '') ~* '^(Category|Template|Module|Wikipedia|Portal|Help|MediaWiki|File|Draft|Book|Wikidata|Property|Lexeme):'
+      or btrim(substr(coalesce(p_summary, ''), length(coalesce(p_title, '')) + 2)) ~* '^\s*Wikimedia (category|disambiguation page|list article|template|project page|internal item|module|navigational template|KML file|set index article|permanent duplicate item|human name disambiguation page)\M'
+      or btrim(substr(coalesce(p_summary, ''), length(coalesce(p_title, '')) + 2)) ~* '^\s*(taxonomy|navigational|infobox|stub|citation) template\.?(\s|$)'
+$$;
+
+revoke execute on function public.olo_is_wikidata_housekeeping(text, text) from public, anon, authenticated;
+grant execute on function public.olo_is_wikidata_housekeeping(text, text) to service_role;
+
+delete from public.olo_atoms a
+using public.olo_sources s
+where s.id = a.source_id and s.slug = 'wikidata'
+  and public.olo_is_wikidata_housekeeping(a.title, a.summary);
+
+-- Recount both sources' atoms so the registry and the page agree with the table.
+update public.olo_sources s set atoms = (select count(*) from public.olo_atoms a where a.source_id = s.id) where s.slug in ('archive_org', 'wikidata');
