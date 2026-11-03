@@ -176,6 +176,10 @@ struct ArtifactDetail: View {
                 Toggle("Scripts", isOn: $allowScripts).toggleStyle(.checkbox).font(.caption)
                     .help("Off: JavaScript and every network request are blocked. On: the page runs as the web preview does.")
             }
+            if artifact.isPreviewable {
+                Button { model.openInBrowser(.artifact(artifact)) } label: { Image(systemName: "safari") }
+                    .help("Run it in Olo's browser, with scripts, the network and a console, to test it as a visitor would")
+            }
             Button { copyCode() } label: { Image(systemName: "doc.on.doc") }.help("Copy the code")
             ArtifactExportMenu(artifact: artifact) { Image(systemName: "square.and.arrow.down") }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
@@ -230,14 +234,11 @@ struct ArtifactDetail: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The file's text in an AppKit text view. It was one SwiftUI Text inside a two-way ScrollView
+    /// with an infinite width: with a long file in the Olo Sample inspector, the window re-ran its
+    /// constraints until AppKit stopped it ("needing another Update Constraints in Window pass").
     private var codeView: some View {
-        ScrollView([.vertical, .horizontal]) {
-            Text(artifact.code)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
+        ReadOnlyCodeView(text: artifact.code)
     }
 
     private func copyCode() {
@@ -339,12 +340,50 @@ struct ArtifactCard: View {
             }
             Spacer(minLength: 8)
             Button("Open") { model.openSample(artifact) }.controlSize(.small).help("Review it in the Olo Sample panel")
+            if artifact.isPreviewable {
+                Button("Run") { model.openInBrowser(.artifact(artifact)) }.controlSize(.small)
+                    .help("Run it in Olo's browser to test it")
+            }
             ArtifactExportMenu(artifact: artifact) { Label("Export", systemImage: "square.and.arrow.down") }
                 .menuStyle(.borderlessButton).fixedSize().controlSize(.small)
         }
         .padding(10)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+    }
+}
+
+/// Read-only, selectable, non-wrapping code in an NSTextView: AppKit lays out a long file once,
+/// lazily, instead of SwiftUI measuring the whole text on every pass.
+struct ReadOnlyCodeView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.hasHorizontalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        if let tv = scroll.documentView as? NSTextView {
+            tv.isEditable = false
+            tv.isSelectable = true
+            tv.isRichText = false
+            tv.drawsBackground = false
+            tv.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            tv.textColor = .textColor
+            tv.textContainerInset = NSSize(width: 10, height: 10)
+            // No wrapping: long lines scroll sideways, as in an editor.
+            tv.isHorizontallyResizable = true
+            tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            tv.textContainer?.widthTracksTextView = false
+            tv.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            tv.string = text
+        }
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let tv = scroll.documentView as? NSTextView, tv.string != text else { return }
+        tv.string = text
     }
 }
 
