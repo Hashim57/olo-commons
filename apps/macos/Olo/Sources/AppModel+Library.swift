@@ -188,7 +188,7 @@ extension AppModel {
     /// Only when the question asked for a document or a build and the answer has the shape of one.
     func fileAnswerAsDocument(question: String, cid: UUID, tid: UUID) {
         guard buildJobs[tid] == nil, let c = conversation(cid), let t = c.turns.first(where: { $0.id == tid }), t.artifacts.isEmpty,
-              !BuildText.endsInsideFence(t.text),
+              !ReplyFile.endsInsideFence(t.text),
               ExportHints.hint(for: question) != nil || QuotedAnswer.looksLikeBuildRequest(question),
               MarkdownBlocks.isStructured(t.text), t.text.count >= 400 else { return }
         let title = MarkdownBlocks.title(of: t.text) ?? String(question.prefix(60))
@@ -244,7 +244,7 @@ extension AppModel {
                         self.updateTurn(cid, tid) { t in
                             if let i = t.artifacts.firstIndex(where: { $0.id == a.id }) { t.artifacts[i] = a } else { t.artifacts.append(a) }
                             t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
-                            if let s = job.summary, !s.isEmpty, t.text.isEmpty || BuildText.endsInsideFence(t.text) { t.text = s }
+                            if let s = job.summary, !s.isEmpty, t.text.isEmpty || ReplyFile.endsInsideFence(t.text) { t.text = s }
                             t.origin = .olo
                         }
                         await self.refreshLibraryArtifacts()

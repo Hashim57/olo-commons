@@ -55,10 +55,10 @@ final class BackgroundBuildTests: XCTestCase {
 
     func testHalfAFileIsDroppedFromTheThread() {
         let cut = "A literal every breed is a few hundred.\n\n```html\n<!DOCTYPE html>\n<html><head>"
-        XCTAssertTrue(BuildText.endsInsideFence(cut))
-        XCTAssertEqual(BuildText.proseBeforeOpenFence(cut), "A literal every breed is a few hundred.")
+        XCTAssertTrue(ReplyFile.endsInsideFence(cut))
+        XCTAssertEqual(ReplyFile.proseBeforeOpenFence(cut), "A literal every breed is a few hundred.")
         let whole = "Here:\n```html\n<p>x</p>\n```\nDone."
-        XCTAssertFalse(BuildText.endsInsideFence(whole))
-        XCTAssertEqual(BuildText.proseBeforeOpenFence(whole), whole)
+        XCTAssertFalse(ReplyFile.endsInsideFence(whole))
+        XCTAssertEqual(ReplyFile.proseBeforeOpenFence(whole), whole)
     }
 }

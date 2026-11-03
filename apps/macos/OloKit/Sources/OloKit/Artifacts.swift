@@ -360,7 +360,7 @@ public struct BuildJob: Codable, Equatable, Identifiable, Sendable {
 
 /// The text of a reply that may hold a file: whether it stops inside an open code fence (half a
 /// file, from a cut stream), and the prose before that fence.
-public enum BuildText {
+public enum ReplyFile {
     public static func endsInsideFence(_ text: String) -> Bool {
         text.components(separatedBy: "```").count % 2 == 0
     }

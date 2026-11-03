@@ -467,7 +467,7 @@ final class AppModel {
                     updateTurn(cid, tid) { t in
                         t.notices.append(m)
                         // Half a file is not an answer: keep only the prose before the open code fence.
-                        if BuildText.endsInsideFence(t.text) { t.text = BuildText.proseBeforeOpenFence(t.text) }
+                        if ReplyFile.endsInsideFence(t.text) { t.text = ReplyFile.proseBeforeOpenFence(t.text) }
                     }
                     // The file arrives minutes later from the background build: watch for it so it lands in this thread.
                     watchBackgroundBuild(jobId: jobId, cid: cid, tid: tid)
