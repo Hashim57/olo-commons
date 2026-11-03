@@ -33,6 +33,49 @@ export function joinParts(v: unknown): string {
   return s;
 }
 
+/** Words of two or more letters in any script, lower case; digits and punctuation are not words. */
+export function words(s: unknown): string[] {
+  return (String(s ?? '').toLowerCase().match(/[\p{L}\p{M}]{2,}/gu) || []);
+}
+
+/** How many distinct words a text has (the measure isStub uses). */
+export function distinctWords(s: unknown): number {
+  return new Set(words(s)).size;
+}
+
+export const STUB_MIN_DISTINCT = 6;     // fewer different words than this is a label, not a description
+export const STUB_REPEAT_DISTINCT = 12; // below this many different words, a text made mostly of repeats is a stub...
+export const STUB_REPEAT_RATIO = 0.4;   // ...when fewer than this share of its words are distinct
+export const STUB_MIN_REST = 40;        // characters the body must still have once the title and the authors are taken out
+
+/**
+ * True when an atom would carry no knowledge: its body is a label, one word
+ * or one line repeated, or says nothing beyond the title and the authors.
+ * The Internet Archive search returns many uploads whose description is the
+ * identifier, a file name or a word typed twice ("new book new book", "fhfh
+ * fhfh", "P P"); a third of the archive_org atoms in the Commons on 2026-11-03
+ * (330 of 892 in the snapshot) were of that kind, because a length check alone
+ * is passed by anything repeated often enough. The measure is taken on the
+ * longer of summary and content, never on their concatenation (the summary
+ * is usually the start of the content, which would read as a repeat), and it
+ * is calibrated on the snapshot so that every atom of every other source
+ * passes (Wikidata's one-line items included). Every connector's candidates
+ * go through it, so a tag dump or a template from any source is skipped too.
+ */
+export function isStub(title: unknown, summary: unknown, content: unknown, authors?: unknown): boolean {
+  const s = clean(summary), c = clean(content);
+  const body = c.length >= s.length ? c : s;
+  if (!body) return true;
+  const w = words(body), distinct = new Set(w).size;
+  if (distinct < STUB_MIN_DISTINCT) return true;
+  if (distinct < STUB_REPEAT_DISTINCT && distinct / w.length < STUB_REPEAT_RATIO) return true;
+  // What the body says once the title and the authors are taken out of it.
+  let rest = ' ' + body.toLowerCase() + ' ';
+  const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);
+  for (const n of names) rest = rest.split(n).join(' ');
+  return rest.replace(/\s+/g, ' ').trim().length < STUB_MIN_REST;
+}
+
 // LaTeX commands that are safe to replace by a plain-text spelling. Anything
 // not listed is kept as its name without the backslash (\alpha -> alpha), which
 // reads better in a summary than a stray backslash and still carries meaning.
