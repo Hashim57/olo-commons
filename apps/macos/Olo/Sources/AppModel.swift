@@ -120,6 +120,7 @@ final class AppModel {
             await flushPending()
             await refreshLibrary()
             await refreshBrainSharing()
+            resumeBackgroundBuilds()
         }
         await bootstrapBilling()
         considerBrainChoice()

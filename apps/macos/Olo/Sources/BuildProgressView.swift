@@ -32,10 +32,14 @@ struct BuildProgressView: View {
                 Text(job.error ?? "The build failed.").font(.callout).foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if let line = job.answeredBy?.line {
-                let backup = (job.answeredBy?.writer ?? "").localizedCaseInsensitiveContains("backup")
-                Text(line + (backup ? " · Olo's main model was unavailable, so a backup model stood in." : ""))
-                    .font(.caption).foregroundStyle(backup ? Color.orange : Color.secondary)
+            if job.canRetry {
+                Button { model.retryBackgroundBuild(tid: turnId) } label: { Label("Try again", systemImage: "arrow.clockwise") }
+                    .buttonStyle(.bordered).controlSize(.small)
+            }
+            if let line = job.finishedAnsweredBy?.line {
+                // Said plainly, not as a warning: a backup writer finishing the file is not a fault.
+                Text(line)
+                    .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if job.isRunning {

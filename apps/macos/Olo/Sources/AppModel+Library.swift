@@ -228,10 +228,12 @@ extension AppModel {
                         kicks += 1
                         await self.api.kickBuild(id: jobId)
                     }
-                    if let a = job.answeredBy { self.updateTurn(cid, tid) { $0.setAnsweredBy(a) } }
+                    // Only a finished build names who answered; a failed one said nothing.
+                    if let a = job.finishedAnsweredBy { self.updateTurn(cid, tid) { $0.setAnsweredBy(a) } }
                     if let text = job.finishedAnswer {
                         // The server finished the cut answer in place: show the whole text.
                         self.updateTurn(cid, tid) { t in
+                            t.buildJobId = nil
                             t.text = text
                             t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) || $0.localizedCaseInsensitiveContains("finishing it in the background") || $0.localizedCaseInsensitiveContains("length limit") }
                             t.notices.append("Olo finished this answer in the background.")
@@ -242,6 +244,7 @@ extension AppModel {
                     }
                     if let a = job.artifact, job.status == "succeeded" {
                         self.updateTurn(cid, tid) { t in
+                            t.buildJobId = nil
                             if let i = t.artifacts.firstIndex(where: { $0.id == a.id }) { t.artifacts[i] = a } else { t.artifacts.append(a) }
                             t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
                             if let s = job.summary, !s.isEmpty, t.text.isEmpty || ReplyFile.endsInsideFence(t.text) { t.text = s }
@@ -254,6 +257,7 @@ extension AppModel {
                     }
                     if job.isFinished {
                         self.updateTurn(cid, tid) { t in
+                            t.buildJobId = nil
                             t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
                             if t.text.isEmpty {
                                 t.text = job.status == "cancelled" ? "The build was cancelled." : "The build did not finish."
@@ -295,7 +299,8 @@ extension AppModel {
             return false
         }
         buildJobs[tid] = job
-        updateTurn(cid, tid) { t in t.origin = .olo }
+        updateTurn(cid, tid) { t in t.origin = .olo; t.buildJobId = job.id }
+        persist()
         watchBackgroundBuild(jobId: job.id, cid: cid, tid: tid)
         await refreshEntitlement()
         return true
@@ -307,6 +312,34 @@ extension AppModel {
         job.status = "cancelled"
         buildJobs[tid] = job
         Task { try? await api.cancelBuild(id: job.id) }
+    }
+
+    /// Follows again every build a thread was waiting on when Olo was last quit, so its card and
+    /// its file come back instead of disappearing.
+    func resumeBackgroundBuilds() {
+        for c in conversations {
+            for t in c.turns {
+                guard let jobId = t.buildJobId, buildJobs[t.id] == nil else { continue }
+                watchBackgroundBuild(jobId: jobId, cid: c.id, tid: t.id)
+            }
+        }
+    }
+
+    /// The failed card's Try again: the same request as a new job, followed by the same card.
+    func retryBackgroundBuild(tid: UUID) {
+        guard let job = buildJobs[tid], job.canRetry, let prompt = job.prompt,
+              let cid = conversations.first(where: { c in c.turns.contains { $0.id == tid } })?.id else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if try await self.startBackgroundBuild(prompt: prompt, cid: cid, tid: tid) == false {
+                    self.banner = "Background builds are not available on this server right now."
+                }
+            } catch let failure {
+                self.banner = "The build could not be started again: \(failure.localizedDescription)"
+            }
+            self.answering[cid] = nil
+        }
     }
 
     /// The build nudges are about the build the thread just showed, so they need no bell.
