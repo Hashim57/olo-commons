@@ -42,3 +42,14 @@ It sets one key on the Worker, checks the Worker accepts it with a real Zeus ver
 `ZEUS_VERIFIER_*` and the Cloudflare fallback writer (`OLO_FALLBACK_*`) on the helius-olo.io Netlify site,
 and the matching Supabase secrets for Olo Commons when the Supabase CLI is signed in. It never prints the
 key. Netlify applies the variables on the next deploy.
+
+## Deploying a change to worker.js
+
+The daily cloud training redeploys the Worker only when a new Zeus version beats the one serving. To ship a
+code change before then:
+
+    bash zeus/cloudflare/deploy_worker.sh
+
+It keeps the serving version (from `zeus/BEST.json`) and every variable set in the dashboard, such as
+`DRAFT_MODEL`. Never run a bare `wrangler deploy`: `wrangler.toml` leaves `ZEUS_LORA` blank on purpose,
+and a bare deploy would stop Zeus serving its adapter.
