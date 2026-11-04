@@ -37,9 +37,9 @@ struct BuildProgressView: View {
                     .buttonStyle(.bordered).controlSize(.small)
             }
             if let line = job.finishedAnsweredBy?.line {
-                let backup = (job.finishedAnsweredBy?.writer ?? "").localizedCaseInsensitiveContains("backup")
-                Text(line + (backup ? " · Olo's main model was unavailable, so a backup model stood in." : ""))
-                    .font(.caption).foregroundStyle(backup ? Color.orange : Color.secondary)
+                // Said plainly, not as a warning: a backup writer finishing the file is not a fault.
+                Text(line)
+                    .font(.caption).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if job.isRunning {
