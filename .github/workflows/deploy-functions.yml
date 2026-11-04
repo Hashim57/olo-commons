@@ -92,6 +92,7 @@ jobs:
         run: |
           for f in ${{ steps.which.outputs.list }}; do
             echo "Deploying $f"
-            supabase functions deploy "$f" --no-verify-jwt --project-ref "$SUPABASE_PROJECT_REF"
+            # --yes: the CLI now asks before deploying and cannot ask in CI; approval is the environment gate above.
+            supabase functions deploy "$f" --no-verify-jwt --yes --project-ref "$SUPABASE_PROJECT_REF"
           done
           supabase functions list --project-ref "$SUPABASE_PROJECT_REF"
