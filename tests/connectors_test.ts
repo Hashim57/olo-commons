@@ -4,7 +4,7 @@
 // reconstructed from each API's documentation where the live API could not be
 // reached; tests/fixtures/ingest/README.md says which is which.
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { archiveCandidates, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, WIKIDATA_BATCH, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 import { dataGovCandidates } from '../functions/olo-ingest/datagov.ts';
 
 const text = (name: string) => Deno.readTextFile(new URL(`./fixtures/ingest/${name}`, import.meta.url));
@@ -79,6 +79,18 @@ Deno.test('wikidata: no description, fewer than 3 sitelinks, or a missing entity
 
 Deno.test('wikidata: wbsearchentities ids keep items only (no lexemes or properties)', async () => {
   assertEquals(wikidataSearchIds(await json('wikidata.search.json')), ['Q11292', 'Q7343']);
+});
+
+Deno.test('wikidata: the random walk asks for a full batch of 50 and wbgetentities is capped at 50 Q ids', () => {
+  assertEquals(WIKIDATA_BATCH, 50);
+  assert(wikidataRandomUrl().includes('rnlimit=50'));
+  assert(wikidataRandomUrl().includes('rnnamespace=0'));
+  const ids = Array.from({ length: 70 }, (_, i) => `Q${i + 1}`);
+  const u = new URL(wikidataEntitiesUrl(['L5', 'P31', ...ids]));
+  const sent = u.searchParams.get('ids')!.split('|');
+  assertEquals(sent.length, 50);
+  assertEquals(sent[0], 'Q1', 'lexemes and properties are not sent');
+  assertEquals(u.searchParams.get('props'), 'info|labels|descriptions|sitelinks');
 });
 
 /* ---------- archive_org ---------- */

@@ -26,7 +26,7 @@ import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl 
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
-import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
+import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
@@ -67,7 +67,7 @@ async function wikiByTitles(lang: string, titles: string[], n: number): Promise<
 }
 async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
   if (!ids.length) return [];
-  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en|mul&format=json`);
+  const e: any = await get(wikidataEntitiesUrl(ids));
   return wikidataCandidates(e, ids, n);
 }
 // OpenAlex gives keyless callers a small daily budget per IP, which the shared Edge egress IPs use up (issue #16):
@@ -106,7 +106,7 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     return pick(dataGovCandidates(await r.json(), n * 3), n);
   },
   async wikidata(n) {
-    const r: any = await get(`https://www.wikidata.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=${Math.min(n * 2, 20)}&format=json`);
+    const r: any = await get(wikidataRandomUrl());
     const ids = (r.query?.random || []).map((x: any) => x.title).filter((t: string) => /^Q\d+$/.test(t));
     return wikidataByIds(ids, n);
   },
