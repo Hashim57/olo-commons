@@ -39,7 +39,7 @@ const DEFAULT_MODEL = '@cf/mistral/mistral-7b-instruct-v0.2-lora';
 const MAX_BODY = 64 * 1024;
 const MAX_TOKENS = 400;
 const DEFAULT_DRAFT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const DRAFT_MAX_TOKENS = 1500;
+const DRAFT_MAX_TOKENS = 8192;  // a background build asks for whole files when it stands in
 
 const LABELS = ['supported', 'contradicted', 'not_covered'];
 // Format retry: the one repair turn (identical to REPAIR in zeus/eval.py) and its caps.
