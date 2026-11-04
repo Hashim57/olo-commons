@@ -1,0 +1,187 @@
+{
+  "eval_v2": {
+    "n": 200,
+    "label_accuracy": 0.995,
+    "json_valid": 1.0,
+    "evidence_hit": 0.995,
+    "f1": {
+      "supported": 0.994,
+      "contradicted": 0.985,
+      "not_covered": 1.0
+    },
+    "confusion": {
+      "supported": {
+        "supported": 81,
+        "contradicted": 1,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 0,
+        "contradicted": 33,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 0,
+        "contradicted": 0,
+        "not_covered": 85,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.988,
+        "tnr": 1.0
+      },
+      "contradicted": {
+        "tpr": 1.0,
+        "tnr": 0.994
+      },
+      "not_covered": {
+        "tpr": 1.0,
+        "tnr": 1.0
+      }
+    },
+    "binary_balanced_accuracy": 0.994,
+    "by_kind": {
+      "near_miss": {
+        "n": 85,
+        "accuracy": 1.0
+      },
+      "relation_flip": {
+        "n": 33,
+        "accuracy": 1.0
+      },
+      "true_passage_last": {
+        "n": 82,
+        "accuracy": 0.988
+      }
+    },
+    "note": "frozen harder split: near-miss not covered, relation-flip contradictions, true passage last"
+  },
+  "eval_v3": {
+    "n": 200,
+    "version": "eval3-v1",
+    "label_accuracy": 0.66,
+    "json_valid": 1.0,
+    "evidence_hit": 0.66,
+    "f1": {
+      "supported": 0.056,
+      "contradicted": 0.892,
+      "not_covered": 0.711
+    },
+    "confusion": {
+      "supported": {
+        "supported": 2,
+        "contradicted": 16,
+        "not_covered": 52,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 0,
+        "contradicted": 66,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 0,
+        "contradicted": 0,
+        "not_covered": 64,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.029,
+        "tnr": 1.0
+      },
+      "contradicted": {
+        "tpr": 1.0,
+        "tnr": 0.881
+      },
+      "not_covered": {
+        "tpr": 1.0,
+        "tnr": 0.618
+      }
+    },
+    "binary_balanced_accuracy": 0.514,
+    "by_kind": {
+      "before_after": {
+        "n": 22,
+        "accuracy": 1.0
+      },
+      "modal_shift": {
+        "n": 16,
+        "accuracy": 1.0
+      },
+      "near_miss_names": {
+        "n": 48,
+        "accuracy": 1.0
+      },
+      "paraphrase_decade": {
+        "n": 11,
+        "accuracy": 0.182
+      },
+      "relation_flip": {
+        "n": 44,
+        "accuracy": 1.0
+      },
+      "two_passage": {
+        "n": 59,
+        "accuracy": 0.0
+      }
+    },
+    "note": "frozen versioned split: near misses naming everything, relation and before/after flips, modal shifts, two-passage support, decade paraphrases"
+  },
+  "vitaminc_dev": {
+    "n": 300,
+    "label_accuracy": 0.717,
+    "json_valid": 0.997,
+    "evidence_hit": 0.713,
+    "f1": {
+      "supported": 0.779,
+      "contradicted": 0.684,
+      "not_covered": 0.677
+    },
+    "confusion": {
+      "supported": {
+        "supported": 88,
+        "contradicted": 5,
+        "not_covered": 7,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 19,
+        "contradicted": 64,
+        "not_covered": 16,
+        "invalid": 1
+      },
+      "not_covered": {
+        "supported": 19,
+        "contradicted": 18,
+        "not_covered": 63,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.88,
+        "tnr": 0.81
+      },
+      "contradicted": {
+        "tpr": 0.64,
+        "tnr": 0.885
+      },
+      "not_covered": {
+        "tpr": 0.63,
+        "tnr": 0.885
+      }
+    },
+    "binary_balanced_accuracy": 0.845,
+    "note": "held out, never trained on; human-written claims over Wikipedia revisions"
+  },
+  "llm_aggrefact": {
+    "error": "DatasetNotFoundError: Dataset 'lytang/LLM-AggreFact' is a gated dataset on the Hub. You must be authenticated to access it."
+  }
+}
