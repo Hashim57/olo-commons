@@ -16,7 +16,7 @@ struct ArtifactsView: View {
     @State private var loading = false
 
     private var thread: [Artifact] {
-        guard let id = conversationId, let c = model.conversation(id) else { return [] }
+        guard let id = conversationId ?? model.selection, let c = model.conversation(id) else { return [] }
         var seen = Set<String>()
         var out: [Artifact] = []
         for t in c.turns.reversed() { for a in t.artifacts where !seen.contains(a.id) { seen.insert(a.id); out.append(a) } }
@@ -33,16 +33,25 @@ struct ArtifactsView: View {
     private var all: [Artifact] { thread + library }
 
     var body: some View {
-        HSplitView {
-            list.frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
-            detail.frame(minWidth: 320, maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { geo in
+            // The list takes a quarter of the width between 200 and 320 points; the detail gets the rest.
+            let listWidth = min(320, max(200, geo.size.width * 0.27))
+            HStack(spacing: 0) {
+                list.frame(width: listWidth).frame(maxHeight: .infinity).clipped()
+                Divider()
+                detail.frame(maxWidth: .infinity, maxHeight: .infinity).clipped()
+            }
         }
         .task {
             loading = true
             await model.refreshLibraryArtifacts()
             shares = (try? await model.api.listShares()) ?? []
             loading = false
+            if let want = model.pendingArtifactSelection { selected = want; model.pendingArtifactSelection = nil }
             if selected == nil { selected = all.first?.id }
+        }
+        .onChange(of: model.pendingArtifactSelection) {
+            if let want = model.pendingArtifactSelection { selected = want; model.pendingArtifactSelection = nil }
         }
     }
 
@@ -60,7 +69,9 @@ struct ArtifactsView: View {
             }
             if !shares.isEmpty { sharesSection }
         }
-        .listStyle(.sidebar)
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .controlBackgroundColor))
     }
 
     private func row(_ a: Artifact) -> some View {
@@ -165,8 +176,14 @@ struct ArtifactDetail: View {
                 Toggle("Scripts", isOn: $allowScripts).toggleStyle(.checkbox).font(.caption)
                     .help("Off: JavaScript and every network request are blocked. On: the page runs as the web preview does.")
             }
+            if artifact.isPreviewable {
+                Button { model.openInBrowser(.artifact(artifact)) } label: { Image(systemName: "safari") }
+                    .help("Run it in Olo's browser, with scripts, the network and a console, to test it as a visitor would")
+            }
             Button { copyCode() } label: { Image(systemName: "doc.on.doc") }.help("Copy the code")
-            Button { save() } label: { Image(systemName: "square.and.arrow.down") }.help("Save as a file")
+            ArtifactExportMenu(artifact: artifact) { Image(systemName: "square.and.arrow.down") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .help("Save the file, or export it as PDF, Word or CSV")
             if inLibrary {
                 Button {
                     busy = true
@@ -217,14 +234,11 @@ struct ArtifactDetail: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The file's text in an AppKit text view. It was one SwiftUI Text inside a two-way ScrollView
+    /// with an infinite width: with a long file in the Olo Sample inspector, the window re-ran its
+    /// constraints until AppKit stopped it ("needing another Update Constraints in Window pass").
     private var codeView: some View {
-        ScrollView([.vertical, .horizontal]) {
-            Text(artifact.code)
-                .font(.system(.body, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
+        ReadOnlyCodeView(text: artifact.code)
     }
 
     private func copyCode() {
@@ -233,13 +247,143 @@ struct ArtifactDetail: View {
         model.banner = "Copied."
     }
 
-    private func save() {
+    private func save() { ArtifactFiles.save(artifact) }
+}
+
+/// Everything a file Olo built can become: itself, a website folder for Netlify, a PDF, a Word
+/// document or a CSV. One menu, used in the Artifacts panel and on the card in the thread.
+struct ArtifactExportMenu<MenuLabel: View>: View {
+    let artifact: Artifact
+    @ViewBuilder let label: () -> MenuLabel
+
+    private var baseName: String {
+        let n = (artifact.suggestedFilename as NSString).deletingPathExtension
+        return TranscriptExport.safeFilename(n.isEmpty ? artifact.title : n, fallback: "artifact")
+    }
+
+    var body: some View {
+        Menu {
+            Button("Save as \(artifact.suggestedFilename)...") { ArtifactFiles.save(artifact) }
+            if artifact.kind == "html" {
+                Button("Save as Website Folder for Netlify...") { ArtifactFiles.saveSiteFolder(artifact, name: baseName) }
+            }
+            Divider()
+            Button("Export as PDF...") {
+                if artifact.isPreviewable && !artifact.needsScripts {
+                    Task { await DocumentWriter.savePDF(html: ArtifactPreview.document(for: artifact), name: baseName) }
+                } else {
+                    DocumentWriter.savePDF(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName)
+                }
+            }
+            Button("Export as Word (.docx)...") { DocumentWriter.saveWord(MarkdownStyler.attributed(artifact.code, title: artifact.title), name: baseName) }
+                .disabled(artifact.isPreviewable)
+            Button("Export Tables as CSV...") { DocumentWriter.saveCSV(from: artifact.code, name: baseName) }
+                .disabled(!MarkdownTables.hasTable(artifact.code))
+        } label: { label() }
+    }
+}
+
+/// Writing an artifact to disk, as itself or as a website folder.
+enum ArtifactFiles {
+    @MainActor
+    static func save(_ artifact: Artifact) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = artifact.suggestedFilename
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try Data(artifact.code.utf8).write(to: url, options: [.atomic]) }
-        catch { model.banner = "Could not save: \(error.localizedDescription)" }
+        do { try Data(artifact.code.utf8).write(to: url, options: [.atomic]); AppModel.shared.banner = "Saved \(url.lastPathComponent)." }
+        catch { AppModel.shared.banner = "Could not save: \(error.localizedDescription)" }
+    }
+
+    /// A folder with index.html inside, which Netlify's drop zone (or any static host) takes as a site.
+    @MainActor
+    static func saveSiteFolder(_ artifact: Artifact, name: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.canCreateDirectories = true
+        panel.prompt = "Save Folder"
+        panel.message = "A folder with index.html inside. Drag the folder onto app.netlify.com/drop to publish it."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            try Data(artifact.code.utf8).write(to: url.appendingPathComponent("index.html"), options: [.atomic])
+            AppModel.shared.banner = "Saved \(url.lastPathComponent)/index.html. Drag the folder onto Netlify to publish."
+        } catch { AppModel.shared.banner = "Could not save the folder: \(error.localizedDescription)" }
+    }
+}
+
+/// A file Olo built, shown in the thread under the answer that made it: what it is, Open to
+/// preview it, and the export menu. This is where the download lives.
+struct ArtifactCard: View {
+    let artifact: Artifact
+    @Environment(AppModel.self) private var model
+
+    private var symbol: String {
+        switch artifact.kind {
+        case "html", "react": return "globe"
+        case "svg": return "photo"
+        case "markdown": return "doc.text"
+        default: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.title2).foregroundStyle(.tint).frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(artifact.title).font(.callout.weight(.medium)).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(artifact.suggestedFilename).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    if !artifact.validated { Text("has errors").font(.caption2).foregroundStyle(.orange) }
+                    else if artifact.repaired { Text("repaired").font(.caption2).foregroundStyle(.secondary) }
+                }
+            }
+            Spacer(minLength: 8)
+            Button("Open") { model.openSample(artifact) }.controlSize(.small).help("Review it in the Olo Sample panel")
+            if artifact.isPreviewable {
+                Button("Run") { model.openInBrowser(.artifact(artifact)) }.controlSize(.small)
+                    .help("Run it in Olo's browser to test it")
+            }
+            ArtifactExportMenu(artifact: artifact) { Label("Export", systemImage: "square.and.arrow.down") }
+                .menuStyle(.borderlessButton).fixedSize().controlSize(.small)
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+    }
+}
+
+/// Read-only, selectable, non-wrapping code in an NSTextView: AppKit lays out a long file once,
+/// lazily, instead of SwiftUI measuring the whole text on every pass.
+struct ReadOnlyCodeView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.hasHorizontalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        if let tv = scroll.documentView as? NSTextView {
+            tv.isEditable = false
+            tv.isSelectable = true
+            tv.isRichText = false
+            tv.drawsBackground = false
+            tv.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            tv.textColor = .textColor
+            tv.textContainerInset = NSSize(width: 10, height: 10)
+            // No wrapping: long lines scroll sideways, as in an editor.
+            tv.isHorizontallyResizable = true
+            tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            tv.textContainer?.widthTracksTextView = false
+            tv.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            tv.string = text
+        }
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let tv = scroll.documentView as? NSTextView, tv.string != text else { return }
+        tv.string = text
     }
 }
 

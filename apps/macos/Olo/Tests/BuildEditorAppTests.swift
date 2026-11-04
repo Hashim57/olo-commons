@@ -24,4 +24,24 @@ final class BuildEditorAppTests: XCTestCase {
         XCTAssertNil(BuildEditor.readText(binary))
         XCTAssertNil(BuildEditor.readText(dir.appendingPathComponent("missing.txt")))
     }
+
+    /// The three columns are planned from the width that is really there, so nothing is ever clipped.
+    func testBuildColumnsFitTheWidthTheyHave() {
+        // Wide: every column at its ideal width.
+        let wide = BuildColumns.plan(width: 1400, showFiles: true, showOloPane: true)
+        XCTAssertEqual(wide.files, BuildColumns.filesWidth)
+        XCTAssertEqual(wide.olo, BuildColumns.oloWidth)
+        // The narrowest window (1100 less the sidebar) still shows all three, shrunk.
+        let fits = BuildColumns.plan(width: 820, showFiles: true, showOloPane: true)
+        XCTAssertNotNil(fits.files); XCTAssertNotNil(fits.olo)
+        XCTAssertGreaterThanOrEqual(820 - (fits.files ?? 0) - (fits.olo ?? 0), BuildColumns.editorMin)
+        // Narrower still: the Olo pane goes first, then the file list; the editor always keeps its minimum.
+        let noOlo = BuildColumns.plan(width: 700, showFiles: true, showOloPane: true)
+        XCTAssertNil(noOlo.olo); XCTAssertNotNil(noOlo.files)
+        let onlyEditor = BuildColumns.plan(width: 500, showFiles: true, showOloPane: true)
+        XCTAssertNil(onlyEditor.olo); XCTAssertNil(onlyEditor.files)
+        // Hidden columns are not planned at all.
+        let hidden = BuildColumns.plan(width: 1400, showFiles: false, showOloPane: false)
+        XCTAssertNil(hidden.files); XCTAssertNil(hidden.olo)
+    }
 }

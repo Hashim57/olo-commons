@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataHousekeeping, wikidataSearchIds, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 
 const EXTRACT = 'Project Gutenberg is a volunteer effort to digitize and archive cultural works, as well as to encourage the creation and distribution of eBooks. It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library.';
 
@@ -34,15 +34,38 @@ Deno.test('wikidataCandidates keeps labelled, described, notable entities in id 
   assertEquals(wikidataCandidates(e, ['Q1', 'Q4'], 1).length, 1);
 });
 
+Deno.test('wikidataCandidates drops categories, templates and disambiguation pages, which describe Wikimedia pages and not the world', () => {
+  const links = { a: 1, b: 1, c: 1, d: 1 };
+  const e = { entities: {
+    Q10: { labels: { en: { value: 'Category:Buildings in Trapani' } }, descriptions: { en: { value: 'Wikimedia category' } }, sitelinks: links },
+    Q11: { labels: { en: { value: 'Kelen' } }, descriptions: { en: { value: 'Wikimedia disambiguation page' } }, sitelinks: links },
+    Q12: { labels: { en: { value: 'Template:Taxonomy/Trissexodon' } }, descriptions: { en: { value: 'taxonomy template' } }, sitelinks: links },
+    Q13: { labels: { en: { value: 'List of sovereign states' } }, descriptions: { en: { value: 'Wikimedia list article' } }, sitelinks: links },
+    Q14: { labels: { en: { value: 'Trapani' } }, descriptions: { en: { value: 'city in Sicily, Italy' } }, sitelinks: links },
+    Q15: { labels: { en: { value: 'Categorical imperative' } }, descriptions: { en: { value: 'central concept in Kantian ethics' } }, sitelinks: links },
+  } };
+  assertEquals(wikidataCandidates(e, ['Q10', 'Q11', 'Q12', 'Q13', 'Q14', 'Q15'], 10).map(c => c.external_id), ['Q14', 'Q15']);
+  // the rule itself: namespace prefixes on the label, Wikimedia page kinds in the description
+  assert(wikidataHousekeeping('Portal:Science', 'Wikimedia portal'));
+  assert(wikidataHousekeeping('Smith', 'Wikimedia human name disambiguation page'));
+  assert(wikidataHousekeeping('Infobox person', 'infobox template'));
+  assert(!wikidataHousekeeping('Wikipedia', 'free multilingual online encyclopedia'));
+  assert(!wikidataHousekeeping('Template Gothic', 'typeface designed in 2001'));
+});
+
 Deno.test('archive and gutenberg mappers keep provenance and drop incomplete rows', () => {
-  const a = archiveCandidates([{ identifier: 'abc', title: 'A <b>Book</b>', description: ['Part one.', 'Part two.'], creator: 'Someone', date: '1901-02-03T00:00:00Z', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }, { identifier: 'nodesc', title: 'x' }]);
+  const a = archiveCandidates([{ identifier: 'abc', title: 'A <b>Book</b>', description: ['Part one describes the book in enough words to keep.', 'Part two adds a second paragraph of description.'], creator: 'Someone', date: '1901-02-03T00:00:00Z', licenseurl: 'https://creativecommons.org/publicdomain/zero/1.0/' }, { identifier: 'nodesc', title: 'x' }]);
   assertEquals(a.length, 1);
   assertEquals(a[0].url, 'https://archive.org/details/abc');
   assertEquals(a[0].title, 'A Book');
-  assertEquals(a[0].summary, 'Part one. Part two.');
+  assertEquals(a[0].summary, 'Part one describes the book in enough words to keep. Part two adds a second paragraph of description.');
   assertEquals(a[0].authors, ['Someone']);
   assertEquals(a[0].published_at, '1901-02-03');
   assert(a[0].licence!.startsWith('See https://creativecommons.org'));
+  const rec = 'Title: Algemeen Handelsblad Datum: 29-07-1859 Editie: Dag Plaats van uitgave: Amsterdam Nummer: 8613';
+  const dup = archiveCandidates([{ identifier: 'ddd_1', title: 'Algemeen Handelsblad', description: [rec, rec] }]);
+  assertEquals(dup[0].summary, rec);
+  assertEquals(dup[0].content, rec);
   const g = gutenbergCandidates([{ id: 7, title: 'Tale', summaries: ['A tale of two cities.'], subjects: ['Fiction'], authors: [{ name: 'Dickens, Charles' }] }, { id: 8, title: 'Empty' }]);
   assertEquals(g.length, 1);
   assertEquals(g[0].url, 'https://www.gutenberg.org/ebooks/7');

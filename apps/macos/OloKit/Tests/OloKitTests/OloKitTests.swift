@@ -210,6 +210,26 @@ final class SearchTests: XCTestCase {
         XCTAssertEqual(a.text, QuotedAnswer.notCovered)
     }
 
+    func testQuotedAnswerNeedsMoreThanOneSharedWordForALongBrief() {
+        // A long build brief shares odd words ("table", "section") with unrelated atoms; none of them is an answer.
+        let brief = "Build a single-page HTML site called bio-lng-vs-evs-trucking.html, a case document for why bio-LNG beats electric for heavy-duty trucking fleets. Include a hero section, a comparison table with range, refuel time and upfront cost, a bar chart, a citations section."
+        let a = QuotedAnswer.compose(question: brief, passages: atoms + [
+            Passage(title: "Rugby World Cup 2007", text: "South Africa defeated England in the final. The table of results includes every section of the tournament.", url: "https://r", origin: "Commons"),
+        ])
+        XCTAssertFalse(a.covered)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 1), 1)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 3), 2)
+        XCTAssertEqual(QuotedAnswer.wordsNeeded(for: 40), 8)
+    }
+
+    func testBuildRequestsAreRecognised() {
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Build a single-page HTML site for my bakery"))
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Please make me a landing page with a contact form"))
+        XCTAssertTrue(QuotedAnswer.looksLikeBuildRequest("Write a business plan document for a cafe"))
+        XCTAssertFalse(QuotedAnswer.looksLikeBuildRequest("who founded project gutenberg"))
+        XCTAssertFalse(QuotedAnswer.looksLikeBuildRequest("what does current research say about sargassum as a biofuel"))
+    }
+
     func testChunkerSplitsLongTextAtSentences() {
         let text = (1...60).map { "Sentence number \($0) is here." }.joined(separator: " ")
         let chunks = Chunker.chunks(text, size: 200)
@@ -448,5 +468,112 @@ final class CrisisTests: XCTestCase {
         XCTAssertTrue(Crisis.helplines.contains { $0.detail.contains("116 123") })
         XCTAssertTrue(Crisis.helplines.contains { $0.detail.contains("85258") })
         XCTAssertTrue(Crisis.emergency.contains("999") && Crisis.emergency.contains("112"))
+    }
+
+    func testMarkdownTablesBecomeCSV() {
+        let text = """
+        Here is the comparison.
+
+        | Metric | Bio-LNG | Electric |
+        |---|:--:|---|
+        | Range, km | 1,000 | 400 |
+        | Refuel time | "10 min" | 90 min |
+
+        Done.
+        """
+        XCTAssertTrue(MarkdownTables.hasTable(text))
+        XCTAssertEqual(MarkdownTables.csv(from: text), "Metric,Bio-LNG,Electric\n\"Range, km\",\"1,000\",400\nRefuel time,\"\"\"10 min\"\"\",90 min\n")
+        XCTAssertNil(MarkdownTables.csv(from: "No table here. | not | a table"))
+    }
+
+    func testExportHintsNameWhatTheMacCanAndCannotMake() {
+        XCTAssertEqual(ExportHints.hint(for: "Can you make pdfs for me to download??"), ExportHints.canExport)
+        XCTAssertEqual(ExportHints.hint(for: "Make me a PowerPoint about sargassum"), ExportHints.noSlides)
+        XCTAssertNil(ExportHints.hint(for: "who founded project gutenberg"))
+    }
+
+    func testBuildJobDecodesEitherProgressScaleAndTheArtifact() throws {
+        let running = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"running","progress":0.4,"stage":"writing","detail":"Writing the page"}"#.utf8))
+        XCTAssertEqual(running.progress, 40)
+        XCTAssertFalse(running.isFinished)
+        XCTAssertEqual(running.statusLine, "Writing the page (40%)")
+        let done = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"succeeded","progress":100,"artifact":{"id":"a1","kind":"html","title":"Bio-LNG case","filename":"bio-lng.html","code":"<h1>x</h1>"}}"#.utf8))
+        XCTAssertTrue(done.isFinished)
+        XCTAssertEqual(done.artifact?.title, "Bio-LNG case")
+        let failed = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j1","status":"failed","error":"model timed out"}"#.utf8))
+        XCTAssertTrue(failed.isFinished)
+        XCTAssertEqual(failed.error, "model timed out")
+    }
+
+    func testMarkdownBlocksParseAnAnswer() {
+        let text = """
+        # LNG vs Diesel
+
+        LNG trucks offer **advantages** in cost.
+
+        ## 1. Cost
+        - Fuel price: lower
+        - Upfront cost: higher
+          than diesel
+
+        1. First
+        2. Second
+
+        | Metric | LNG | Diesel |
+        |---|---|---|
+        | Range | 1,000 | 1,500 |
+
+        > A quote
+
+        ```swift
+        let x = 1
+        ```
+        ---
+        Plain closing line.
+        """
+        let blocks = MarkdownBlocks.parse(text)
+        XCTAssertEqual(blocks[0], .heading(level: 1, text: "LNG vs Diesel"))
+        XCTAssertEqual(blocks[1], .paragraph("LNG trucks offer **advantages** in cost."))
+        XCTAssertEqual(blocks[2], .heading(level: 2, text: "1. Cost"))
+        XCTAssertEqual(blocks[3], .bullets(["Fuel price: lower", "Upfront cost: higher than diesel"]))
+        XCTAssertEqual(blocks[4], .numbered(["First", "Second"]))
+        XCTAssertEqual(blocks[5], .table(header: ["Metric", "LNG", "Diesel"], rows: [["Range", "1,000", "1,500"]]))
+        XCTAssertEqual(blocks[6], .quote("A quote"))
+        XCTAssertEqual(blocks[7], .code(language: "swift", text: "let x = 1"))
+        XCTAssertEqual(blocks[8], .rule)
+        XCTAssertEqual(blocks[9], .paragraph("Plain closing line."))
+        XCTAssertEqual(blocks.count, 10)
+        XCTAssertTrue(MarkdownBlocks.isStructured(text))
+        XCTAssertFalse(MarkdownBlocks.isStructured("Just a sentence. And another one."))
+        XCTAssertEqual(MarkdownBlocks.title(of: text), "LNG vs Diesel")
+        XCTAssertEqual(MarkdownBlocks.strip("**Bold** and [a link](https://x)"), "Bold and a link")
+    }
+
+    func testMarkdownBlocksKeepUnclosedCodeAndPlainText() {
+        XCTAssertEqual(MarkdownBlocks.parse("```\nabc"), [.code(language: "", text: "abc")])
+        XCTAssertEqual(MarkdownBlocks.parse("one\ntwo"), [.paragraph("one two")])
+        XCTAssertEqual(MarkdownBlocks.parse(""), [])
+    }
+
+    func testWellbeingNotesOnceAtEachThreshold() {
+        XCTAssertNil(Wellbeing.note(minutesToday: 90, lastNotedMinutes: 0))
+        XCTAssertNotNil(Wellbeing.note(minutesToday: 121, lastNotedMinutes: 0))
+        XCTAssertNil(Wellbeing.note(minutesToday: 150, lastNotedMinutes: 121), "already noted at two hours")
+        XCTAssertTrue(Wellbeing.note(minutesToday: 301, lastNotedMinutes: 121)?.contains("Five hours") ?? false)
+        XCTAssertTrue(Wellbeing.note(minutesToday: 601, lastNotedMinutes: 301)?.contains("Ten hours") ?? false)
+        XCTAssertEqual(Wellbeing.minutesToAdd(gapMinutes: 4), 4)
+        XCTAssertEqual(Wellbeing.minutesToAdd(gapMinutes: 45), 1, "a long gap counts as one minute, not as time with Olo")
+    }
+
+    func testAnswerJobsAndHoursDecode() throws {
+        let job = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j2","status":"succeeded","progress":100,"mode":"answer","messageId":42,"summary":"The whole answer."}"#.utf8))
+        XCTAssertEqual(job.finishedAnswer, "The whole answer.")
+        XCTAssertEqual(job.messageId, 42)
+        let file = try JSONDecoder().decode(BuildJob.self, from: Data(#"{"id":"j3","status":"succeeded","progress":100,"summary":"prose around a file"}"#.utf8))
+        XCTAssertNil(file.finishedAnswer, "an artifact job's summary is not an answer")
+        let e = try JSONDecoder().decode(Entitlement.self, from: Data(#"{"tier":"starter","subscribed":true,"messagesUsed":3,"messageLimit":500,"hoursToday":2.5,"hoursThisWeek":12,"hoursPerDay":10,"hoursPerWeek":30}"#.utf8))
+        XCTAssertEqual(e.hoursLine, "2.5 h today of 10, 12 h this week of 30")
+        let old = try JSONDecoder().decode(Entitlement.self, from: Data(#"{"tier":"free","messagesUsed":1,"messageLimit":5}"#.utf8))
+        XCTAssertNil(old.hoursLine)
     }
 }

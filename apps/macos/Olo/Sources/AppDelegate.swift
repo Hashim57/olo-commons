@@ -92,4 +92,8 @@ enum Prefs {
     static let dictationOnDeviceOnly = "dictationOnDeviceOnly"
     /// The Olo brain default on this Mac (an anonymous workspace keeps it here; an account's copy is cached). Missing until asked.
     static let brainSharing = "brainSharing"
+    /// Time with Olo today (Wellbeing): the day, the minutes, and the last threshold noted.
+    static let timeDay = "timeWithOlo.day"
+    static let timeMinutes = "timeWithOlo.minutes"
+    static let timeNoted = "timeWithOlo.noted"
 }

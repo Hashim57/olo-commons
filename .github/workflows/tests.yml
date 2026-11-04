@@ -49,12 +49,12 @@ jobs:
           python-version: '3.12'
       - name: Syntax-check every script
         run: |
-          python3 -m py_compile zeus/*.py zeus/tests/*.py zeus/mac/*.py zeus/cloud/*.py
+          python3 -m py_compile zeus/*.py zeus/tests/*.py zeus/mac/*.py zeus/cloud/*.py scripts/*.py scripts/tests/*.py
           for f in zeus/train_mac.sh zeus/serve_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh zeus/mac/zeus-serve.sh zeus/mac/install-serve.sh zeus/cloudflare/setup.sh zeus/cloudflare/publish.sh zeus/cloud/publish_ci.sh; do bash -n "$f"; done
       - name: Unit tests
         run: |
           python3 -m pip install --quiet pytest requests numpy
-          python3 -m pytest zeus/tests -q
+          python3 -m pytest zeus/tests scripts/tests -q
       - name: Validate the gold examples
         run: |
           if [ -f zeus/validate_gold.py ]; then python3 zeus/validate_gold.py; else echo "no validator yet"; fi

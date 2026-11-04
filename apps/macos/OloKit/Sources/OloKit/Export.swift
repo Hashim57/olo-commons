@@ -91,3 +91,59 @@ public enum TranscriptExport {
         }
     }
 }
+
+/// Markdown tables in an answer or a file, as CSV for Numbers, Excel and Google Sheets.
+public enum MarkdownTables {
+    /// Every table in the text, each as rows of cells (the separator row dropped).
+    public static func tables(in text: String) -> [[[String]]] {
+        var out: [[[String]]] = []
+        var current: [[String]] = []
+        func flush() { if current.count >= 1 { out.append(current) }; current = [] }
+        for raw in text.components(separatedBy: "\n") {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("|"), line.count > 1 else { flush(); continue }
+            var inner = line
+            inner.removeFirst()
+            if inner.hasSuffix("|") { inner.removeLast() }
+            let cells = inner.components(separatedBy: "|").map { $0.trimmingCharacters(in: .whitespaces) }
+            // The header separator: |---|:--:| and the like.
+            if cells.allSatisfy({ !$0.isEmpty && $0.allSatisfy { "-:".contains($0) } }) { continue }
+            current.append(cells)
+        }
+        flush()
+        return out.filter { $0.count >= 2 || ($0.count == 1 && $0[0].count >= 2) }
+    }
+
+    public static func hasTable(_ text: String) -> Bool { !tables(in: text).isEmpty }
+
+    /// RFC 4180 CSV: cells with commas, quotes or line breaks are quoted; several tables are
+    /// separated by a blank line. nil when there is no table.
+    public static func csv(from text: String) -> String? {
+        let all = tables(in: text)
+        guard !all.isEmpty else { return nil }
+        func cell(_ c: String) -> String {
+            let cleaned = c.replacingOccurrences(of: "**", with: "")
+            if cleaned.contains(",") || cleaned.contains("\"") || cleaned.contains("\n") {
+                return "\"" + cleaned.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+            }
+            return cleaned
+        }
+        return all.map { t in t.map { $0.map(cell).joined(separator: ",") }.joined(separator: "\n") }.joined(separator: "\n\n") + "\n"
+    }
+}
+
+/// What to tell someone who asked for a file format: the Mac exports answers and Olo's files
+/// as PDF, Word and CSV itself, and says plainly what it cannot make yet.
+public enum ExportHints {
+    public static let canExport = "Save this as a file: Export in the toolbar gives PDF, Word (.docx), Markdown and CSV, and every file Olo builds (Artifacts) exports the same way."
+    public static let noSlides = "PowerPoint and Keynote files are not made yet: export as PDF or Word, or ask for a one-page HTML deck."
+
+    /// A hint for the answer when the question asks for a document format, else nil.
+    public static func hint(for question: String) -> String? {
+        let q = question.lowercased()
+        let slides = ["powerpoint", "pptx", "keynote", "slide deck", "slides", "presentation"]
+        if slides.contains(where: { q.contains($0) }) { return noSlides }
+        let formats = ["pdf", "word doc", "docx", ".doc", "spreadsheet", "excel", "xlsx", "csv", "export", "download"]
+        return formats.contains(where: { q.contains($0) }) ? canExport : nil
+    }
+}

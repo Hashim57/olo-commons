@@ -1,6 +1,9 @@
 train.jsonl
 eval.jsonl
+eval2.jsonl
 meta.json
 cache/
 imported/
 mlx/
+eval3.jsonl
+eval3.manifest.json

@@ -16,7 +16,20 @@
 //   ZEUS_VERSION  the Zeus version it holds
 //   ZEUS_SCORES   JSON of that version's measured scores (from zeus/BEST.json)
 //   ZEUS_MODEL    base model id (default @cf/mistral/mistral-7b-instruct-v0.2-lora)
-//   DRAFT_MODEL   the fallback writer (default @cf/meta/llama-3.3-70b-instruct-fp8-fast)
+//   DRAFT_MODEL   the fallback writer (default @cf/meta/llama-3.3-70b-instruct-fp8-fast); set it in the dashboard,
+//                 any text model from the Workers AI catalog, third-party ones included
+//   ZEUS_FORMAT_RETRY  optional, "1" turns the format retry on for every verification (off when unset);
+//                 a request's boolean "format_retry" overrides it either way
+//   ZEUS_RETRY_TIMEOUT_MS  optional, a lower time cap for the retry (never above 15000)
+//
+// Format retry: when the answer is not a valid verdict (no JSON object, bad JSON, a label
+// outside supported/contradicted/not_covered), the Worker asks once more with the original
+// messages, the bad answer and a short repair instruction, at temperature 0, at most 200
+// tokens and 15 seconds. Never more than one retry. The response says "retried" (and, when
+// true, carries "zeus_first_answer") so a scorer can keep first-attempt numbers apart; if the
+// retry does not parse either, the answer is 502 {error: "zeus_unparseable_answer", ...}.
+// Constrained decoding (Workers AI JSON mode, response_format) is not used: the base model
+// here is not on Cloudflare's list of JSON mode models.
 // Secret: ZEUS_TOKEN (wrangler secret put ZEUS_TOKEN), the key callers send.
 //
 // The caller never chooses the model or the adapter, bodies are capped, the
@@ -27,9 +40,75 @@ const DEFAULT_MODEL = '@cf/mistral/mistral-7b-instruct-v0.2-lora';
 const MAX_BODY = 64 * 1024;
 const MAX_TOKENS = 400;
 const DEFAULT_DRAFT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const DRAFT_MAX_TOKENS = 1500;
+// The most the fallback writer may return: 40,000 tokens, so it can stand in for a whole
+// background build file. DRAFT_MAX_TOKENS (a Worker variable) changes it. A model with a smaller
+// window is fitted to it (DRAFT_CONTEXT), and a request it still refuses is asked again at 8,192.
+const DRAFT_MAX_TOKENS = 40000;
+const DRAFT_SAFE_TOKENS = 8192;
+// Context windows of the drafts this Worker is known to run; the input counts against them.
+const DRAFT_CONTEXT = { '@cf/meta/llama-3.3-70b-instruct-fp8-fast': 24000 };
 
-function json(obj, status = 200, extra = {}) {
+/**
+ * The text of a draft, whatever shape the model answers in: Workers AI's own models return
+ * { response }, third-party models through the same binding (Gemini, GPT, Muse) return the
+ * OpenAI shape { choices: [{ message: { content } }] }.
+ */
+export function draftText(out) {
+  if (typeof out?.response === 'string') return out.response;
+  const content = out?.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+  if (typeof out?.result?.response === 'string') return out.result.response;
+  return '';
+}
+
+/** The output room for a draft: the asked-for size within the cap and the model's window. */
+export function draftTokens(asked, model, messages, cap = DRAFT_MAX_TOKENS) {
+  const want = Math.max(1, Math.min(Number(asked) || 800, cap));
+  const window = DRAFT_CONTEXT[model];
+  if (!window) return want;
+  const input = Math.ceil(messages.reduce((n, m) => n + String(m.content || '').length, 0) / 3.5) + 64;
+  return Math.max(256, Math.min(want, window - input));
+}
+
+const LABELS = ['supported', 'contradicted', 'not_covered'];
+// Format retry: the one repair turn (identical to REPAIR in zeus/eval.py) and its caps.
+export const REPAIR = 'Your answer was not one valid JSON object in the required format. Answer again with only the JSON object '
+  + '{"label": "supported" | "contradicted" | "not_covered", "evidence": [{"passage": "<id>", "quote": "<exact words from that passage>"}], '
+  + '"rationale": "<one sentence>"} and no other text.';
+export const RETRY_MAX_TOKENS = 200;
+export const RETRY_TIMEOUT_MS = 15000;
+const ANSWER_ECHO = 2000;
+
+/** The verdict in a Zeus answer, or null: the same rule as parse() in zeus/eval.py and parseVerdict in olo-answer. */
+export function parseVerdict(text) {
+  const m = String(text || '').match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let o;
+  try { o = JSON.parse(m[0]); } catch { return null; }
+  if (!o || typeof o !== 'object' || !LABELS.includes(o.label)) return null;
+  return o;
+}
+
+/** Retry is off unless ZEUS_FORMAT_RETRY is "1"/"true"; a request's boolean format_retry overrides it either way. */
+export function formatRetryOn(env, body) {
+  if (typeof body?.format_retry === 'boolean') return body.format_retry;
+  return ['1', 'true'].includes(String(env.ZEUS_FORMAT_RETRY || '').toLowerCase());
+}
+
+function retryTimeoutMs(env) {
+  const n = Number(env.ZEUS_RETRY_TIMEOUT_MS);
+  return n > 0 ? Math.min(n, RETRY_TIMEOUT_MS) : RETRY_TIMEOUT_MS;
+}
+
+/** The promise, or a rejection after ms; the timer is always cleared. */
+export function withTimeout(promise, ms) {
+  let timer;
+  const t = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('retry timed out after ' + ms + ' ms')), ms); });
+  return Promise.race([promise, t]).finally(() => clearTimeout(timer));
+}
+
+function json(obj,status = 200, extra = {}) {
   return new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...extra } });
 }
 
@@ -102,11 +181,20 @@ export default {
     if (draft) {
       const messages = incoming.filter(m => m && ['system', 'user', 'assistant'].includes(m.role)).map(m => ({ role: m.role, content: String(m.content ?? '') }));
       if (!messages.some(m => m.role === 'user')) return json({ error: 'messages_required' }, 400);
-      const maxTokens = Math.max(1, Math.min(Number(body.max_tokens) || 800, DRAFT_MAX_TOKENS));
+      const draftModel = env.DRAFT_MODEL || DEFAULT_DRAFT;
+      const cap = Number(env.DRAFT_MAX_TOKENS) > 0 ? Number(env.DRAFT_MAX_TOKENS) : DRAFT_MAX_TOKENS;
+      const maxTokens = draftTokens(body.max_tokens, draftModel, messages, cap);
       const temperature = Math.max(0, Math.min(Number(body.temperature ?? 0.3), 1));
       try {
-        const out = await env.AI.run(env.DRAFT_MODEL || DEFAULT_DRAFT, { messages, max_tokens: maxTokens, temperature });
-        const text = typeof out?.response === 'string' ? out.response : '';
+        let out;
+        try {
+          out = await env.AI.run(draftModel, { messages, max_tokens: maxTokens, temperature });
+        } catch (e) {
+          // A model that refuses the size: once more at a size every text model takes.
+          if (maxTokens <= DRAFT_SAFE_TOKENS) throw e;
+          out = await env.AI.run(draftModel, { messages, max_tokens: DRAFT_SAFE_TOKENS, temperature });
+        }
+        const text = draftText(out);
         if (!text) return json({ error: 'draft_empty_answer' }, 502);
         return json({ id: 'draft-' + crypto.randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'olo-draft',
           choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: out?.usage || undefined });
@@ -137,8 +225,33 @@ export default {
         if (text) { how = a.how; break; }
       }
       if (!text) return json({ error: 'zeus_empty_answer', detail: 'Workers AI returned no text; shapes ' + shapes.join(', ') + '; lora ' + env.ZEUS_LORA + ' on ' + model }, 502);
+
+      // Format retry (opt in): one repair attempt when the first answer is not a valid verdict. Never more than one.
+      let retried = false, firstAnswer = null;
+      if (formatRetryOn(env, body) && !parseVerdict(text)) {
+        retried = true; firstAnswer = text;
+        const fixMessages = [...messages, { role: 'assistant', content: text }, { role: 'user', content: REPAIR }];
+        const fixTokens = Math.min(maxTokens, RETRY_MAX_TOKENS);
+        const fixInput = how === 'raw'
+          ? { prompt: mistralPrompt(fixMessages), raw: true, lora: env.ZEUS_LORA, max_tokens: fixTokens, temperature: 0 }
+          : { messages: fixMessages, lora: env.ZEUS_LORA, max_tokens: fixTokens, temperature: 0 };
+        let fixed = '', retryError = '';
+        try {
+          fixed = answerText(await withTimeout(env.AI.run(model, fixInput), retryTimeoutMs(env)));
+        } catch (e) {
+          retryError = String(e?.message || e).slice(0, 160);
+        }
+        if (!parseVerdict(fixed)) {
+          return json({ error: 'zeus_unparseable_answer', retried: true,
+            detail: retryError ? 'first answer did not parse; the one retry failed: ' + retryError : 'neither the answer nor the one retry parsed as a verdict',
+            first_answer: firstAnswer.slice(0, ANSWER_ECHO), retry_answer: fixed.slice(0, ANSWER_ECHO) }, 502);
+        }
+        text = fixed;
+      }
       return json({
         zeus_path: how,
+        retried,
+        ...(retried ? { zeus_first_answer: firstAnswer.slice(0, ANSWER_ECHO) } : {}),
         id: 'zeus-' + crypto.randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000),
         model: 'zeus-' + (env.ZEUS_VERSION || 'unknown'),
         choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],

@@ -3,13 +3,14 @@ import OloKit
 
 /// The panels that take the place of a conversation in the main window.
 enum LibraryPanel: String, CaseIterable, Identifiable {
-    case build, memory, artifacts, watching, zeus, skills, connectors, jobs
+    case build, browser, memory, artifacts, watching, zeus, skills, connectors, jobs
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .build: return "Build with Olo"
+        case .browser: return "Browser"
         case .memory: return "Memory"
         case .artifacts: return "Artifacts"
         case .watching: return "Watching"
@@ -23,6 +24,7 @@ enum LibraryPanel: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .build: return "hammer"
+        case .browser: return "safari"
         case .memory: return "brain"
         case .artifacts: return "doc.richtext"
         case .watching: return "eye"
@@ -166,6 +168,184 @@ extension AppModel {
         case "claim_changed": panel = .watching
         case "build_ready", "build_failed": panel = .artifacts
         default: break
+        }
+    }
+
+    /// Opens a web address, or runs a page Olo built, in the built-in browser.
+    func openInBrowser(_ request: BrowserRequest) {
+        browserRequest = request
+        panel = .browser
+    }
+
+    /// Opens a file in the Artifacts panel, selected, from its card in the thread.
+    func openArtifact(_ a: Artifact) {
+        pendingArtifactSelection = a.id
+        panel = .artifacts
+    }
+
+    /// An answer that is itself the document someone asked for (a report, a plan, a case) becomes a
+    /// file in the thread, so it can be opened, exported as PDF or Word and found in Artifacts later.
+    /// Only when the question asked for a document or a build and the answer has the shape of one.
+    func fileAnswerAsDocument(question: String, cid: UUID, tid: UUID) {
+        guard buildJobs[tid] == nil, let c = conversation(cid), let t = c.turns.first(where: { $0.id == tid }), t.artifacts.isEmpty,
+              !ReplyFile.endsInsideFence(t.text),
+              ExportHints.hint(for: question) != nil || QuotedAnswer.looksLikeBuildRequest(question),
+              MarkdownBlocks.isStructured(t.text), t.text.count >= 400 else { return }
+        let title = MarkdownBlocks.title(of: t.text) ?? String(question.prefix(60))
+        let base = TranscriptExport.safeFilename(title, fallback: "document").replacingOccurrences(of: " ", with: "-").lowercased()
+        let a = Artifact(id: "local-" + UUID().uuidString.lowercased(), kind: "markdown", language: "markdown", title: title,
+                         filename: base + ".md", code: t.text, validated: true, conversationId: c.serverId)
+        updateTurn(cid, tid) { $0.artifacts.append(a) }
+    }
+
+    // MARK: Background builds
+
+    /// A build the server moved to the background (the "truncated" stream event) finishes minutes
+    /// later. Until now the thread only showed the notice and the file appeared on the next sign-in.
+    /// With the job id the app polls builds.get every 10 seconds (up to 20 minutes), shows the stage
+    /// in the notice, and puts the artifact into the thread (and the library) when it is done, or
+    /// reports the failure. Without a job id it watches the library for the new artifact instead.
+    /// So building a site or an app is one request, not two.
+    func watchBackgroundBuild(jobId: String?, cid: UUID, tid: UUID) {
+        let known = Set(libraryArtifacts.map(\.id))
+        let serverId = conversation(cid)?.serverId
+        let marker = "background build"
+        Task { [weak self] in
+            // Every 3 seconds for the first 15 minutes (the build card moves as the file arrives),
+            // every 10 after that, 20 minutes in all.
+            var kicks = 0
+            let started = Date()
+            while Date().timeIntervalSince(started) < 20 * 60 {
+                let fast = Date().timeIntervalSince(started) < 15 * 60
+                try? await Task.sleep(nanoseconds: fast ? 3_000_000_000 : 10_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                guard self.canReachCloud, self.api.token != nil else { continue }
+                if let jobId {
+                    guard let job = try? await self.api.buildJob(id: jobId) else { continue }
+                    self.buildJobs[tid] = job
+                    // Still queued after a few seconds: the server's own start never left. Start it here.
+                    if job.status == "queued", kicks < 2, Date().timeIntervalSince(started) > Double(6 * (kicks + 1)) {
+                        kicks += 1
+                        await self.api.kickBuild(id: jobId)
+                    }
+                    // Only a finished build names who answered; a failed one said nothing.
+                    if let a = job.finishedAnsweredBy { self.updateTurn(cid, tid) { $0.setAnsweredBy(a) } }
+                    if let text = job.finishedAnswer {
+                        // The server finished the cut answer in place: show the whole text.
+                        self.updateTurn(cid, tid) { t in
+                            t.buildJobId = nil
+                            t.text = text
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) || $0.localizedCaseInsensitiveContains("finishing it in the background") || $0.localizedCaseInsensitiveContains("length limit") }
+                            t.notices.append("Olo finished this answer in the background.")
+                        }
+                        self.buildJobs[tid] = nil
+                        await self.clearBuildNudges()
+                        return
+                    }
+                    if let a = job.artifact, job.status == "succeeded" {
+                        self.updateTurn(cid, tid) { t in
+                            t.buildJobId = nil
+                            if let i = t.artifacts.firstIndex(where: { $0.id == a.id }) { t.artifacts[i] = a } else { t.artifacts.append(a) }
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
+                            if let s = job.summary, !s.isEmpty, t.text.isEmpty || ReplyFile.endsInsideFence(t.text) { t.text = s }
+                            t.origin = .olo
+                        }
+                        await self.refreshLibraryArtifacts()
+                        await self.clearBuildNudges()
+                        self.persist()
+                        return
+                    }
+                    if job.isFinished {
+                        self.updateTurn(cid, tid) { t in
+                            t.buildJobId = nil
+                            t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
+                            if t.text.isEmpty {
+                                t.text = job.status == "cancelled" ? "The build was cancelled." : "The build did not finish."
+                            }
+                        }
+                        await self.clearBuildNudges()
+                        self.persist()
+                        return
+                    }
+                    continue
+                }
+                guard let list = try? await self.api.listArtifacts() else { continue }
+                self.libraryArtifacts = list
+                // Newest first; one from this thread when the server says which, else any new one.
+                if let a = list.first(where: { !known.contains($0.id) && ($0.conversationId == nil || serverId == nil || $0.conversationId == serverId) }) {
+                    self.updateTurn(cid, tid) { t in
+                        if !t.artifacts.contains(where: { $0.id == a.id }) { t.artifacts.append(a) }
+                        t.notices.removeAll { $0.localizedCaseInsensitiveContains(marker) }
+                        t.notices.append("The background build finished: \(a.title) is below and in Artifacts.")
+                    }
+                    await self.clearBuildNudges()
+                    return
+                }
+            }
+            guard let self else { return }
+            self.updateTurn(cid, tid) { $0.notices.append("The background build is taking longer than 20 minutes. It will appear in Artifacts when it is ready.") }
+        }
+    }
+
+    /// Starts a background build for a request to make a whole site, app or guide, and follows it in
+    /// the thread with the build card. False when this server cannot run background builds, so the
+    /// caller streams instead.
+    func startBackgroundBuild(prompt: String, cid: UUID, tid: UUID) async throws -> Bool {
+        answering[cid] = "Starting the build"
+        let job: BuildJob
+        do {
+            job = try await api.startBuild(OloAPI.StartBuildInput(prompt: prompt, conversationId: conversation(cid)?.serverId, projectId: activeProjectId))
+        } catch let e as TRPC.RemoteError where e.code == "PRECONDITION_FAILED" || e.isNotFound {
+            return false
+        }
+        buildJobs[tid] = job
+        updateTurn(cid, tid) { t in t.origin = .olo; t.buildJobId = job.id }
+        persist()
+        watchBackgroundBuild(jobId: job.id, cid: cid, tid: tid)
+        await refreshEntitlement()
+        return true
+    }
+
+    /// The build card's Cancel: asks the server to stop, and shows it at once.
+    func cancelBackgroundBuild(tid: UUID) {
+        guard var job = buildJobs[tid], job.isRunning else { return }
+        job.status = "cancelled"
+        buildJobs[tid] = job
+        Task { try? await api.cancelBuild(id: job.id) }
+    }
+
+    /// Follows again every build a thread was waiting on when Olo was last quit, so its card and
+    /// its file come back instead of disappearing.
+    func resumeBackgroundBuilds() {
+        for c in conversations {
+            for t in c.turns {
+                guard let jobId = t.buildJobId, buildJobs[t.id] == nil else { continue }
+                watchBackgroundBuild(jobId: jobId, cid: c.id, tid: t.id)
+            }
+        }
+    }
+
+    /// The failed card's Try again: the same request as a new job, followed by the same card.
+    func retryBackgroundBuild(tid: UUID) {
+        guard let job = buildJobs[tid], job.canRetry, let prompt = job.prompt,
+              let cid = conversations.first(where: { c in c.turns.contains { $0.id == tid } })?.id else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                if try await self.startBackgroundBuild(prompt: prompt, cid: cid, tid: tid) == false {
+                    self.banner = "Background builds are not available on this server right now."
+                }
+            } catch let failure {
+                self.banner = "The build could not be started again: \(failure.localizedDescription)"
+            }
+            self.answering[cid] = nil
+        }
+    }
+
+    /// The build nudges are about the build the thread just showed, so they need no bell.
+    private func clearBuildNudges() async {
+        for n in (try? await api.listNudges()) ?? [] where n.kind == "build_ready" || n.kind == "build_failed" {
+            await markNudge(n, status: "seen")
         }
     }
 

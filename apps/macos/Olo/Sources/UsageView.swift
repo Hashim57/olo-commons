@@ -20,6 +20,10 @@ struct UsageMeter: View {
                 if !compact, e.computeLimit > 0 {
                     Text("\(e.computeUsed) of \(e.computeLimit) analyses used.").font(.caption2).foregroundStyle(.secondary)
                 }
+                if let hours = e.hoursLine {
+                    Text(hours).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                        .help("Olo is a tool to improve your life, not to replace the people in it. Every plan stops at ten hours a day by design.")
+                }
             }
             .help(e.isFree ? BillingText.freePlan : "Olo \(e.planName): the same allowance on the web and your iPhone.")
         }

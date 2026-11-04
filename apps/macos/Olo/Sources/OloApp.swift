@@ -15,10 +15,10 @@ struct OloApp: App {
         Window("Olo", id: "main") {
             MainView()
                 .environment(model)
-                .frame(minWidth: 720, minHeight: 480)
+                .frame(minWidth: 1100, minHeight: 640)
                 .task { await model.bootstrap() }
         }
-        .defaultSize(width: 1100, height: 760)
+        .defaultSize(width: 1240, height: 800)
         .commands { OloCommands(model: model) }
 
         MenuBarExtra {
