@@ -64,7 +64,7 @@ Deno.test('olo-draft runs the fallback writer with the system role kept, and wor
   const call = e.calls[0] as { model: string; input: { messages: unknown[]; max_tokens: number; temperature: number; lora?: string } };
   assertEquals(call.model, '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
   assertEquals(call.input.messages, [{ role: 'system', content: 'S' }, { role: 'user', content: 'Q' }]);
-  assertEquals(call.input.max_tokens, 1500); assertEquals(call.input.temperature, 1); assertEquals(call.input.lora, undefined);
+  assertEquals(call.input.max_tokens, 8192); assertEquals(call.input.temperature, 1); assertEquals(call.input.lora, undefined);
 });
 
 Deno.test('foldSystem keeps the conversation and joins system text into the first user turn', () => {
