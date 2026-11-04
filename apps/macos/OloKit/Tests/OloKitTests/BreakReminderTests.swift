@@ -1,7 +1,7 @@
 import XCTest
 @testable import OloKit
 
-final class WellbeingTests: XCTestCase {
+final class BreakReminderTests: XCTestCase {
     func testABreakIsDueAfterTwoHoursInFront() {
         let start = Date(timeIntervalSince1970: 0)
         var r = BreakReminder(now: start)
