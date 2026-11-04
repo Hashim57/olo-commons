@@ -96,6 +96,7 @@ Every ingest run (every 15 minutes) re-reads up to 3 of the oldest-observed Wiki
 | Data.gov | per dataset: open licence URL, or a federal dataset with no licence (U.S. Government Work, 17 U.S.C. 105) | government data | catalogue API v4 (CKAN was switched off in 2026); only public datasets; `DATAGOV_API_KEY` optional (api.data.gov, otherwise DEMO_KEY) |
 | Open Library | CC0 1.0 / public domain catalogue data | books | catalogue facts only (title, authors, subjects, first year, editions), written as a plain sentence; descriptions and first sentences are never read because they are often publisher blurbs or quotes from the book; trust 70 (crowd-edited catalogue); starts disabled |
 | Europe PMC | per article: CC0, CC BY or CC BY-SA only | papers | open-access subset; the licence is checked per article and NC/ND dropped; preprints and retractions left out; PMCID, PMID and DOI kept; trust 90, like PubMed; starts disabled |
+| Wikimedia Commons | captions CC BY-SA 4.0; per file: CC0, public domain, CC BY or CC BY-SA only | archive | English captions of quality images, never the image; author, date and file page kept; GFDL-only and other file licences dropped; trust 70 (captions are reviewed for image quality, not accuracy); starts disabled |
 | Crossref Retraction Watch | CC0 1.0 | integrity | never a source of facts; hides retracted atoms |
 
 New sources start disabled in `olo_sources` and are enabled by a person after a run or two.

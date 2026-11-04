@@ -31,6 +31,7 @@ import { permalink, planRecheck } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
 import { europePmcCandidates, europePmcSearchUrl, europePmcWalkUrl, EUROPEPMC_TOPICS } from './europepmc.ts';
+import { commonsApiBase, commonsCandidates, commonsSearchUrl, commonsWalkStart, commonsWalkUrl } from './wikimedia_commons.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -173,6 +174,11 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const r: any = await get(europePmcWalkUrl(src.api_base || '', topic, year, Math.min(n * 4, 40)));
     return pick(europePmcCandidates(r, n * 3), n);
   },
+  // Wikimedia Commons: captions of quality images whose file licence is CC0, PD, CC BY or CC BY-SA (wikimedia_commons.ts).
+  async wikimedia_commons(n, src) {
+    const r: any = await get(commonsWalkUrl(commonsApiBase(src.api_base), commonsWalkStart(), Math.min(n * 4, 40)));
+    return pick(commonsCandidates(r, n * 3), n);
+  },
 };
 
 /* ---------- search per source, for gap filling: the same mappers, a topic instead of chance ---------- */
@@ -188,6 +194,7 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async doaj(topic, n) { const r: any = await get(doajSearchUrl(DOAJ_API, topic, n * 2, 1)); return doajCandidates(r, n); },
   async openlibrary(topic, n) { const r: any = await get(openLibrarySearchUrl('', topic, n * 3)); return openLibraryCandidates(r, n); },
   async europepmc(topic, n) { const r: any = await get(europePmcSearchUrl('', topic, n * 3)); return europePmcCandidates(r, n); },
+  async wikimedia_commons(topic, n) { const r: any = await get(commonsSearchUrl('', topic, n * 4)); return commonsCandidates(r, n); },
 };
 
 function quality(c: Candidate, trust: number) {
