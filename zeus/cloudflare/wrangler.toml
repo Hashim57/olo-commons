@@ -9,6 +9,11 @@ workers_dev = true
 [ai]
 binding = "AI"
 
+# Browser Run, added in the Cloudflare dashboard on 4 Nov 2026. Kept here so a wrangler deploy
+# does not remove it (the dashboard asked for this file to be updated).
+[browser]
+binding = "Olo_browser"
+
 [vars]
 ZEUS_MODEL = "@cf/mistral/mistral-7b-instruct-v0.2-lora"
 DRAFT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
