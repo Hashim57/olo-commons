@@ -74,6 +74,15 @@ final class BackgroundBuildTests: XCTestCase {
         XCTAssertFalse(answer.canRetry)
     }
 
+    func testATurnRemembersTheBuildItFollowsAcrossALaunch() throws {
+        var t = Turn(role: .assistant, text: "")
+        t.buildJobId = "job-7"
+        let back = try JSONDecoder().decode(Turn.self, from: JSONEncoder().encode(t))
+        XCTAssertEqual(back.buildJobId, "job-7")
+        let old = try JSONDecoder().decode(Turn.self, from: Data(#"{"role":"assistant","text":"hi"}"#.utf8))
+        XCTAssertNil(old.buildJobId)
+    }
+
     func testHalfAFileIsDroppedFromTheThread() {
         let cut = "A literal every breed is a few hundred.\n\n```html\n<!DOCTYPE html>\n<html><head>"
         XCTAssertTrue(ReplyFile.endsInsideFence(cut))

@@ -47,7 +47,8 @@ A native SwiftUI app (not a website in a window) on the same account as helius-o
 
 ## 1.3 build 13: a failed build can be tried again, and says who answered once
 
-A failed background build card has Try again, which starts the same request as a new job and follows it in the
+A background build survives quitting Olo: the thread remembers the build it is following and picks it up
+again at launch, so the card and the file come back. A failed background build card has Try again, which starts the same request as a new job and follows it in the
 same card. The free-messages banner keeps its whole Subscribe button (it was squeezed to "S" on a narrow
 composer). "Answered by Olo" appears once under a reply (the server's line, not that plus the app's own), and not
 at all under a build that failed. The server side of the fix (olo-web v64) drops a writer that goes silent and asks
