@@ -1,28 +1,48 @@
 import Foundation
 
-/// Olo is a tool to improve lives, not to replace the people in them. The app keeps a rough count
-/// of the minutes spent with it today and, at a few thresholds, says so once: a walk, a call, a
-/// start-up community meetup or building with your team will do more than one more prompt. No
-/// limit is enforced here; the plans' hour limits live on the server.
-public enum Wellbeing {
-    /// A gap between two asks longer than this is not counted as time with Olo.
-    public static let sessionGapMinutes = 10
+/// The nudge to step away after two hours of using Olo, the same words and rule as the web
+/// (client/src/lib/breakReminder.ts in olo-web) and the iPhone: time counts only while Olo is in
+/// front, thirty minutes away starts the count again, and a dismissed nudge comes back only after
+/// another two hours of use.
+public struct BreakReminder: Equatable, Sendable {
+    public static let after: TimeInterval = 2 * 60 * 60
+    public static let awayResets: TimeInterval = 30 * 60
+    /// The most one tick (about a minute apart) can add; a longer gap was time away.
+    public static let tickGrace: TimeInterval = 2 * 60
+    public static let title = "Consider taking a break"
+    public static let message = "Call a friend or connect with nature. Don't lose your humanity."
 
-    /// Minutes to add when an ask happens `gap` minutes after the previous one.
-    public static func minutesToAdd(gapMinutes: Double) -> Double {
-        gapMinutes >= 0 && gapMinutes <= Double(sessionGapMinutes) ? gapMinutes : 1
+    public private(set) var active: TimeInterval = 0
+    public private(set) var lastSeen: Date
+
+    public init(now: Date = Date()) { lastSeen = now }
+
+    public mutating func tick(now: Date, visible: Bool) {
+        guard visible else { return }
+        let gap = now.timeIntervalSince(lastSeen)
+        if gap >= Self.awayResets { active = 0 } else { active += min(max(0, gap), Self.tickGrace) }
+        lastSeen = now
     }
 
-    /// The note for a day's total, or nil below the first threshold or when that threshold was already noted.
-    public static func note(minutesToday: Double, lastNotedMinutes: Double) -> String? {
-        let thresholds: [(Double, String)] = [
-            (120, "Two hours with Olo today. A break, a walk or a conversation will do more now than another prompt. Olo is a tool to improve your life, not to replace the people in it."),
-            (300, "Five hours with Olo today. The best start-ups are built by teams: share what you have made with a co-founder, a mentor or a start-up community, and come back with their questions."),
-            (600, "Ten hours with Olo today. That is where Olo's daily hours end on every plan, by design. Rest, and let the people around you into the work."),
-        ]
-        for (limit, text) in thresholds.reversed() where minutesToday >= limit && lastNotedMinutes < limit {
-            return text
-        }
-        return nil
+    public var isDue: Bool { active >= Self.after }
+
+    public mutating func nudged(now: Date = Date()) { self = BreakReminder(now: now) }
+}
+
+/// Olo's voice: POST /api/voice/speak returns the answer read aloud by ElevenLabs as MP3, or
+/// fails (no key on the server, signed out, offline), when the Mac reads it with its own voice.
+extension OloAPI {
+    public struct SpeakInput: Encodable, Sendable { public let text: String }
+
+    public func speak(_ text: String) async -> Data? {
+        var req = URLRequest(url: base.appendingPathComponent("api/voice/speak"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 60
+        req.setValue("application/json", forHTTPHeaderField: "content-type")
+        TRPC.authorise(&req, token)
+        req.httpBody = try? JSONEncoder().encode(SpeakInput(text: text))
+        guard let (data, response) = try? await session.data(for: req),
+              (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return nil }
+        return data
     }
 }
