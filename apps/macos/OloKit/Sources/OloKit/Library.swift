@@ -137,9 +137,10 @@ public struct Nudge: Codable, Equatable, Identifiable, Sendable {
         createdAt = (try? c.decode(String.self, forKey: .createdAt)) ?? ""
     }
 
-    /// The thread a nudge points at, when it is about one (thread_idle carries the conversation id).
+    /// The thread a nudge points at, when it is about one (thread_idle and a finished
+    /// scheduled task, scheduled_answer, carry the conversation id).
     public var conversationId: Int? {
-        guard kind == "thread_idle", let s = subjectId else { return nil }
+        guard kind == "thread_idle" || kind == "scheduled_answer", let s = subjectId else { return nil }
         return Int(s)
     }
 }
