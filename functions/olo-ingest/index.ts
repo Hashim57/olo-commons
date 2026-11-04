@@ -5,7 +5,10 @@
 // source's own public API, turns each into an atom with provenance, embeds it
 // with gte-small INSIDE Supabase (no external AI key, nothing leaves the
 // project), inserts it if the content hash is new, and links it to its nearest
-// neighbours.
+// neighbours. A candidate that is the same atom as one already stored from
+// another source (same DOI or PMID, or the same or near-identical text) is not
+// stored twice: it is recorded as a sighting of that atom, which keeps its
+// provenance and counts as corroboration (dedup.ts, sql/009, docs/TRUST.md).
 //
 // Gap filling: before the random walk, the run takes the most-asked open gap
 // (a bag of topic words recorded by olo-answer when a question came back
@@ -18,11 +21,16 @@
 // source that is not enabled there is never fetched, whatever the code says.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { clean } from './text.ts';
+import { clean, isStub } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
+import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
+import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
+import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
+import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
+import { europePmcCandidates, europePmcSearchUrl, europePmcWalkUrl, EUROPEPMC_TOPICS } from './europepmc.ts';
 
 const UA = 'OloCommons/1.0 (+https://heliusnetwork.app/olo; hello@heliusnetwork.com)';
 const MAX_CONTENT = 8000;      // characters of plain text kept per atom
@@ -38,7 +46,7 @@ type Source = { id: string; slug: string; kind?: string | null; api_base?: strin
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
-async function get(url: string, accept = 'application/json') { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(8000) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
+async function get(url: string, accept = 'application/json', timeoutMs = 8000) { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
 /* ---------- discovery per source: each returns a few random candidates from the source's own API ---------- */
@@ -59,8 +67,20 @@ async function wikiByTitles(lang: string, titles: string[], n: number): Promise<
 }
 async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
   if (!ids.length) return [];
-  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en&format=json`);
+  const e: any = await get(`https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${ids.slice(0, 20).join('|')}&props=info|labels|descriptions|sitelinks&languages=en|mul&format=json`);
   return wikidataCandidates(e, ids, n);
+}
+// OpenAlex gives keyless callers a small daily budget per IP, which the shared Edge egress IPs use up (issue #16):
+// say so in the run note instead of a bare 429.
+async function getOpenAlex(url: string) {
+  try { return await get(url); } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    throw new Error(/^429 /.test(m) ? `${m} (OpenAlex daily budget used up: set the OPENALEX_KEY secret)` : m);
+  }
+}
+// Europeana takes its key in the query string; keep it out of error messages, which end up in the run note.
+async function getEuropeana(url: string) {
+  try { return await get(url); } catch (e) { throw new Error(redactKey(e instanceof Error ? e.message : String(e))); }
 }
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
   if (!ids.length) return [];
@@ -101,8 +121,10 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const xml: string = await get(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`, 'application/atom+xml');
     return arxivCandidates(xml);
   },
+  // gutendex is a volunteer-run service and slow on deep pages: every call timed out at 8 s on 26 October 2026
+  // (issue #17). Canonical URL (no /books -> /books/ redirect), shallower pages, and 20 s for this source only.
   async gutenberg(n) {
-    const r: any = await get(`https://gutendex.com/books?page=${1 + Math.floor(Math.random() * 60)}`);
+    const r: any = await get(`https://gutendex.com/books/?page=${1 + Math.floor(Math.random() * 30)}`, 'application/json', 20000);
     return pick(gutenbergCandidates(r.results || []), n);
   },
   // Wikinews: random articles in the main namespace, with the intro and the page's latest revision id.
@@ -114,7 +136,7 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
   async openalex(n, src) {
     const api = (src.api_base || 'https://api.openalex.org').replace(/\/+$/, '');
     const key = Deno.env.get('OPENALEX_KEY') || '';
-    const r: any = await get(`${api}/works?filter=has_abstract:true,is_oa:true,is_retracted:false,type:article&sample=${Math.min(n * 2, 25)}&seed=${Math.floor(Math.random() * 1e6)}&per-page=${Math.min(n * 2, 25)}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com${key ? `&api_key=${encodeURIComponent(key)}` : ''}`);
+    const r: any = await getOpenAlex(`${api}/works?filter=has_abstract:true,is_oa:true,is_retracted:false,type:article&sample=${Math.min(n * 2, 25)}&seed=${Math.floor(Math.random() * 1e6)}&per-page=${Math.min(n * 2, 25)}&select=id,doi,title,abstract_inverted_index,authorships,publication_date,primary_location,is_retracted,open_access&mailto=hello@heliusnetwork.com${key ? `&api_key=${encodeURIComponent(key)}` : ''}`);
     return openalexCandidates(r?.results || [], n);
   },
   async pubmed(n) {
@@ -122,6 +144,34 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const term = terms[Math.floor(Math.random() * terms.length)];
     const s: any = await get(`https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encodeURIComponent(term)}&retmax=${n}&retstart=${Math.floor(Math.random() * 500)}&sort=pub_date&retmode=json`);
     return pubmedByIds(pubmedSearchIds(s));
+  },
+  // Europeana: cultural heritage records from European museums, libraries and archives (europeana.ts).
+  // Only records under PDM, CC0, CC BY or CC BY-SA are requested and kept. The key goes in the
+  // EUROPEANA_KEY secret; without one Europeana's public demo key is used.
+  async europeana(n, src) {
+    const topic = EUROPEANA_TOPICS[Math.floor(Math.random() * EUROPEANA_TOPICS.length)];
+    const rows = Math.min(n * 4, 40);
+    const r: any = await getEuropeana(europeanaSearchUrl(src.api_base || EUROPEANA_API, Deno.env.get('EUROPEANA_KEY') || EUROPEANA_DEMO_KEY, topic, rows, 1 + Math.floor(Math.random() * 200)));
+    return pick(europeanaCandidates(r, n * 3), n);
+  },
+  // DOAJ: abstracts of articles in peer-reviewed open-access journals (doaj.ts). No key; DOI kept for the retraction check.
+  async doaj(n, src) {
+    const topic = DOAJ_TOPICS[Math.floor(Math.random() * DOAJ_TOPICS.length)];
+    const r: any = await get(doajSearchUrl(src.api_base || DOAJ_API, topic, Math.min(n * 3, 30), 1 + Math.floor(Math.random() * 10)));
+    return pick(doajCandidates(r, n * 3), n);
+  },
+  // Open Library: catalogue facts only (title, authors, subjects, first year), which are CC0; never descriptions (openlibrary.ts).
+  async openlibrary(n, src) {
+    const subject = OPENLIBRARY_SUBJECTS[Math.floor(Math.random() * OPENLIBRARY_SUBJECTS.length)];
+    const r: any = await get(openLibrarySubjectUrl(src.api_base || '', subject, Math.min(n * 4, 40), 1 + Math.floor(Math.random() * 5)));
+    return pick(openLibraryCandidates(r, n * 3), n);
+  },
+  // Europe PMC: open-access papers under CC0, CC BY or CC BY-SA only, checked again per article (europepmc.ts).
+  async europepmc(n, src) {
+    const topic = EUROPEPMC_TOPICS[Math.floor(Math.random() * EUROPEPMC_TOPICS.length)];
+    const year = 2005 + Math.floor(Math.random() * (new Date().getUTCFullYear() - 2005));
+    const r: any = await get(europePmcWalkUrl(src.api_base || '', topic, year, Math.min(n * 4, 40)));
+    return pick(europePmcCandidates(r, n * 3), n);
   },
 };
 
@@ -133,7 +183,11 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async arxiv(topic, n) { const xml: string = await get(searchUrl('arxiv', topic, n)!, 'application/atom+xml'); return arxivCandidates(xml); },
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
   async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
-  async openalex(topic, n) { const r: any = await get(searchUrl('openalex', topic, n)!); return openalexCandidates(r?.results || [], n); },
+  async openalex(topic, n) { const r: any = await getOpenAlex(searchUrl('openalex', topic, n, Deno.env.get('OPENALEX_KEY') || '')!); return openalexCandidates(r?.results || [], n); },
+  async europeana(topic, n) { const r: any = await getEuropeana(europeanaSearchUrl(EUROPEANA_API, Deno.env.get('EUROPEANA_KEY') || EUROPEANA_DEMO_KEY, topic, n * 3, 1)); return europeanaCandidates(r, n); },
+  async doaj(topic, n) { const r: any = await get(doajSearchUrl(DOAJ_API, topic, n * 2, 1)); return doajCandidates(r, n); },
+  async openlibrary(topic, n) { const r: any = await get(openLibrarySearchUrl('', topic, n * 3)); return openLibraryCandidates(r, n); },
+  async europepmc(topic, n) { const r: any = await get(europePmcSearchUrl('', topic, n * 3)); return europePmcCandidates(r, n); },
 };
 
 function quality(c: Candidate, trust: number) {
@@ -198,25 +252,36 @@ Deno.serve(async (req) => {
     return (addedToday.get(src.id) || 0) >= DAILY_CAP;
   }
 
+  const embed = async (title: string, summary: string, content: string): Promise<number[]> => await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
+
   // Insert one atom with provenance and trust, link it, and score it and the neighbours that now agree with it.
-  // Returns the new id, or null when it was a duplicate or could not be stored.
-  async function store(src: Source, c: Candidate, title: string, summary: string, content: string, hash: string): Promise<string | null> {
-    const emb: number[] = await model.run((title + '. ' + (summary || content)).slice(0, EMBED_CHARS), { mean_pool: true, normalize: true });
+  // Returns the new id, or null when it was a duplicate or could not be stored. `pre` reuses the embedding and
+  // neighbours the duplicate check already computed; `normHash` is dedup.ts normKey hashed (sql/009).
+  async function store(src: Source, c: Candidate, title: string, summary: string, content: string, hash: string, normHash?: string, pre?: { emb: number[]; nb: any[] }): Promise<string | null> {
+    const emb: number[] = pre ? pre.emb : await embed(title, summary, content);
     const row = { source_id: src.id, external_id: c.external_id || null, url: c.url, title, summary: summary || null, content: content || null, lang: c.lang || 'en', licence: c.licence || src.licence, authors: c.authors || null, published_at: c.published_at || null, content_hash: hash, quality: quality({ ...c, summary, content }, src.trust), tokens: Math.round((title + summary + content).length / 4), embedding: emb,
       // sql/002: time and provenance. A fact is assumed to hold from its publication date; observed_at is now.
-      valid_from: c.published_at || null, source_revision: c.source_revision || null, doi: c.doi || null, pmid: c.pmid || null, observed_at: new Date().toISOString() };
-    const { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
+      valid_from: c.published_at || null, source_revision: c.source_revision || null, doi: c.doi || null, pmid: c.pmid || null, observed_at: new Date().toISOString(),
+      // sql/009: the normalised-text hash the duplicate check looks up.
+      norm_hash: normHash || null };
+    const schemaMiss = (e: any) => !!e && /column|schema cache/i.test(e.message || '');
+    let { data: atom, error } = await sb.from('olo_atoms').insert(row).select('id').single();
+    if (schemaMiss(error)) {
+      // sql/009 not run yet: store without norm_hash.
+      const { norm_hash: _n, ...pre009 } = row;
+      ({ data: atom, error } = await sb.from('olo_atoms').insert(pre009).select('id').single());
+    }
     if (error || !atom) {
       // Older schema (sql/002 not run yet): store without the new columns rather than lose the atom.
-      if (error && /column|schema cache/i.test(error.message || '')) {
-        const { valid_from: _v, source_revision: _r, doi: _d, pmid: _p, observed_at: _o, ...legacy } = row;
+      if (schemaMiss(error)) {
+        const { valid_from: _v, source_revision: _r, doi: _d, pmid: _p, observed_at: _o, norm_hash: _n, ...legacy } = row;
         const again = await sb.from('olo_atoms').insert(legacy).select('id').single();
         if (again.error || !again.data) return null;
         return again.data.id;
       }
       return null;
     }
-    const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K });
+    const nb = pre ? pre.nb : (await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: atom.id, p_k: LINK_K })).data;
     const near = (nb || []).filter((x: any) => x.sim >= MIN_LINK);
     const links = near.flatMap((x: any) => [{ from_atom: atom.id, to_atom: x.id, relation: 'similar', weight: x.sim }, { from_atom: x.id, to_atom: atom.id, relation: 'similar', weight: x.sim }]);
     if (links.length) { const { error: le } = await sb.from('olo_links').upsert(links, { onConflict: 'from_atom,to_atom,relation', ignoreDuplicates: true }); if (!le) stats.linked += links.length; }
@@ -225,6 +290,27 @@ Deno.serve(async (req) => {
     for (const x of near.filter((x: any) => x.sim >= AGREE).slice(0, 5)) await sb.rpc('olo_rescore_atom', { p_id: x.id }).then(() => {}, () => {});
     addedToday.set(src.id, (addedToday.get(src.id) || 0) + 1);
     return atom.id;
+  }
+
+  // Cross-source duplicates (dedup.ts): stored atoms that could be the same as this candidate, oldest first.
+  // Identifier and normalised-hash lookups are indexed and cheap; any that fails (older schema) is just empty.
+  const POOL_COLS = 'id, source_id, url, title, summary, content, doi, pmid, status, created_at';
+  async function dedupPool(doi: string | null, pmid: string | null, normHash: string): Promise<DedupExisting[]> {
+    const qs = [];
+    if (doi) qs.push(sb.from('olo_atoms').select(POOL_COLS).eq('doi', doi).neq('status', 'superseded').order('created_at').limit(5));
+    if (pmid) qs.push(sb.from('olo_atoms').select(POOL_COLS).eq('pmid', pmid).neq('status', 'superseded').order('created_at').limit(5));
+    qs.push(sb.from('olo_atoms').select(POOL_COLS).eq('norm_hash', normHash).neq('status', 'superseded').order('created_at').limit(5));
+    const rows = (await Promise.all(qs)).flatMap((r: any) => (r.error ? [] : r.data || []));
+    return [...new Map(rows.map((r: any) => [r.id, r])).values()].sort((a: any, b: any) => String(a.created_at).localeCompare(String(b.created_at))) as DedupExisting[];
+  }
+  // Record a duplicate as a sighting of the stored atom (sql/009). False when that is not possible (sql/009 not run),
+  // in which case the caller stores the atom as before rather than lose the second source.
+  let sightings = 0, stubs = 0;
+  async function sight(atomId: string, src: Source, c: Candidate, reason: string, score: number): Promise<boolean> {
+    const { error } = await sb.rpc('olo_record_sighting', { p_atom: atomId, p_source: src.id, p_url: c.url, p_external_id: c.external_id || null, p_doi: normDoi(c.doi), p_pmid: normPmid(c.pmid), p_title: clean(c.title).slice(0, 300), p_licence: c.licence || src.licence || null, p_reason: reason, p_similarity: score });
+    if (error) return false;
+    sightings++;
+    return true;
   }
 
   // Insert candidates for one source: clean, hash, refuse duplicates, embed, insert, link. Returns how many were added.
@@ -237,10 +323,33 @@ Deno.serve(async (req) => {
       try {
         const title = clean(c.title).slice(0, 300), summary = clean(c.summary || '').slice(0, 1000), content = clean(c.content || '').slice(0, MAX_CONTENT);
         if (!title || !/^https:\/\//.test(c.url)) { stats.skipped++; continue; }
+        // A body that says nothing beyond the title (a file name, one word repeated, a tag list) is not knowledge: skip it before it costs an embedding.
+        if (isStub(title, summary, content, c.authors)) { stats.skipped++; stubs++; continue; }
         const hash = await sha256(title + '\n' + summary + '\n' + content);
-        const { data: dup } = await sb.from('olo_atoms').select('id').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
-        if (dup && dup.length) { stats.skipped++; continue; }
-        const id = await store(src, c, title, summary, content, hash);
+        const { data: dup } = await sb.from('olo_atoms').select('id, source_id, url').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
+        if (dup && dup.length) {
+          // Byte-identical text from another source: keep that source as a sighting (best effort; skipped either way, as before).
+          if (dup[0].source_id !== src.id && dup[0].url !== c.url) await sight(dup[0].id, src, c, 'same_text', 1);
+          stats.skipped++; continue;
+        }
+        // Cross-source duplicate check: identifiers and normalised text first, then the closest neighbours by embedding.
+        const doi = normDoi(c.doi), pmid = normPmid(c.pmid);
+        const normHash = await sha256(normKey(title, bodyOf({ summary, content })));
+        const me = { source_id: src.id, url: c.url, title, summary, content, doi, pmid };
+        let verdict = decide(me, await dedupPool(doi, pmid, normHash));
+        let pre: { emb: number[]; nb: any[] } | undefined;
+        if (verdict.action === 'insert') {
+          const emb = await embed(title, summary, content);
+          const { data: nb } = await sb.rpc('olo_neighbours', { p_embedding: emb, p_exclude: '00000000-0000-0000-0000-000000000000', p_k: LINK_K });
+          pre = { emb, nb: nb || [] };
+          const close = pre.nb.filter((x: any) => x.sim >= NEAR_EMBED).map((x: any) => x.id);
+          if (close.length) {
+            const { data: rows } = await sb.from('olo_atoms').select(POOL_COLS).in('id', close).order('created_at');
+            verdict = decide(me, (rows || []) as DedupExisting[]);
+          }
+        }
+        if (verdict.action === 'duplicate' && await sight(verdict.of, src, c, verdict.reason, verdict.score)) { stats.skipped++; continue; }
+        const id = await store(src, c, title, summary, content, hash, normHash, pre);
         if (!id) { stats.failed++; continue; }
         stats.added++; addedHere++;
         await checkpoint();
@@ -282,7 +391,8 @@ Deno.serve(async (req) => {
         const oldUrl = permalink(src.slug, String(old.url), old.source_revision ? String(old.source_revision) : null);
         const moved = await sb.from('olo_atoms').update({ url: oldUrl }).eq('id', old.id);
         if (moved.error) { fail(src.slug + ' (recheck)', moved.error.message); continue; }
-        const id = await store(src, { ...c, url: String(old.url) }, title, summary, content, hash);
+        // No duplicate check here: a changed page is always stored as the new atom its old one points to.
+        const id = await store(src, { ...c, url: String(old.url) }, title, summary, content, hash, await sha256(normKey(title, bodyOf({ summary, content }))));
         if (!id) { await sb.from('olo_atoms').update({ url: String(old.url) }).eq('id', old.id); continue; }
         await sb.rpc('olo_supersede', { p_old: old.id, p_new: id });
         changed++; stats.added++;
@@ -332,7 +442,7 @@ Deno.serve(async (req) => {
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (sightings ? ` (${sightings} duplicates recorded as sightings)` : '') + (stubs ? ` (${stubs} stubs skipped)` : '') + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });

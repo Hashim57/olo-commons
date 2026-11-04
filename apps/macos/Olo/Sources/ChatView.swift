@@ -17,15 +17,42 @@ struct ChatView: View {
     private var conversation: LocalConversation? { model.conversation(conversationId) }
     private var status: String? { model.answering[conversationId] }
 
+    private var lastTurnId: UUID? { conversation?.turns.last?.id }
+    private var lastTextCount: Int { conversation?.turns.last?.text.count ?? 0 }
+    private var artifactCount: Int { conversation?.turns.reduce(0) { $0 + $1.artifacts.count } ?? 0 }
+    private var latestArtifact: Artifact? { conversation?.turns.last(where: { !$0.artifacts.isEmpty })?.artifacts.last }
+
     var body: some View {
         @Bindable var model = model
+        thread
+        .navigationTitle(conversation?.title ?? "Olo")
+        .toolbar { toolbarItems }
+        .inspector(isPresented: $model.showSample) {
+            SamplePanel().inspectorColumnWidth(min: 360, ideal: 520, max: 760)
+        }
+        .onChange(of: artifactCount) { sampleLanded() }
+        .onChange(of: status == nil) { sampleLanded() }
+        .dropDestination(for: URL.self) { urls, _ in
+            attach(urls)
+            return true
+        } isTargeted: { dropTargeted = $0 }
+        .overlay { dropOverlay }
+        .onChange(of: model.requestAttachFiles) {
+            if model.requestAttachFiles { model.requestAttachFiles = false; pickFiles() }
+        }
+        .onChange(of: model.focusComposer) { composerFocused = true }
+        .onAppear { composerFocused = true }
+    }
+
+    /// The transcript above the composer.
+    private var thread: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 18) {
                         if conversation?.turns.isEmpty ?? true { NewConversationEmptyState() }
                         ForEach(conversation?.turns ?? []) { turn in
-                            TurnView(turn: turn, status: turn.id == conversation?.turns.last?.id ? status : nil, compact: false, conversationId: conversationId) { follow in
+                            TurnView(turn: turn, status: turn.id == lastTurnId ? status : nil, compact: false, conversationId: conversationId) { follow in
                                 model.ask(follow, in: conversationId)
                             }
                             .id(turn.id)
@@ -37,33 +64,36 @@ struct ChatView: View {
                     .frame(maxWidth: 860)
                     .frame(maxWidth: .infinity)
                 }
-                .onChange(of: conversation?.turns.last?.text.count ?? 0) { proxy.scrollTo("bottom", anchor: .bottom) }
+                .onChange(of: lastTextCount) { proxy.scrollTo("bottom", anchor: .bottom) }
                 .onAppear { proxy.scrollTo("bottom", anchor: .bottom) }
             }
             Divider()
             composer
                 .layoutPriority(1)
         }
-        .navigationTitle(conversation?.title ?? "Olo")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) { ExportMenu(conversationId: conversationId) }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) { ExportMenu(conversationId: conversationId) }
+        ToolbarItem(placement: .primaryAction) { SampleToggle() }
+    }
+
+    /// A new file in this conversation opens in the Sample panel as soon as it lands.
+    /// Opens the newest file in the Olo Sample, once the answer has finished: opening the inspector
+    /// while text is still streaming in resized the thread on every word.
+    private func sampleLanded() {
+        guard status == nil else { return }
+        if let a = latestArtifact, a.id != model.sample?.id { model.openSample(a) }
+    }
+
+    @ViewBuilder
+    private var dropOverlay: some View {
+        if dropTargeted {
+            RoundedRectangle(cornerRadius: 12).strokeBorder(.tint, style: StrokeStyle(lineWidth: 2, dash: [6]))
+                .overlay(Text("Drop files to ask Olo about them").font(.title3))
+                .padding(8)
         }
-        .dropDestination(for: URL.self) { urls, _ in
-            attach(urls)
-            return true
-        } isTargeted: { dropTargeted = $0 }
-        .overlay {
-            if dropTargeted {
-                RoundedRectangle(cornerRadius: 12).strokeBorder(.tint, style: StrokeStyle(lineWidth: 2, dash: [6]))
-                    .overlay(Text("Drop files to ask Olo about them").font(.title3))
-                    .padding(8)
-            }
-        }
-        .onChange(of: model.requestAttachFiles) {
-            if model.requestAttachFiles { model.requestAttachFiles = false; pickFiles() }
-        }
-        .onChange(of: model.focusComposer) { composerFocused = true }
-        .onAppear { composerFocused = true }
     }
 
     private var composer: some View {
@@ -246,15 +276,33 @@ struct TurnView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 10) {
-                if turn.text.isEmpty {
+                if turn.text.isEmpty, let job = model.buildJobs[turn.id] {
+                    BuildProgressView(job: job, turnId: turn.id)
+                } else if turn.text.isEmpty {
                     HStack(spacing: 10) { HeliusAtomView(mode: .loader, size: 56); Text(status ?? "Thinking").foregroundStyle(.secondary) }
-                } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons {
+                } else if let v = turn.verification, !v.claims.isEmpty, turn.origin == .olo || turn.origin == .commons,
+                          !MarkdownBlocks.isStructured(turn.text) {
                     answerText(checked: v)
                 } else {
-                    AnswerBody(content: turn.text, render: { Text(markdown($0)) })
+                    // A document, a list or code is read whole: hiding its unverified sentences would leave
+                    // holes in it. The checks still appear below, claim by claim.
+                    AnswerBody(content: turn.text, render: { MarkdownText(text: $0) })
+                }
+                if !turn.text.isEmpty, let job = model.buildJobs[turn.id] {
+                    BuildProgressView(job: job, turnId: turn.id)
+                }
+                if !turn.artifacts.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(turn.artifacts) { a in ArtifactCard(artifact: a) }
+                    }
                 }
                 ForEach(Array(turn.notices.enumerated()), id: \.offset) { _, n in
                     Label(n, systemImage: "info.circle").font(.caption).foregroundStyle(.secondary)
+                }
+                if let cid = conversationId, status == nil, turn.notices.contains(where: { $0.localizedCaseInsensitiveContains("length limit") || $0.localizedCaseInsensitiveContains("cut short") }) {
+                    Button { model.continueAnswer(in: cid) } label: { Label("Continue the answer", systemImage: "arrow.turn.down.right") }
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .help("Olo carries on from where it stopped")
                 }
                 if let v = turn.verification, !v.claims.isEmpty { verification(v) }
                 if !turn.sources.isEmpty { sources }
@@ -282,9 +330,7 @@ struct TurnView: View {
         }
     }
 
-    private func markdown(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
-    }
+    private func markdown(_ s: String) -> AttributedString { MarkdownText.inline(s) }
 
     /// Only the sentences Zeus could support are shown; the rest wait behind a button, labelled.
     private func answerText(checked v: AnswerVerification) -> some View {
@@ -418,7 +464,8 @@ struct TurnView: View {
 
     private var footerRow: some View {
         HStack(spacing: 12) {
-            if let o = turn.origin, !turn.text.isEmpty {
+            // "Answered by Olo" once: the line above already says it when the server named the writer.
+            if let o = turn.origin, !turn.text.isEmpty, !(o == .olo && turn.answeredBy?.line != nil) {
                 Text(o.label).font(.caption2).foregroundStyle(o == .offline ? Color.orange : Color.secondary)
             }
             if !turn.text.isEmpty {
@@ -459,5 +506,175 @@ struct CrisisBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
         .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// An answer drawn as a document: headings at three sizes, bullets and numbers with a hanging
+/// indent, quotes with a bar, code in a monospaced box, tables as a grid, and inline bold,
+/// italic, code and links everywhere. The structure comes from OloKit's MarkdownBlocks.
+struct MarkdownText: View {
+    let text: String
+
+    /// Inline Markdown (bold, italic, code, links) as styled text; the raw text when it does not parse.
+    static func inline(_ s: String) -> AttributedString {
+        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+    }
+
+    var body: some View {
+        let blocks = MarkdownBlocks.parse(text)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                view(for: block)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func view(for block: MarkdownBlock) -> some View {
+        switch block {
+        case .heading(let level, let t):
+            Text(MarkdownText.inline(t))
+                .font(level <= 1 ? .title2.weight(.semibold) : level == 2 ? .title3.weight(.semibold) : .headline)
+                .padding(.top, level <= 2 ? 6 : 2)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        case .paragraph(let t):
+            Text(MarkdownText.inline(t)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        case .bullets(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\u{2022}").foregroundStyle(.secondary).frame(width: 12, alignment: .trailing)
+                        Text(MarkdownText.inline(item)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.leading, 4)
+        case .numbered(let items):
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text("\(i + 1).").foregroundStyle(.secondary).monospacedDigit().frame(width: 22, alignment: .trailing)
+                        Text(MarkdownText.inline(item)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .padding(.leading, 4)
+        case .quote(let t):
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2).fill(Color.accentColor.opacity(0.5)).frame(width: 3)
+                Text(MarkdownText.inline(t)).italic().foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            }
+        case .code(let language, let code):
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(language.isEmpty ? "code" : language).font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(code, forType: .string)
+                    } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).controlSize(.small).help("Copy the code")
+                }
+                .padding(.horizontal, 10).padding(.top, 6)
+                CodeBlockBody(code: code)
+            }
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+        case .table(let header, let rows):
+            ScrollView(.horizontal) {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
+                    GridRow {
+                        ForEach(Array(header.enumerated()), id: \.offset) { _, h in
+                            Text(MarkdownText.inline(h)).font(.callout.weight(.semibold))
+                        }
+                    }
+                    Divider()
+                    ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                        GridRow {
+                            ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                                Text(MarkdownText.inline(cell)).font(.callout).textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                .padding(10)
+            }
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+        case .rule:
+            Divider().padding(.vertical, 2)
+        }
+    }
+}
+
+/// A code block in the thread. A long one shows its first 40 lines with "Show all": a whole page
+/// of code laid out as one SwiftUI text inside a scrolling thread is what hung and crashed the window
+/// ("needing another Update Constraints in Window pass") when a cut build streamed into it.
+struct CodeBlockBody: View {
+    let code: String
+    @State private var expanded = false
+    private static let preview = 40
+
+    private var lines: [Substring] { code.split(separator: "\n", omittingEmptySubsequences: false) }
+
+    var body: some View {
+        let all = lines
+        let shown = expanded || all.count <= Self.preview ? code : all.prefix(Self.preview).joined(separator: "\n")
+        VStack(alignment: .leading, spacing: 4) {
+            ScrollView(.horizontal) {
+                Text(shown).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+            }
+            if all.count > Self.preview {
+                Button(expanded ? "Show fewer lines" : "Show all \(all.count) lines") { expanded.toggle() }
+                    .buttonStyle(.borderless).font(.caption).padding(.horizontal, 10).padding(.bottom, 6)
+            }
+        }
+    }
+}
+
+/// The Olo Sample: the document or page Olo made, open beside the conversation for review, with
+/// Preview and Code, Export, and a way into the Artifacts library. The same detail view as the
+/// library, so what you see here is what you export.
+struct SamplePanel: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.richtext").foregroundStyle(.tint)
+                Text("Olo Sample").font(.headline)
+                Text("for review").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                if let a = model.sample {
+                    Button("Open in Artifacts") { model.openArtifact(a) }.controlSize(.small)
+                }
+                Button { model.showSample = false } label: { Image(systemName: "xmark") }.buttonStyle(.borderless).help("Close the Sample panel")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            Divider()
+            if let a = model.sample {
+                ArtifactDetail(artifact: a, inLibrary: false).id(a.id)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.richtext").font(.largeTitle).foregroundStyle(.secondary)
+                    Text("Nothing to review yet").foregroundStyle(.secondary)
+                    Text("Ask Olo to build a page, a document, a chart or a plan and it opens here.").font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
+                .padding(30).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+}
+
+/// The toolbar switch for the Olo Sample panel.
+struct SampleToggle: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        Toggle(isOn: $model.showSample) { Label("Olo Sample", systemImage: "sidebar.right") }
+            .disabled(model.sample == nil)
+            .help("Show or hide the Olo Sample: the document or page Olo made, beside the conversation")
     }
 }

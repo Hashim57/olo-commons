@@ -1,6 +1,6 @@
 // deno test tests/
-import { assertEquals } from './_assert.ts';
-import { clean, delatex } from '../functions/olo-ingest/text.ts';
+import { assert, assertEquals } from './_assert.ts';
+import { clean, delatex, distinctWords, isStub, joinParts, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -47,4 +47,53 @@ Deno.test('delatex spells symbols and keeps unknown command names', () => {
 Deno.test('delatex then clean gives a readable arXiv title', () => {
   const raw = 'A $\\mathcal{O}(1)$ Bound for\n  $\\ell_1$-Regularised &amp; Sparse Models';
   assertEquals(clean(delatex(raw)), 'A O(1) Bound for l_1-Regularised & Sparse Models');
+});
+
+Deno.test('joinParts drops repeated parts and collapses a string written twice', () => {
+  const rec = 'Title: Rotterdamse courant Datum: 15-05-1802 Editie: Dag Plaats van uitgave: Rotterdam Nummer: 58';
+  assertEquals(joinParts([rec, rec]), rec);
+  assertEquals(joinParts(rec + ' ' + rec), rec);
+  assertEquals(joinParts(['Part one.', 'Part two.']), 'Part one. Part two.');
+  assertEquals(joinParts(['Same.', '<b>same.</b>', 'Other.']), 'Same. Other.');
+  assertEquals(joinParts('Short ok. Short ok.'), 'Short ok. Short ok.');
+  assertEquals(joinParts(undefined), '');
+});
+
+/* ---------- isStub: the quality gate every candidate passes before it is embedded ---------- */
+
+Deno.test('isStub: one word or one line repeated is a stub, as are a label and an empty body', () => {
+  // real archive_org descriptions from the 2026-11-03 snapshot
+  for (const [t, s] of [['New Book', 'new book new book'], ['adult1010', 'adult1010 adult1010'], ['patronyt', 'P P'], ['allianz-travelss', 'fhfh fhfh'], ['0925', 'm m'], ['The Apple Store', ':) :)'],
+    ['Hazrat Ummul Baneen', 'Author: Sayyid Saeed Akhtar Rizvi Author: Sayyid Saeed Akhtar Rizvi']]) {
+    assert(isStub(t, s, s), `${t}: ${s}`);
+  }
+  assert(isStub('Art and Heart', 'Art and Heart. Subjects: Poetry', 'Subjects: Poetry'));
+  assert(isStub('Anything', '', ''));
+  assert(isStub('Anything', undefined, null));
+  // a long text made of one tag repeated is still a stub, however long
+  assert(isStub('Tags', 'radio drama season picks '.repeat(12), 'radio drama season picks '.repeat(12)));
+});
+
+Deno.test('isStub: a body that only repeats the title and the author is a stub', () => {
+  assert(isStub('Hydropower Engineering Module 5 CE IIT Kharagpur', 'Hydropower Engineering Module 5 CE IIT Kharagpur', 'Hydropower Engineering Module 5 CE IIT Kharagpur', ['IIT Kharagpur']));
+  assert(isStub('A Short Title', 'A Short Title by Jane Q. Writer', 'A Short Title by Jane Q. Writer', ['Jane Q. Writer']));
+});
+
+Deno.test('isStub: real atoms of every source pass, Wikidata one-liners included', () => {
+  assert(!isStub('Ehnen', 'Ehnen: town.', 'Ehnen. town. Described in 10 Wikimedia projects.'));
+  assert(!isStub('Magnus Wikman', 'Magnus Wikman: association football player.', 'Magnus Wikman. association football player. Described in 5 Wikimedia projects.'));
+  const abs = 'Project Gutenberg is a volunteer effort to digitize and archive cultural works, as well as to encourage the creation and distribution of eBooks. It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library.';
+  assert(!isStub('Project Gutenberg', abs.slice(0, 120), abs));
+  // the summary being the start of the content does not read as a repeat
+  assert(!isStub('A paper', 'We study coral reef recovery after bleaching.', 'We study coral reef recovery after bleaching. Reefs with high herbivore cover recovered faster across 40 sites over six years.'));
+  assert(!isStub('Mason\'s retreat', '', 'After many years in England an impoverished, upper-class American family return to an inherited estate on Chesapeake Bay.'));
+  // a short Gutenberg record with real subjects
+  assert(!isStub('Pride and Prejudice', 'Pride and Prejudice. Subjects: Courtship; England; Sisters; Social classes; Young women; Love stories', 'Subjects: Courtship -- Fiction; England -- Fiction; Sisters -- Fiction; Social classes -- Fiction; Young women -- Fiction; Love stories'));
+});
+
+Deno.test('words and distinctWords count letters in any script and ignore digits', () => {
+  assertEquals(words('Hello, hello! 2026 x über Über'), ['hello', 'hello', 'über', 'über']);
+  assertEquals(distinctWords('Hello, hello! 2026 x über Über'), 2);
+  assertEquals(distinctWords('سيد سيد سيد'), 1);
+  assertEquals(distinctWords(''), 0);
 });

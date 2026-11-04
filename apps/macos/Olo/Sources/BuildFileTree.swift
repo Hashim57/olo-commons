@@ -221,7 +221,9 @@ struct BuildFileList: View {
                 BuildFileRow(row: row, expanded: tree.expanded.contains(row.entry.path), isOpen: row.entry.path == open)
             }
         }
-        .listStyle(.sidebar)
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
+        .background(Color(nsColor: .controlBackgroundColor))
         .frame(maxHeight: .infinity)
     }
 }

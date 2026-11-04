@@ -134,9 +134,32 @@ public struct QuotedAnswer: Equatable, Sendable {
 
     public static let notCovered = "Nothing saved on this Mac covers this yet. It is queued and Olo will answer it when you are back online."
 
+    public static let needsConnection = "Building a file (a page, an app, a document or a chart) needs a connection: Olo writes it in the cloud and checks it before it reaches you. It is queued and Olo will build it when you are back online."
+
+    /// A request to make something rather than a question to answer: "build a site", "make me a
+    /// landing page", "write a business plan document". Offline there is nothing to quote for it.
+    public static func looksLikeBuildRequest(_ question: String) -> Bool {
+        let words = Tokenizer.tokens(question)
+        guard let first = words.first else { return false }
+        let verbs: Set<String> = ["build", "make", "create", "write", "generate", "design", "code", "draft", "produce", "develop"]
+        let things: Set<String> = ["site", "website", "page", "webpage", "landing", "app", "application", "html", "css", "react", "component",
+                                   "document", "doc", "report", "deck", "presentation", "slides", "chart", "dashboard", "portfolio", "plan",
+                                   "proposal", "pitch", "case", "file", "script", "api", "prototype", "mockup", "template", "spreadsheet"]
+        let verbEarly = words.prefix(3).contains { verbs.contains($0) }
+        return (verbs.contains(first) || verbEarly) && words.contains { things.contains($0) }
+    }
+
+    /// How many of the question's words a sentence must share to be quoted: all of them for a one-word
+    /// question, two for a short one, and a fifth of them for a long brief, so a long request is never
+    /// answered with unrelated sentences that happen to share one common word.
+    static func wordsNeeded(for questionWords: Int) -> Int {
+        questionWords < 2 ? questionWords : max(2, (questionWords + 4) / 5)
+    }
+
     public static func compose(question: String, passages: [Passage], maxSentences: Int = 3) -> QuotedAnswer {
         let q = Set(Tokenizer.tokens(question))
         guard !q.isEmpty, !passages.isEmpty else { return QuotedAnswer(text: notCovered, sources: [], covered: false) }
+        let needed = wordsNeeded(for: q.count)
         struct Scored { let sentence: String; let passage: Int; let score: Double; let order: Int }
         var scored: [Scored] = []
         var order = 0
@@ -144,8 +167,9 @@ public struct QuotedAnswer: Equatable, Sendable {
             let titleWords = Set(Tokenizer.tokens(p.title))
             for s in Sentences.split(p.text) where s.count >= 20 && s.count <= 600 {
                 let words = Set(Tokenizer.tokens(s))
-                let overlap = Double(words.intersection(q).count) + 0.4 * Double(titleWords.intersection(q).count)
-                if overlap > 0 {
+                let shared = words.intersection(q).count
+                let overlap = Double(shared) + 0.4 * Double(titleWords.intersection(q).count)
+                if shared >= needed {
                     // Earlier passages rank higher; the search already ordered them.
                     scored.append(Scored(sentence: s, passage: pi, score: overlap - 0.05 * Double(pi), order: order))
                 }

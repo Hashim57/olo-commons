@@ -28,6 +28,9 @@ public struct Turn: Codable, Equatable, Identifiable, Sendable {
     public var memories: [UsedMemory]
     /// The Olo brain's answer for this question ("published", "held", "skipped"), when the chat shares.
     public var brainStatus: String?
+    /// The background build this turn is following (1.3 build 13), kept so the card comes back
+    /// after Olo is quit and opened again; cleared when the build ends.
+    public var buildJobId: String?
 
     public init(role: Role, text: String, origin: AnswerOrigin? = nil, verification: AnswerVerification? = nil, sources: [Source] = [],
                 notices: [String] = [], followUps: [String] = [], attachments: [String] = [], serverMessageId: Int? = nil,
@@ -42,7 +45,7 @@ public struct Turn: Codable, Equatable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, role, text, origin, verification, sources, notices, followUps, attachments, serverMessageId, createdAt
-        case writer, provider, verifier, artifacts, references, memories, brainStatus
+        case writer, provider, verifier, artifacts, references, memories, brainStatus, buildJobId
     }
 
     /// Reads turns saved by every version of the app: anything missing takes its default.
@@ -66,6 +69,7 @@ public struct Turn: Codable, Equatable, Identifiable, Sendable {
         references = (try? c.decode([ReferenceCheck].self, forKey: .references)) ?? []
         memories = (try? c.decode([UsedMemory].self, forKey: .memories)) ?? []
         brainStatus = try? c.decodeIfPresent(String.self, forKey: .brainStatus)
+        buildJobId = try? c.decodeIfPresent(String.self, forKey: .buildJobId)
     }
 
     /// The references line's source: those sent with the stream, else those saved inside the verification.

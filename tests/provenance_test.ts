@@ -58,6 +58,8 @@ Deno.test('openalex: inverted abstracts are rebuilt, retracted works dropped, DO
   assertEquals(out[0].authors, ['A. Person']);
   assert(out[0].licence!.includes('CC-BY'));
   assert(searchUrl('openalex', 'ocean warming', 3)!.includes('search=ocean%20warming'));
+  assert(!searchUrl('openalex', 'ocean warming', 3)!.includes('api_key='));
+  assert(searchUrl('openalex', 'ocean warming', 3, 'k e y')!.endsWith('&api_key=k%20e%20y'));
   assert(searchUrl('wikinews', 'ocean warming', 3)!.includes('gsrsearch='));
 });
 

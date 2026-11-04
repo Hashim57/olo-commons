@@ -67,17 +67,36 @@ def current(a):
     return (a.get("status") or "candidate") not in ("superseded", "retracted")
 
 
+def keep(batch, seen):
+    """The atoms of one export page that belong in the snapshot, each id once across all pages.
+
+    An export page that ends on the same atom the previous one did (the cursor
+    was rounded to milliseconds by olo-query before export.ts kept its
+    microseconds) would otherwise put that atom in the file twice; the
+    2026-11-03 snapshot carried one duplicate per 500-atom page.
+    """
+    out = []
+    for a in batch:
+        key = a.get("id") or a.get("url")
+        if not a.get("url") or not (a.get("summary") or a.get("content")) or not current(a) or key in seen:
+            continue
+        seen.add(key)
+        out.append(a)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="snapshot/commons.json")
     ap.add_argument("--max-atoms", type=int, default=60000, help="keep the newest N when the Commons outgrows a comfortable download")
     a = ap.parse_args()
     atoms, after, note = [], "1970-01-01", ""
+    seen = set()
     while True:
         d = page(after)
         batch = d.get("atoms") or []
         note = d.get("licence_note") or note
-        atoms += [compact(x) for x in batch if x.get("url") and (x.get("summary") or x.get("content")) and current(x)]
+        atoms += [compact(x) for x in keep(batch, seen)]
         if len(batch) < 500 or not d.get("next_after"):
             break
         after = d["next_after"]

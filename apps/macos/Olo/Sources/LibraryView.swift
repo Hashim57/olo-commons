@@ -262,6 +262,7 @@ struct PanelHost: View {
         Group {
             switch panel {
             case .build: BuildWithOloView()
+            case .browser: BrowserView()
             case .memory: MemoryView()
             case .artifacts: ArtifactsView(conversationId: nil)
             case .watching: MonitorsView()

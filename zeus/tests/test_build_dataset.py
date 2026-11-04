@@ -189,3 +189,32 @@ def test_train_passages_are_shuffled_but_eval_order_is_frozen():
     assert 0 < first < len(train_sup), "train passages should be shuffled"
     assert all(ex["passages"][0]["id"] == ex["atom_id"][:8] for ex in d["eval"] if ex["label"] == "supported")
     assert build(atoms, 0.3)["train"] == d["train"]
+
+
+def test_snapshot_flag_without_a_value_means_the_published_copy(tmp_path):
+    """zeus-train.yml falls back to `build_dataset.py --snapshot` with no path when the live export is down;
+    argparse used to refuse that (expected one argument), so the fallback never built anything."""
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--snapshot", nargs="?", const=bd.SNAPSHOT_URL)
+    assert ap.parse_args(["--snapshot"]).snapshot == bd.SNAPSHOT_URL
+    assert ap.parse_args(["--snapshot", "x.json"]).snapshot == "x.json"
+    assert ap.parse_args([]).snapshot is None
+    assert bd.SNAPSHOT_URL.startswith("https://") and bd.SNAPSHOT_URL.endswith("/snapshot/commons.json")
+    # a local path is opened as before
+    f = tmp_path / "commons.json"
+    f.write_text(json.dumps({"fields": ["id", "title", "text", "url", "source"], "atoms": [["a1", "T", "Some text here.", "https://x/1", "wikipedia"]]}), encoding="utf-8")
+    assert bd.atoms_from_snapshot(bd.load_snapshot(str(f)))[0]["id"] == "a1"
+
+
+def test_usable_atoms_run_before_the_split_so_a_stub_is_neither_claim_nor_passage():
+    import quality
+    atoms = [atom(i, f"Sentence number {i} says something true about topic {i} in enough words.") for i in range(6)]
+    atoms.append({"id": "stub-1", "title": "New Book", "summary": "new book new book new book new book new book", "content": "", "url": "https://archive.org/details/x", "source": "archive_org"})
+    atoms.append(dict(atoms[0]))  # the export repeated a page-boundary atom
+    kept, dropped = quality.usable_atoms(atoms)
+    assert dropped == {"duplicate": 1, "stub": 1, "housekeeping": 0}
+    data = bd.build(kept, 0.3, near_miss=False)
+    seen = {p["id"] for split in data.values() for ex in split for p in ex["passages"]}
+    assert "stub-1"[:8] not in seen
+    assert all(ex["claim"] != "new book new book new book new book new book" for split in data.values() for ex in split)

@@ -15,6 +15,9 @@ enum BuildText {
 /// Files saved in other editors are picked up too, because Olo also watches the folder.
 struct BuildWithOloView: View {
     @Environment(AppModel.self) private var model
+    /// The Olo pane can be hidden to give the editor the room (toolbar button, or automatically in a narrow window).
+    @AppStorage("build.showOloPane") private var showOloPane = true
+    @AppStorage("build.showFiles") private var showFiles = true
 
     var body: some View {
         let ws = model.buildWorkspace
@@ -22,13 +25,18 @@ struct BuildWithOloView: View {
             if ws.folderURL == nil {
                 BuildEmptyState()
             } else {
-                HSplitView {
-                    BuildFileTreeView()
-                        .frame(minWidth: 170, idealWidth: 220, maxWidth: 360, maxHeight: .infinity)
-                    BuildEditorPane()
-                        .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
-                    BuildOloPane()
-                        .frame(minWidth: 290, idealWidth: 360, maxWidth: 520, maxHeight: .infinity)
+                GeometryReader { geo in
+                    BuildColumns(width: geo.size.width, showFiles: showFiles, showOloPane: showOloPane)
+                }
+            }
+        }
+        .toolbar {
+            if ws.folderURL != nil {
+                ToolbarItemGroup(placement: .primaryAction) {
+                    Toggle(isOn: $showFiles) { Label("Files", systemImage: "sidebar.leading") }
+                        .help("Show or hide the file list")
+                    Toggle(isOn: $showOloPane) { Label("Olo pane", systemImage: "sidebar.trailing") }
+                        .help("Show or hide the Olo pane (issues, changes and answers)")
                 }
             }
         }
@@ -36,6 +44,65 @@ struct BuildWithOloView: View {
             ws.restore()
             ws.editor.refreshAllowance()
         }
+    }
+}
+
+/// The three columns of Build with Olo, sized from the width that is really there.
+/// The editor always keeps at least `editorMin`; the file list and the Olo pane take fixed shares of
+/// what is left, and each is dropped (with a one-line hint) when the window is too narrow for it, so
+/// nothing is ever clipped. Panes are clipped to their frames so a narrow pane wraps rather than overflows.
+struct BuildColumns: View {
+    let width: CGFloat
+    let showFiles: Bool
+    let showOloPane: Bool
+
+    static let editorMin: CGFloat = 360
+    static let filesWidth: CGFloat = 220
+    static let filesMin: CGFloat = 170
+    static let oloWidth: CGFloat = 340
+    static let oloMin: CGFloat = 280
+
+    /// Which columns fit, and how wide they are, for a given total width.
+    static func plan(width: CGFloat, showFiles: Bool, showOloPane: Bool) -> (files: CGFloat?, olo: CGFloat?) {
+        var files: CGFloat? = showFiles ? filesWidth : nil
+        var olo: CGFloat? = showOloPane ? oloWidth : nil
+        func spare() -> CGFloat { width - editorMin - (files ?? 0) - (olo ?? 0) }
+        if spare() < 0, let o = olo { olo = max(oloMin, o + spare()) }
+        if spare() < 0, let f = files { files = max(filesMin, f + spare()) }
+        if spare() < 0, olo != nil { olo = nil }
+        if spare() < 0, files != nil { files = nil }
+        return (files, olo)
+    }
+
+    var body: some View {
+        let p = BuildColumns.plan(width: width, showFiles: showFiles, showOloPane: showOloPane)
+        HStack(spacing: 0) {
+            if let w = p.files {
+                BuildFileTreeView()
+                    .frame(width: w)
+                    .frame(maxHeight: .infinity)
+                    .clipped()
+                Divider()
+            }
+            BuildEditorPane()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+            if let w = p.olo {
+                Divider()
+                BuildOloPane()
+                    .frame(width: w)
+                    .frame(maxHeight: .infinity)
+                    .clipped()
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if showOloPane && p.olo == nil {
+                Text("Widen the window to see the Olo pane")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(6).background(.bar, in: RoundedRectangle(cornerRadius: 6)).padding(8)
+            }
+        }
+        .frame(width: width)
     }
 }
 

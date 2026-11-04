@@ -10,7 +10,7 @@ Base: `https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query`
 - `k`: 1 to 20 results.
 - `mode`: `hybrid` (default: meaning search merged with keyword search), `semantic`, or `keyword`. Anything else is treated as `hybrid`.
 
-In `hybrid` mode the two result lists are merged by reciprocal rank fusion: each retriever contributes `1 / (60 + position)` and an atom found by both is placed first. Each result carries `match` (`both`, `semantic` or `keyword`) so you can see which retriever found it. `similarity` is the cosine score from the meaning search and is `null` for keyword-only hits.
+In `hybrid` mode the two result lists are merged by reciprocal rank fusion: each retriever contributes `1 / (60 + position)` and an atom found by both rises. The merged pool is then reranked for the question's words: atoms whose title and summary hold more of the distinct words asked (rarer words count more, a word in the title more than one in the summary, repeating a word earns nothing) and hold them close together move up, and near duplicates (same url, or same title with a largely identical summary) move to the end. Each result carries `match` (`both`, `semantic` or `keyword`) so you can see which retriever found it. `similarity` is the cosine score from the meaning search and is `null` for keyword-only hits.
 
 Response:
 
@@ -103,7 +103,7 @@ Limits: 120 requests per hour per address; 3,000 with a partner key sent as `x-o
 
 ## Direct SQL functions (anon key)
 
-Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
+Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_atom_sightings(p_id)` (other sources where the same atom was found), `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_atom_sightings`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
 
 Call shape (PostgREST): `POST https://bfldflbkebyapfagsxnr.supabase.co/rest/v1/rpc/<function>` with headers `apikey: <anon key>`, `Authorization: Bearer <anon key>`, `Content-Type: application/json` and the arguments as a JSON object using the parameter names above.
 
@@ -141,7 +141,7 @@ Call the API first, pass the `results` to the model as context, and ask it to ci
 
 ## Bulk export without a key
 
-`GET https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query?export=1&after=1970-01-01&limit=500` returns the same pages as the `olo_export` RPC (atoms in creation order, `next_after` for the next page) with no key, cacheable for five minutes. The offline snapshot is built from it.
+`GET https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query?export=1&after=1970-01-01&limit=500` returns the same pages as the `olo_export` RPC (atoms in creation order, `next_after` for the next page) with no key, cacheable for five minutes. The offline snapshot is built from it. Pass `next_after` back exactly as you received it (it carries microseconds); a reader that rounds it to milliseconds sees the last atom of each page again, so dedupe by `id` if you do.
 
 ## Offline snapshot
 

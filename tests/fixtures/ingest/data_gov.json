@@ -1,0 +1,109 @@
+{
+  "after": "WzgxLjk5NTgxLDE1LCJmYWY4ZTExMC0wOGFmLTQ3MTQtYTJlZS01MWQ5OTE5MmY2NzQiXQ==",
+  "results": [
+    {
+      "_score": 86.052574,
+      "access_level": "public",
+      "dcat": {
+        "@type": "dcat:Dataset",
+        "accessLevel": "public",
+        "description": "Amount of water produced by month and by source and the water delivered by type of use and by month for every Public Water System (PWS) reporting. Public Water Systems submit their annual inventory information using the electronic Annual Report (eAR) submission process. The electronic Annual Report (eAR) is a survey of public water systems, currently required annually, to collect critical water system information intended to assess the status of compliance with specific regulatory requirements such as source water capacity, provides updated contact and inventory information (such as population and number of service connections). The specific dataset is section 6 of the eAR for the years 2013-2022 (both included) that collects the water produced by month and by source and the water delivered by type of use and by month for every water system reporting. It also includes facility public information details from the SDWIS database as metadata associated to the dataset. More information about the eAR required reporting here: https://www.waterboards.ca.gov/drinking_water/certlic/drinkingwater/ear.html . A \"Public Water System\" means a system for the provision of water for human consumption through pipes or other constructed conveyances that has 15 or more service connections or regularly serves at least 25 individuals daily at least 60 days out of the year.",
+        "identifier": "f4d572d2-252b-4019-8820-e0782f132508",
+        "issued": "2024-05-23T16:31:09.807663",
+        "keyword": [
+          "Drinking Water",
+          "Electronic Annual Report",
+          "Sources of Drinking Water",
+          "Urban Water Produced",
+          "Urban Water Reporting",
+          "Urban Water Use",
+          "Water Delivered",
+          "Where is my water coming from"
+        ],
+        "license": "http://www.opendefinition.org/licenses/cc-by",
+        "modified": "2026-10-13T21:49:09.968713",
+        "publisher": {
+          "@type": "org:Organization",
+          "name": "California State Water Resources Control Board"
+        },
+        "theme": [
+          "Water"
+        ],
+        "title": "Drinking Water - Public Water System Annually Reported Water Production and Delivery Information 2013-2022"
+      },
+      "description": "Amount of water produced by month and by source and the water delivered by type of use and by month for every Public Water System (PWS) reporting. Public Water Systems submit their annual inventory information using the electronic Annual Report (eAR) submission process. The electronic Annual Report (eAR) is a survey of public water systems, currently required annually, to collect critical water system information intended to assess the status of compliance with specific regulatory requirements such as source water capacity, provides updated contact and inventory information (such as population and number of service connections). The specific dataset is section 6 of the eAR for the years 2013-2022 (both included) that collects the water produced by month and by source and the water delivered by type of use and by month for every water system reporting. It also includes facility public information details from the SDWIS database as metadata associated to the dataset. More information about the eAR required reporting here: https://www.waterboards.ca.gov/drinking_water/certlic/drinkingwater/ear.html . A \"Public Water System\" means a system for the provision of water for human consumption through pipes or other constructed conveyances that has 15 or more service connections or regularly serves at least 25 individuals daily at least 60 days out of the year.",
+      "identifier": "f4d572d2-252b-4019-8820-e0782f132508",
+      "keyword": [
+        "Drinking Water",
+        "Electronic Annual Report",
+        "Sources of Drinking Water",
+        "Urban Water Produced",
+        "Urban Water Reporting",
+        "Urban Water Use",
+        "Water Delivered",
+        "Where is my water coming from"
+      ],
+      "organization": {
+        "id": "ae56c24b-46d3-4688-965e-94bdc208164f",
+        "name": "State of California",
+        "slug": "california",
+        "organization_type": "State Government"
+      },
+      "publisher": "California State Water Resources Control Board",
+      "slug": "drinking-water-public-water-system-annually-reported-water-production-and-delive-2013-2022",
+      "theme": [
+        "Water"
+      ],
+      "title": "Drinking Water - Public Water System Annually Reported Water Production and Delivery Information 2013-2022",
+      "type": "dataset"
+    },
+    {
+      "_score": 81.99581,
+      "access_level": "public",
+      "dcat": {
+        "@type": "dcat:Dataset",
+        "accessLevel": "public",
+        "description": "<p>Public Water Systems (PWS) submit their annual reports with rate information using the Electronic Annual Report (EAR) submission process on the Drinking Water Information Clearinghouse (DRINC) portal, which is reviewed, and manually updated into the Safe Drinking Water Information System (SDWIS). This includes the water rates reported by PWS in the EAR for years 2014 and 2015.</p>",
+        "identifier": "c71eec54-d8bf-4650-ba42-9092a2a3cf10",
+        "issued": "2019-08-10T03:19:15.496804",
+        "keyword": [
+          "CalWater",
+          "Drinking Water",
+          "water",
+          "water rates"
+        ],
+        "modified": "2026-10-13T21:44:04.411472",
+        "publisher": {
+          "@type": "org:Organization",
+          "name": "California State Water Resources Control Board"
+        },
+        "theme": [
+          "Water"
+        ],
+        "title": "Drinking Water - Public Water Systems Rates Information"
+      },
+      "description": "<p>Public Water Systems (PWS) submit their annual reports with rate information using the Electronic Annual Report (EAR) submission process on the Drinking Water Information Clearinghouse (DRINC) portal, which is reviewed, and manually updated into the Safe Drinking Water Information System (SDWIS). This includes the water rates reported by PWS in the EAR for years 2014 and 2015.</p>",
+      "identifier": "c71eec54-d8bf-4650-ba42-9092a2a3cf10",
+      "keyword": [
+        "CalWater",
+        "Drinking Water",
+        "water",
+        "water rates"
+      ],
+      "organization": {
+        "id": "ae56c24b-46d3-4688-965e-94bdc208164f",
+        "name": "State of California",
+        "slug": "california",
+        "organization_type": "State Government"
+      },
+      "publisher": "California State Water Resources Control Board",
+      "slug": "drinking-water-public-water-systems-rates-information",
+      "theme": [
+        "Water"
+      ],
+      "title": "Drinking Water - Public Water Systems Rates Information",
+      "type": "dataset"
+    }
+  ],
+  "sort": "relevance"
+}

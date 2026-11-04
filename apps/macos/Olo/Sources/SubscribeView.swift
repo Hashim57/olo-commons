@@ -214,13 +214,18 @@ struct QuotaBanner: View {
         if let text = model.quotaBanner {
             HStack(spacing: 10) {
                 Image(systemName: "hourglass")
-                Text(text).lineLimit(3).layoutPriority(1)
-                Spacer(minLength: 8)
-                if model.isSubscribed {
-                    Button("Manage") { model.purchases.manageSubscriptions() }.controlSize(.small)
-                } else {
-                    Button("Subscribe") { model.openSubscribe() }.buttonStyle(.borderedProminent).controlSize(.small)
+                // The sentence wraps; the button keeps its whole label. Giving the text the
+                // higher priority squeezed "Subscribe" down to "S" on a narrow composer.
+                Text(text).lineLimit(3).frame(maxWidth: .infinity, alignment: .leading)
+                Group {
+                    if model.isSubscribed {
+                        Button("Manage") { model.purchases.manageSubscriptions() }.controlSize(.small)
+                    } else {
+                        Button("Subscribe") { model.openSubscribe() }.buttonStyle(.borderedProminent).controlSize(.small)
+                    }
                 }
+                .fixedSize()
+                .layoutPriority(1)
             }
             .font(.callout)
             .padding(10)

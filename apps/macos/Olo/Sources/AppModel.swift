@@ -56,6 +56,17 @@ final class AppModel {
     var libraryArtifacts: [Artifact] = []
     /// The conversation whose artifacts inspector is open.
     var showArtifacts = false
+    /// An artifact the Artifacts panel should select when it opens (a card's Open button).
+    var pendingArtifactSelection: String?
+    /// The Olo Sample: the document or page Olo made, open for review in the panel beside the conversation.
+    var sample: Artifact?
+    var showSample = false
+    /// Background builds being followed, by the answer turn they belong to (not saved: the job lives on the server).
+    var buildJobs: [UUID: BuildJob] = [:]
+    /// The built-in browser (see BrowserView.swift): the page it should open next, a web address or a file Olo built.
+    var browserRequest: BrowserRequest?
+    /// When the last question was asked, for the time-with-Olo count.
+    private var lastAskAt: Date?
     // The Olo brain and private chats (see AppModel+Brain.swift for the behaviour).
     /// The default for "Add to Olo brain": the account's (auth.me) when signed in, this Mac's otherwise; nil until asked.
     var brainSharing: Bool?
@@ -109,6 +120,7 @@ final class AppModel {
             await flushPending()
             await refreshLibrary()
             await refreshBrainSharing()
+            resumeBackgroundBuilds()
         }
         await bootstrapBilling()
         considerBrainChoice()
@@ -328,6 +340,7 @@ final class AppModel {
     func ask(_ question: String, attachments: [Attachment] = [], in conversationId: UUID? = nil, searchWeb: Bool = false, useFolders: Bool = false) {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty || !attachments.isEmpty else { return }
+        noteTimeWithOlo()
         let cid = conversationId ?? selection ?? newConversation()
         if conversation(cid) == nil { return }
         guard answering[cid] == nil else { return }
@@ -372,9 +385,32 @@ final class AppModel {
             answerOffline(question: question, content: composed.content, attachments: attached, cid: cid, tid: tid)
             return
         }
+        // A whole site, app or guide goes straight to a background build, as on the web: streaming it
+        // was cut at the platform's 60 seconds, left half a file in the thread and moved the build to the
+        // background anyway. Private chats are never stored on the server, so they stream.
+        if attached.isEmpty, !(conversation(cid)?.isPrivate ?? false), BuildRouting.runsInBackground(question) {
+            do {
+                try await ensureSession()
+                if try await startBackgroundBuild(prompt: composed.content, cid: cid, tid: tid) { return }
+            } catch is CancellationError {
+                updateTurn(cid, tid) { $0.notices.append("Stopped.") }
+                return
+            } catch let e as TRPC.RemoteError where e.code == "FORBIDDEN" {
+                let notice = await quotaRefused()
+                updateTurn(cid, tid) { t in t.text = e.message; t.notices.append(notice) }
+                return
+            } catch {
+                // Background builds unavailable on this server, or a passing failure: stream as before.
+            }
+        }
         do {
             try await ensureSession()
             try await streamFromOlo(content: composed.content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: true)
+            // Asked for a document: the answer becomes a file in the thread, exportable as PDF or Word.
+            fileAnswerAsDocument(question: question, cid: cid, tid: tid)
+            if let hint = ExportHints.hint(for: question), conversation(cid)?.turns.first(where: { $0.id == tid })?.artifacts.isEmpty ?? true {
+                updateTurn(cid, tid) { if !$0.notices.contains(hint) { $0.notices.append(hint) } }
+            }
         } catch is CancellationError {
             updateTurn(cid, tid) { $0.notices.append("Stopped.") }
         } catch let f as OloAPI.StreamFailure where f.isQuota {
@@ -428,7 +464,14 @@ final class AppModel {
                     answering[cid] = "Checking the file"
                 case .references(let r): updateTurn(cid, tid) { $0.references = r }
                 case .memories(let m): updateTurn(cid, tid) { $0.memories = m }
-                case .truncated(_, let m): updateTurn(cid, tid) { $0.notices.append(m) }
+                case .truncated(let jobId, let m):
+                    updateTurn(cid, tid) { t in
+                        t.notices.append(m)
+                        // Half a file is not an answer: keep only the prose before the open code fence.
+                        if ReplyFile.endsInsideFence(t.text) { t.text = ReplyFile.proseBeforeOpenFence(t.text) }
+                    }
+                    // The file arrives minutes later from the background build: watch for it so it lands in this thread.
+                    watchBackgroundBuild(jobId: jobId, cid: cid, tid: tid)
                 case .brain(let s): updateTurn(cid, tid) { $0.brainStatus = s }
                 case .error(let message, _, let code):
                     throw OloAPI.StreamFailure(message: message, code: code, httpStatus: code == "quota_exceeded" ? 402 : 500)
@@ -440,6 +483,13 @@ final class AppModel {
             api.token = nil
             Keychain.write("session", nil)
             try await ensureSession()
+            try await streamFromOlo(content: content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: false)
+            return
+        } catch let e where OloAPI.isTransientNetworkError(e) && outcome.text.isEmpty && retryOnAuth && !Task.isCancelled {
+            // The connection dropped before a word arrived: ask once more after a moment, quietly,
+            // before falling back to the Commons or to offline quotes.
+            answering[cid] = "Reconnecting"
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             try await streamFromOlo(content: content, cid: cid, tid: tid, searchWeb: searchWeb, retryOnAuth: false)
             return
         } catch {
@@ -484,8 +534,9 @@ final class AppModel {
 
     /// helius-olo.io failed: the Commons' own service, then offline quotes.
     private func fallBack(question: String, content: String, attachments: [Attachment], cid: UUID, tid: UUID, error: Error) async {
-        // A question about attached text needs Olo itself; the Commons only answers from its own facts.
-        if attachments.isEmpty {
+        // A question about attached text needs Olo itself; the Commons only answers from its own facts,
+        // and a request to build something is not a question the Commons can answer at all.
+        if attachments.isEmpty, !QuotedAnswer.looksLikeBuildRequest(question) {
             answering[cid] = "Asking Olo Commons"
             if let a = try? await CommonsAnswer.ask(question), a.covered != false {
                 updateTurn(cid, tid) { t in
@@ -508,6 +559,12 @@ final class AppModel {
 
     /// No connection: quote what is saved here and queue the question.
     private func answerOffline(question: String, content: String, attachments: [Attachment], cid: UUID, tid: UUID) {
+        // A request to build something has nothing to quote: say so, and let the queue below ask it properly later.
+        if attachments.isEmpty, QuotedAnswer.looksLikeBuildRequest(question) {
+            updateTurn(cid, tid) { t in t.text = QuotedAnswer.needsConnection; t.origin = .offline; t.sources = [] }
+            queueOffline(question: question, content: content, cid: cid, tid: tid)
+            return
+        }
         var passages: [Passage] = []
         // Attached files come first: a question about a document is answered from it.
         for a in attachments {
@@ -523,6 +580,11 @@ final class AppModel {
             t.origin = .offline
             t.sources = quoted.sources
         }
+        queueOffline(question: question, content: content, cid: cid, tid: tid)
+    }
+
+    /// Queues an offline question to be asked properly when the connection returns (never a private chat).
+    private func queueOffline(question: String, content: String, cid: UUID, tid: UUID) {
         if conversation(cid)?.isPrivate == true {
             // The queue is a plain file, so a private question is never put in it.
             updateTurn(cid, tid) { $0.notices.append("Private chats are not queued. Ask again when the Mac is online.") }
@@ -555,5 +617,36 @@ final class AppModel {
             answering[cid] = nil
         }
         persist()
+    }
+
+    // MARK: Time with Olo
+
+    /// Adds the minutes since the last ask (when close enough to count), and shows the day's note once.
+    private func noteTimeWithOlo() {
+        let d = UserDefaults.standard
+        let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
+        if d.string(forKey: Prefs.timeDay) != today {
+            d.set(today, forKey: Prefs.timeDay); d.set(0.0, forKey: Prefs.timeMinutes); d.set(0.0, forKey: Prefs.timeNoted)
+        }
+        let now = Date()
+        let gap = lastAskAt.map { now.timeIntervalSince($0) / 60 } ?? 1
+        lastAskAt = now
+        let minutes = d.double(forKey: Prefs.timeMinutes) + Wellbeing.minutesToAdd(gapMinutes: gap)
+        d.set(minutes, forKey: Prefs.timeMinutes)
+        if let note = Wellbeing.note(minutesToday: minutes, lastNotedMinutes: d.double(forKey: Prefs.timeNoted)) {
+            d.set(minutes, forKey: Prefs.timeNoted)
+            banner = note
+        }
+    }
+
+    /// Opens a file Olo made in the Olo Sample panel beside the conversation.
+    func openSample(_ a: Artifact) {
+        sample = a
+        showSample = true
+    }
+
+    /// Asks Olo to carry on from where a cut answer stopped.
+    func continueAnswer(in cid: UUID) {
+        ask("Continue exactly where you stopped, without repeating what you already wrote.", in: cid)
     }
 }
