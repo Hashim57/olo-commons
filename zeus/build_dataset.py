@@ -193,23 +193,53 @@ def content_words(text):
     return {w.lower() for w in WORD_RE.findall(text or "") if w.lower() not in STOP}
 
 
+# One-slot cache for near_misses: the content words of every atom in the pool and
+# an inverted index from word to pool positions. build() and build_eval2() call
+# near_misses once per atom against the same pool, and recomputing every atom's
+# words on every call made the build quadratic in regex work (more than five
+# minutes on the 5,645-atom snapshot of 2026-11-04). The cache holds a reference
+# to the pool it was built for, so a different list (or one that changed length)
+# rebuilds it, and the results are the same as before, in the same order.
+_NEAR_INDEX = {"pool": None, "n": -1, "words": None, "inv": None}
+
+
+def _near_index(pool):
+    c = _NEAR_INDEX
+    if c["pool"] is not pool or c["n"] != len(pool):
+        words, inv = [], {}
+        for i, o in enumerate(pool):
+            w = content_words((o.get("summary") or o.get("content") or "") + " " + (o.get("title") or ""))
+            words.append(w)
+            for x in w:
+                inv.setdefault(x, []).append(i)
+        c.update(pool=pool, n=len(pool), words=words, inv=inv)
+    return c["words"], c["inv"]
+
+
 def near_misses(claim, a, pool, k=3, max_cover=0.6):
     """Atoms that share words with the claim but do not cover it: the hard kind of
     not_covered, where topic matching would wrongly say supported. Ranked by how
     many claim words they share. An atom is refused when its text holds more than
     max_cover of the claim's content words (it might really support the claim),
-    or when it is the claim's own atom. Returns [] when nothing shares a word."""
+    or when it is the claim's own atom. Returns [] when nothing shares a word.
+    Only atoms sharing at least one claim word are looked at (the inverted index
+    in _near_index); the others scored zero and were skipped anyway."""
     cw = content_words(claim)
     if not cw:
         return []
+    words, inv = _near_index(pool)
+    cand = set()
+    for w in cw:
+        cand.update(inv.get(w, ()))
     scored = []
-    for o in pool:
+    for i in sorted(cand):
+        o = pool[i]
         if o["id"] == a["id"]:
             continue
         text = (o.get("summary") or o.get("content") or "")
         if claim[:60] in text:
             continue
-        shared = len(cw & content_words(text + " " + (o.get("title") or "")))
+        shared = len(cw & words[i])
         if shared == 0 or shared / len(cw) > max_cover:
             continue
         scored.append((shared, o["id"], o))
