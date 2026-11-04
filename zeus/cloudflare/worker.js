@@ -16,7 +16,8 @@
 //   ZEUS_VERSION  the Zeus version it holds
 //   ZEUS_SCORES   JSON of that version's measured scores (from zeus/BEST.json)
 //   ZEUS_MODEL    base model id (default @cf/mistral/mistral-7b-instruct-v0.2-lora)
-//   DRAFT_MODEL   the fallback writer (default @cf/meta/llama-3.3-70b-instruct-fp8-fast)
+//   DRAFT_MODEL   the fallback writer (default @cf/meta/llama-3.3-70b-instruct-fp8-fast); set it in the dashboard,
+//                 any text model from the Workers AI catalog, third-party ones included
 //   ZEUS_FORMAT_RETRY  optional, "1" turns the format retry on for every verification (off when unset);
 //                 a request's boolean "format_retry" overrides it either way
 //   ZEUS_RETRY_TIMEOUT_MS  optional, a lower time cap for the retry (never above 15000)
@@ -39,7 +40,36 @@ const DEFAULT_MODEL = '@cf/mistral/mistral-7b-instruct-v0.2-lora';
 const MAX_BODY = 64 * 1024;
 const MAX_TOKENS = 400;
 const DEFAULT_DRAFT = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const DRAFT_MAX_TOKENS = 1500;
+// The most the fallback writer may return: 40,000 tokens, so it can stand in for a whole
+// background build file. DRAFT_MAX_TOKENS (a Worker variable) changes it. A model with a smaller
+// window is fitted to it (DRAFT_CONTEXT), and a request it still refuses is asked again at 8,192.
+const DRAFT_MAX_TOKENS = 40000;
+const DRAFT_SAFE_TOKENS = 8192;
+// Context windows of the drafts this Worker is known to run; the input counts against them.
+const DRAFT_CONTEXT = { '@cf/meta/llama-3.3-70b-instruct-fp8-fast': 24000 };
+
+/**
+ * The text of a draft, whatever shape the model answers in: Workers AI's own models return
+ * { response }, third-party models through the same binding (Gemini, GPT, Muse) return the
+ * OpenAI shape { choices: [{ message: { content } }] }.
+ */
+export function draftText(out) {
+  if (typeof out?.response === 'string') return out.response;
+  const content = out?.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+  if (typeof out?.result?.response === 'string') return out.result.response;
+  return '';
+}
+
+/** The output room for a draft: the asked-for size within the cap and the model's window. */
+export function draftTokens(asked, model, messages, cap = DRAFT_MAX_TOKENS) {
+  const want = Math.max(1, Math.min(Number(asked) || 800, cap));
+  const window = DRAFT_CONTEXT[model];
+  if (!window) return want;
+  const input = Math.ceil(messages.reduce((n, m) => n + String(m.content || '').length, 0) / 3.5) + 64;
+  return Math.max(256, Math.min(want, window - input));
+}
 
 const LABELS = ['supported', 'contradicted', 'not_covered'];
 // Format retry: the one repair turn (identical to REPAIR in zeus/eval.py) and its caps.
@@ -151,11 +181,20 @@ export default {
     if (draft) {
       const messages = incoming.filter(m => m && ['system', 'user', 'assistant'].includes(m.role)).map(m => ({ role: m.role, content: String(m.content ?? '') }));
       if (!messages.some(m => m.role === 'user')) return json({ error: 'messages_required' }, 400);
-      const maxTokens = Math.max(1, Math.min(Number(body.max_tokens) || 800, DRAFT_MAX_TOKENS));
+      const draftModel = env.DRAFT_MODEL || DEFAULT_DRAFT;
+      const cap = Number(env.DRAFT_MAX_TOKENS) > 0 ? Number(env.DRAFT_MAX_TOKENS) : DRAFT_MAX_TOKENS;
+      const maxTokens = draftTokens(body.max_tokens, draftModel, messages, cap);
       const temperature = Math.max(0, Math.min(Number(body.temperature ?? 0.3), 1));
       try {
-        const out = await env.AI.run(env.DRAFT_MODEL || DEFAULT_DRAFT, { messages, max_tokens: maxTokens, temperature });
-        const text = typeof out?.response === 'string' ? out.response : '';
+        let out;
+        try {
+          out = await env.AI.run(draftModel, { messages, max_tokens: maxTokens, temperature });
+        } catch (e) {
+          // A model that refuses the size: once more at a size every text model takes.
+          if (maxTokens <= DRAFT_SAFE_TOKENS) throw e;
+          out = await env.AI.run(draftModel, { messages, max_tokens: DRAFT_SAFE_TOKENS, temperature });
+        }
+        const text = draftText(out);
         if (!text) return json({ error: 'draft_empty_answer' }, 502);
         return json({ id: 'draft-' + crypto.randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'olo-draft',
           choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: out?.usage || undefined });

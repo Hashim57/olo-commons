@@ -64,7 +64,7 @@ Deno.test('olo-draft runs the fallback writer with the system role kept, and wor
   const call = e.calls[0] as { model: string; input: { messages: unknown[]; max_tokens: number; temperature: number; lora?: string } };
   assertEquals(call.model, '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
   assertEquals(call.input.messages, [{ role: 'system', content: 'S' }, { role: 'user', content: 'Q' }]);
-  assertEquals(call.input.max_tokens, 1500); assertEquals(call.input.temperature, 1); assertEquals(call.input.lora, undefined);
+  assertEquals(call.input.max_tokens, 24000 - 64 - 1); assertEquals(call.input.temperature, 1); assertEquals(call.input.lora, undefined);
 });
 
 Deno.test('foldSystem keeps the conversation and joins system text into the first user turn', () => {
@@ -184,4 +184,31 @@ Deno.test('the retry is cut off at its time cap', async () => {
   const j = await r.json();
   assertEquals(j.error, 'zeus_unparseable_answer');
   assert(j.detail.includes('timed out after 20 ms'));
+});
+
+Deno.test('a draft is fitted to the model window and the 40k cap, and asked again smaller when refused', async () => {
+  const mod = await import('../zeus/cloudflare/worker.js');
+  const msgs = [{ role: 'user', content: 'x'.repeat(35000) }];
+  assertEquals(mod.draftTokens(99999, '@cf/meta/llama-3.3-70b-instruct-fp8-fast', msgs), 24000 - 10000 - 64);
+  assertEquals(mod.draftTokens(99999, '@cf/some/large-model', msgs), 40000);
+  assertEquals(mod.draftTokens(99999, '@cf/some/large-model', msgs, 30000), 30000);
+  const e = env({ ZEUS_LORA: '', DRAFT_MODEL: '@cf/some/large-model' });
+  let first = true;
+  const run = e.AI.run;
+  e.AI.run = async (model: string, input: unknown) => {
+    if (first) { first = false; e.calls.push({ model, input }); throw new Error('max_tokens too large'); }
+    return run(model, input);
+  };
+  const r = await worker.fetch(req('/v1/chat/completions', { method: 'POST', body: JSON.stringify({ model: 'olo-draft', max_tokens: 40000, messages: [{ role: 'user', content: 'Q' }] }) }), e);
+  assertEquals(r.status, 200);
+  const sizes = (e.calls as Array<{ input: { max_tokens: number } }>).map((c) => c.input.max_tokens);
+  assertEquals(sizes, [40000, 8192]);
+});
+
+Deno.test('a draft reads both answer shapes: Workers AI { response } and third-party { choices }', async () => {
+  const mod = await import('../zeus/cloudflare/worker.js');
+  assertEquals(mod.draftText({ response: 'a' }), 'a');
+  assertEquals(mod.draftText({ choices: [{ message: { content: 'b' } }] }), 'b');
+  assertEquals(mod.draftText({ choices: [{ message: { content: [{ type: 'text', text: 'c' }, { type: 'text', text: 'd' }] } }] }), 'cd');
+  assertEquals(mod.draftText({}), '');
 });
