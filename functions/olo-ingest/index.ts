@@ -22,7 +22,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { clean, isStub } from './text.ts';
-import { dataGovApiBase, dataGovCandidates, dataGovSearchUrl, DATAGOV_TOPICS } from './datagov.ts';
+import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
@@ -96,11 +96,12 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
   // never added an atom. A key from api.data.gov goes in the DATAGOV_API_KEY
   // secret; without one DEMO_KEY is used, which allows 30 calls an hour, more than
   // one call every 15 minutes needs. Only openly licensed, public datasets are kept.
+  // Each run searches a random topic, sort order and publisher type (datagov.ts),
+  // because a fixed first page per topic ran dry within a week.
   async data_gov(n, src) {
     const api = dataGovApiBase(src.api_base);
-    const topic = DATAGOV_TOPICS[Math.floor(Math.random() * DATAGOV_TOPICS.length)];
     const key = Deno.env.get('DATAGOV_API_KEY') || 'DEMO_KEY';
-    const r = await fetch(dataGovSearchUrl(api, topic, Math.min(n * 4, 40)), { headers: { 'User-Agent': UA, Accept: 'application/json', 'X-Api-Key': key }, signal: AbortSignal.timeout(8000) });
+    const r = await fetch(dataGovSearchUrl(api, dataGovSearchPlan(), Math.min(n * 4, 40)), { headers: { 'User-Agent': UA, Accept: 'application/json', 'X-Api-Key': key }, signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`data.gov v4 ${r.status}${r.status === 403 ? ' (api.data.gov key missing or invalid: set DATAGOV_API_KEY)' : r.status === 429 ? ' (api.data.gov rate limit: set DATAGOV_API_KEY to a personal key)' : ''}`);
     return pick(dataGovCandidates(await r.json(), n * 3), n);
   },

@@ -1,5 +1,5 @@
 import { assert, assertEquals } from './_assert.ts';
-import { dataGovApiBase, dataGovCandidate, dataGovCandidates, dataGovLicence, dataGovSearchUrl, DATAGOV_API } from '../functions/olo-ingest/datagov.ts';
+import { dataGovApiBase, dataGovCandidate, dataGovCandidates, dataGovLicence, dataGovSearchPlan, dataGovSearchUrl, DATAGOV_API, DATAGOV_ORG_TYPES, DATAGOV_SORTS, DATAGOV_TOPICS } from '../functions/olo-ingest/datagov.ts';
 
 const NOTES = 'Daily measurements of dissolved oxygen, temperature and turbidity from monitoring stations along the river, collected by the agency and published for research and public use.';
 
@@ -67,4 +67,34 @@ Deno.test('the dead CKAN base in the registry is replaced by the v4 API', () => 
   assertEquals(dataGovApiBase(null), DATAGOV_API);
   assertEquals(dataGovApiBase('https://api.gsa.gov/technology/datagov/v4/'), DATAGOV_API);
   assertEquals(dataGovSearchUrl(DATAGOV_API, 'water quality', 99), 'https://api.gsa.gov/technology/datagov/v4/search?q=water%20quality&per_page=50&sort=relevance');
+});
+
+Deno.test('dataGovSearchUrl takes a plan: sort and publisher type go on the query, unknown sorts fall back', () => {
+  assertEquals(
+    dataGovSearchUrl(DATAGOV_API, { topic: 'air quality', sort: 'last_harvested_date', orgType: 'State Government' }, 40),
+    'https://api.gsa.gov/technology/datagov/v4/search?q=air%20quality&per_page=40&sort=last_harvested_date&org_type=State%20Government',
+  );
+  assertEquals(dataGovSearchUrl(DATAGOV_API, { topic: 'energy', sort: 'popularity' }, 40), 'https://api.gsa.gov/technology/datagov/v4/search?q=energy&per_page=40&sort=popularity');
+  assertEquals(dataGovSearchUrl(DATAGOV_API, { topic: 'energy', sort: 'newest' as any }, 40), 'https://api.gsa.gov/technology/datagov/v4/search?q=energy&per_page=40&sort=relevance');
+});
+
+Deno.test('dataGovSearchPlan is driven by the injected random source and never leaves the allowed values', () => {
+  // random() = 0 picks the first of everything: no publisher filter.
+  assertEquals(dataGovSearchPlan(() => 0), { topic: DATAGOV_TOPICS[0], sort: 'relevance' });
+  // random() just under 1 picks the last of everything.
+  const last = dataGovSearchPlan(() => 0.999999);
+  assertEquals(last, { topic: DATAGOV_TOPICS[DATAGOV_TOPICS.length - 1], sort: 'last_harvested_date', orgType: 'University' });
+  // A deterministic walk over 500 draws stays inside the lists and uses every sort and a filter-free run.
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const sorts = new Set<string>(); let unfiltered = 0;
+  for (let i = 0; i < 500; i++) {
+    const p = dataGovSearchPlan(rnd);
+    assert(DATAGOV_TOPICS.includes(p.topic));
+    assert((DATAGOV_SORTS as ReadonlyArray<string>).includes(p.sort));
+    assert(p.orgType === undefined || DATAGOV_ORG_TYPES.includes(p.orgType));
+    sorts.add(p.sort); if (!p.orgType) unfiltered++;
+  }
+  assertEquals(sorts.size, 3);
+  assert(unfiltered > 50);
 });
