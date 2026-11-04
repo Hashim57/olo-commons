@@ -45,6 +45,16 @@ A native SwiftUI app (not a website in a window) on the same account as helius-o
   - A server without `code.edit`, `code.complete` or `code.allowance` (before olo-web v61) answers NOT_FOUND: the notice "helius-olo.io needs the v61 update for this" shows once, suggestions stop for the session, and the editor, saving and reviews keep working. "Build with Olo allowance used for today" pauses suggestions until the next day.
   - Always private: code is sent only to be reviewed, completed or rewritten, never stored, never trained on, never added to the brain. Code: `OloKit/CodeReview.swift`, `CodeAssist.swift`, `LineDiff.swift`, `EditorText.swift` (all pure, with tests), `Olo/Sources/BuildWorkspace.swift` (folder, bookmark, watching), `BuildEditor.swift` (tabs, saving, reviews, suggestions, edits), `BuildFileTree.swift`, `CodeEditor.swift`, `DiffView.swift`, `FolderWatcher.swift`, `BuildWithOloView.swift`. `CodeView.swift` now only holds `SeverityStyle`; its read-only `CodeView` is no longer shown.
 
+## 1.3 build 15: scheduled tasks and Send a suggestion
+
+**Scheduled** in the sidebar (`SchedulesView.swift`, `OloKit/Schedules.swift`, olo-web v65 `schedules.*`): ask Olo
+something every day, on weekdays or once a week, at a time in this Mac's time zone, with "Email me the answer"
+if wanted. The server answers it like a typed question (writers, sources, Zeus, one message each), keeps one
+conversation per task, and sends a nudge and a push; the nudge opens that conversation. Run now, email on or
+off, pause and delete per task; after Run now the list looks again every 3 seconds until the answer lands.
+**Settings > Feedback > Send a suggestion** (`feedback.suggest`): emailed to the Olo team, with the account email
+as reply-to when signed in. A server before v65 answers NOT_FOUND and the page says so.
+
 ## 1.3 build 14: Olo's voice, and a nudge to take a break
 
 Each answer has a Listen button (the speaker under it): it is read aloud in Olo's voice, from ElevenLabs

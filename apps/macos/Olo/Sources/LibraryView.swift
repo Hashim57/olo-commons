@@ -266,6 +266,7 @@ struct PanelHost: View {
             case .memory: MemoryView()
             case .artifacts: ArtifactsView(conversationId: nil)
             case .watching: MonitorsView()
+            case .scheduled: SchedulesView()
             case .zeus: ZeusGraphView()
             case .skills: SkillsView()
             case .connectors: ConnectorsView()

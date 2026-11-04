@@ -67,6 +67,7 @@ struct SettingsView: View {
             FolderSettings().tabItem { Label("Folders", systemImage: "folder") }
             OfflineSettings().tabItem { Label("Offline", systemImage: "wifi.slash") }
             AccountSettings().tabItem { Label("Account", systemImage: "person.crop.circle") }
+            SuggestionSettings().tabItem { Label("Feedback", systemImage: "envelope") }
         }
         .frame(width: 560)
         .padding(20)
