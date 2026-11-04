@@ -99,6 +99,7 @@ struct ChatView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 8) {
             NudgeBanner()
+            BreakNudgeBanner()
             QuotaBanner()
             if !attachments.isEmpty { AttachmentChips(attachments: $attachments) }
             HStack(alignment: .bottom, spacing: 10) {
@@ -473,6 +474,10 @@ struct TurnView: View {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(turn.text, forType: .string)
                 } label: { Image(systemName: "doc.on.doc") }.buttonStyle(.borderless).help("Copy")
+                Button { model.voice.toggle(turn: turn.id, text: turn.text, api: model.api) } label: {
+                    Image(systemName: model.voice.speakingTurn == turn.id ? "speaker.slash" : "speaker.wave.2")
+                }
+                .buttonStyle(.borderless).help(model.voice.speakingTurn == turn.id ? "Stop reading" : "Read aloud in Olo's voice")
                 if !compact, let cid = conversationId, turn.serverMessageId != nil {
                     Button { editing = true } label: { Image(systemName: "pencil") }
                         .buttonStyle(.borderless).help("Edit a passage")

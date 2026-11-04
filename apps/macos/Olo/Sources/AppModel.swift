@@ -31,6 +31,11 @@ final class AppModel {
     /// Conversations with an answer on the way, and what Olo is doing for each.
     var answering: [UUID: String] = [:]
     var banner: String?
+    /// The two-hour nudge to step away (OloKit's BreakReminder, as on the web and iPhone).
+    var showBreakNudge = false
+    @ObservationIgnored private var breakReminder = BreakReminder()
+    /// Reads answers aloud in Olo's voice (OloVoice.swift).
+    let voice = OloVoice()
     var showSignIn = false
     /// Asks "Sign out of Olo?" before signing out (the account footer, the Olo menu and the menu bar).
     var confirmSignOut = false
@@ -124,6 +129,22 @@ final class AppModel {
         }
         await bootstrapBilling()
         considerBrainChoice()
+        startBreakReminder()
+    }
+
+    /// Counts the time Olo is in front, once a minute, and raises the nudge at two hours.
+    private func startBreakReminder() {
+        Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                guard let self else { return }
+                self.breakReminder.tick(now: Date(), visible: NSApp.isActive)
+                if self.breakReminder.isDue {
+                    self.breakReminder.nudged()
+                    self.showBreakNudge = true
+                }
+            }
+        }
     }
 
     private func onlineAgain() async {
