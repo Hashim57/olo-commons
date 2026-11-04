@@ -5,3 +5,5 @@ meta.json
 cache/
 imported/
 mlx/
+eval3.jsonl
+eval3.manifest.json

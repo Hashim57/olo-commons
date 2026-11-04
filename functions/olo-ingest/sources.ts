@@ -39,13 +39,27 @@ export function wikidataCandidates(e: any, ids: string[], n: number): Candidate[
   const out: Candidate[] = [];
   for (const id of ids) {
     const ent = e?.entities?.[id]; const label = ent?.labels?.en?.value || ent?.labels?.mul?.value, desc = ent?.descriptions?.en?.value;
-    if (!label || !desc) continue;
+    if (!label || !desc || wikidataHousekeeping(label, desc)) continue;
     const links = Object.keys(ent.sitelinks || {}).length;
     if (links < 3) continue;
     out.push({ external_id: id, url: `https://www.wikidata.org/wiki/${id}`, title: label, summary: `${label}: ${desc}.`, content: `${label}. ${desc}. Described in ${links} Wikimedia projects.`, licence: 'CC0 1.0', source_revision: ent.lastrevid ? String(ent.lastrevid) : undefined });
     if (out.length >= n) break;
   }
   return out;
+}
+
+/**
+ * True for a Wikidata item that describes a Wikimedia page rather than a thing
+ * in the world: a category, a template, a disambiguation page, a list article,
+ * a project or help page. They sit in the main namespace, so the random walk
+ * returns them freely (39 of the 174 wikidata atoms in the 2026-11-03 snapshot
+ * were categories, taxonomy templates and disambiguation pages), and they have
+ * enough sitelinks to pass the notability check. Nothing about them is a fact
+ * to verify a claim against, so they are not atoms.
+ */
+export function wikidataHousekeeping(label: string, desc: string): boolean {
+  if (/^(Category|Template|Module|Wikipedia|Portal|Help|MediaWiki|File|Draft|Book|Wikidata|Property|Lexeme):/i.test(label)) return true;
+  return /^Wikimedia (category|disambiguation page|list article|template|project page|internal item|module|navigational template|KML file|set index article|permanent duplicate item|human name disambiguation page)\b|^(taxonomy|navigational|infobox|stub|citation) template$/i.test(desc.trim());
 }
 
 /** Ids from a wbsearchentities response. */

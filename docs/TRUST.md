@@ -76,6 +76,7 @@ Every ingest run (every 15 minutes) re-reads up to 3 of the oldest-observed Wiki
 
 - Atoms come only from external, dated sources in the registry. Anything written by Olo, Zeus or any model is `generated = true` and never served or re-ingested (model collapse guard).
 - At most 400 new atoms per source per day. A flood from one source is treated as a fault, not as knowledge.
+- A candidate whose body is a label, one word or one line repeated, or nothing beyond its title and authors is a stub and is skipped before it is embedded (`isStub` in `functions/olo-ingest/text.ts`, counted in the run note as "stubs skipped"). The rule is measured on the longer of summary and content and calibrated on the snapshot so every atom of every other source passes; `sql/010_stub_cleanup.sql` applies the same rule (`olo_is_stub`, service role only) to the Internet Archive stubs stored before the gate existed and deletes them, since a stub never was a fact.
 - Curiosity gaps count at most 20 topics per address per day, and a topic drives ingestion only once a second address has asked for it or two days have passed.
 - Feedback (sentence flags from the apps) is reviewed by a person before it teaches Zeus; see docs/FEEDBACK.md.
 
