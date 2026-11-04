@@ -204,3 +204,11 @@ Deno.test('a draft is fitted to the model window and the 40k cap, and asked agai
   const sizes = (e.calls as Array<{ input: { max_tokens: number } }>).map((c) => c.input.max_tokens);
   assertEquals(sizes, [40000, 8192]);
 });
+
+Deno.test('a draft reads both answer shapes: Workers AI { response } and third-party { choices }', async () => {
+  const mod = await import('../zeus/cloudflare/worker.js');
+  assertEquals(mod.draftText({ response: 'a' }), 'a');
+  assertEquals(mod.draftText({ choices: [{ message: { content: 'b' } }] }), 'b');
+  assertEquals(mod.draftText({ choices: [{ message: { content: [{ type: 'text', text: 'c' }, { type: 'text', text: 'd' }] } }] }), 'cd');
+  assertEquals(mod.draftText({}), '');
+});

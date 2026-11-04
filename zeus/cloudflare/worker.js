@@ -16,7 +16,8 @@
 //   ZEUS_VERSION  the Zeus version it holds
 //   ZEUS_SCORES   JSON of that version's measured scores (from zeus/BEST.json)
 //   ZEUS_MODEL    base model id (default @cf/mistral/mistral-7b-instruct-v0.2-lora)
-//   DRAFT_MODEL   the fallback writer (default @cf/meta/llama-3.3-70b-instruct-fp8-fast)
+//   DRAFT_MODEL   the fallback writer (default @cf/meta/llama-3.3-70b-instruct-fp8-fast); set it in the dashboard,
+//                 any text model from the Workers AI catalog, third-party ones included
 //   ZEUS_FORMAT_RETRY  optional, "1" turns the format retry on for every verification (off when unset);
 //                 a request's boolean "format_retry" overrides it either way
 //   ZEUS_RETRY_TIMEOUT_MS  optional, a lower time cap for the retry (never above 15000)
@@ -46,6 +47,20 @@ const DRAFT_MAX_TOKENS = 40000;
 const DRAFT_SAFE_TOKENS = 8192;
 // Context windows of the drafts this Worker is known to run; the input counts against them.
 const DRAFT_CONTEXT = { '@cf/meta/llama-3.3-70b-instruct-fp8-fast': 24000 };
+
+/**
+ * The text of a draft, whatever shape the model answers in: Workers AI's own models return
+ * { response }, third-party models through the same binding (Gemini, GPT, Muse) return the
+ * OpenAI shape { choices: [{ message: { content } }] }.
+ */
+export function draftText(out) {
+  if (typeof out?.response === 'string') return out.response;
+  const content = out?.choices?.[0]?.message?.content;
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) return content.map((p) => (typeof p?.text === 'string' ? p.text : '')).join('');
+  if (typeof out?.result?.response === 'string') return out.result.response;
+  return '';
+}
 
 /** The output room for a draft: the asked-for size within the cap and the model's window. */
 export function draftTokens(asked, model, messages, cap = DRAFT_MAX_TOKENS) {
@@ -179,7 +194,7 @@ export default {
           if (maxTokens <= DRAFT_SAFE_TOKENS) throw e;
           out = await env.AI.run(draftModel, { messages, max_tokens: DRAFT_SAFE_TOKENS, temperature });
         }
-        const text = typeof out?.response === 'string' ? out.response : '';
+        const text = draftText(out);
         if (!text) return json({ error: 'draft_empty_answer' }, 502);
         return json({ id: 'draft-' + crypto.randomUUID(), object: 'chat.completion', created: Math.floor(Date.now() / 1000), model: 'olo-draft',
           choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: out?.usage || undefined });

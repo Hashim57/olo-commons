@@ -5,6 +5,9 @@ name = "zeus"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 workers_dev = true
+# Variables set in the Cloudflare dashboard (DRAFT_MODEL, DRAFT_MAX_TOKENS) survive a deploy: only the
+# ones below are written, the rest are kept.
+keep_vars = true
 
 [ai]
 binding = "AI"
@@ -16,7 +19,6 @@ binding = "Olo_browser"
 
 [vars]
 ZEUS_MODEL = "@cf/mistral/mistral-7b-instruct-v0.2-lora"
-DRAFT_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 ZEUS_LORA = ""
 ZEUS_VERSION = ""
 ZEUS_SCORES = ""
