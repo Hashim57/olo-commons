@@ -62,6 +62,27 @@ export function wikidataHousekeeping(label: string, desc: string): boolean {
   return /^Wikimedia (category|disambiguation page|list article|template|project page|internal item|module|navigational template|KML file|set index article|permanent duplicate item|human name disambiguation page)\b|^(taxonomy|navigational|infobox|stub|citation) template$/i.test(desc.trim());
 }
 
+/**
+ * How many items one wikidata run looks at. wbgetentities takes at most 50 ids per
+ * call, and the random walk used to ask for only 20. Most random items fail the
+ * notability check (fewer than 3 sitelinks: scholarly articles, taxa, streets), and
+ * since the housekeeping filter also drops categories and templates, a batch of 20
+ * often kept nothing: 99 wikidata atoms on 2 Nov, 19 on 3 Nov in the snapshot.
+ * Asking for the full 50 costs no extra request and keeps the source fed.
+ */
+export const WIKIDATA_BATCH = 50;
+
+/** list=random over the main namespace, a full batch of ids whatever n is (n only caps what is kept). */
+export function wikidataRandomUrl(): string {
+  return `https://www.wikidata.org/w/api.php?action=query&list=random&rnnamespace=0&rnlimit=${WIKIDATA_BATCH}&format=json`;
+}
+
+/** wbgetentities for up to WIKIDATA_BATCH ids (labels, descriptions, sitelinks, revision). Only Q ids are passed on. */
+export function wikidataEntitiesUrl(ids: string[]): string {
+  const q = ids.filter(id => /^Q\d+$/.test(id)).slice(0, WIKIDATA_BATCH);
+  return `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${q.join('|')}&props=info|labels|descriptions|sitelinks&languages=en|mul&format=json`;
+}
+
 /** Ids from a wbsearchentities response. */
 export function wikidataSearchIds(r: any): string[] {
   return ((r?.search || []) as any[]).map(x => String(x.id || '')).filter(id => /^Q\d+$/.test(id));

@@ -218,3 +218,30 @@ def test_usable_atoms_run_before_the_split_so_a_stub_is_neither_claim_nor_passag
     seen = {p["id"] for split in data.values() for ex in split for p in ex["passages"]}
     assert "stub-1"[:8] not in seen
     assert all(ex["claim"] != "new book new book new book new book new book" for split in data.values() for ex in split)
+
+
+def test_near_misses_index_matches_a_full_scan_and_follows_the_pool():
+    pool = ATOMS + [atom(7, "Queensland has many beaches and a warm climate. Tourism is a major industry in the northern parts of the state."),
+                    atom(8, "The Great Barrier Reef lies off the northern coast of Queensland, and it is the largest coral reef system on Earth today.")]
+    claim = "The Great Barrier Reef lies off the northern coast of Queensland."
+    cw = bd.content_words(claim)
+
+    def full_scan(p):
+        scored = []
+        for o in p:
+            text = o.get("summary") or o.get("content") or ""
+            if o["id"] == ATOMS[1]["id"] or claim[:60] in text:
+                continue
+            shared = len(cw & bd.content_words(text + " " + (o.get("title") or "")))
+            if shared and shared / len(cw) <= 0.6:
+                scored.append((shared, o["id"], o))
+        scored.sort(key=lambda t: (-t[0], t[1]))
+        return [o["id"] for _, _, o in scored[:3]]
+
+    assert [o["id"] for o in bd.near_misses(claim, ATOMS[1], pool)] == full_scan(pool)
+    # a different pool (the cache must not answer from the last one)
+    small = [ATOMS[0], ATOMS[1]]
+    assert [o["id"] for o in bd.near_misses(claim, ATOMS[1], small)] == full_scan(small)
+    # the same list grown in place is re-indexed too
+    small.append(pool[6])
+    assert pool[6]["id"] in [o["id"] for o in bd.near_misses(claim, ATOMS[1], small)]
