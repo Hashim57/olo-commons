@@ -47,10 +47,36 @@ export const STUB_MIN_DISTINCT = 6;     // fewer different words than this is a 
 export const STUB_REPEAT_DISTINCT = 12; // below this many different words, a text made mostly of repeats is a stub...
 export const STUB_REPEAT_RATIO = 0.4;   // ...when fewer than this share of its words are distinct
 export const STUB_MIN_REST = 40;        // characters the body must still have once the title and the authors are taken out
+export const STUB_LINK_REST = 160;      // characters a body holding a link, an email address or a domain must have once those are taken out
+
+/** Links, email addresses and bare domains (ketabpedia.com, www.example.org), the parts of a body that point elsewhere. */
+export const LINK_RE = /https?:\/\/\S+|www\.\S+|[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|\b[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:com|org|net|info|ir|io|co|edu|gov|me|tk|ru|de|uk)\b(?:\/\S*)?/g;
+
+/**
+ * True when a body is a pointer, not a description: it holds a link, an email
+ * address or a domain, and once those are taken out (and a text written twice
+ * is read once) fewer than STUB_LINK_REST characters are left. Uploaders to
+ * the Internet Archive often put a notice in the description field instead of
+ * describing the item ("for details please visit ketabpedia.com", the same
+ * line with a contact email, "Raw Scan images of a Canister of the Sim
+ * Collection: https://..."). On the 2026-11-05 snapshot 55 archive_org atoms
+ * were of that kind (one notice was stored 21 times under different items),
+ * some carried third-party email addresses, and no atom of any other source
+ * matched the rule.
+ */
+export function isLinkNotice(body: unknown): boolean {
+  const b = clean(body);
+  if (!b.match(LINK_RE)) return false;
+  let rest = b.replace(LINK_RE, ' ').replace(/\s+/g, ' ').trim();
+  const h = Math.floor((rest.length - 1) / 2);
+  if (rest.length > 20 && rest[h] === ' ' && rest.slice(0, h) === rest.slice(h + 1)) rest = rest.slice(0, h);
+  return rest.length < STUB_LINK_REST;
+}
 
 /**
  * True when an atom would carry no knowledge: its body is a label, one word
- * or one line repeated, or says nothing beyond the title and the authors.
+ * or one line repeated, a notice that points elsewhere (isLinkNotice), or
+ * says nothing beyond the title and the authors.
  * The Internet Archive search returns many uploads whose description is the
  * identifier, a file name or a word typed twice ("new book new book", "fhfh
  * fhfh", "P P"); a third of the archive_org atoms in the Commons on 2026-11-03
@@ -69,6 +95,7 @@ export function isStub(title: unknown, summary: unknown, content: unknown, autho
   const w = words(body), distinct = new Set(w).size;
   if (distinct < STUB_MIN_DISTINCT) return true;
   if (distinct < STUB_REPEAT_DISTINCT && distinct / w.length < STUB_REPEAT_RATIO) return true;
+  if (isLinkNotice(body)) return true;
   // What the body says once the title and the authors are taken out of it.
   let rest = ' ' + body.toLowerCase() + ' ';
   const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);

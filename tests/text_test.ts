@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, isStub, joinParts, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, isLinkNotice, isStub, joinParts, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -96,4 +96,31 @@ Deno.test('words and distinctWords count letters in any script and ignore digits
   assertEquals(distinctWords('Hello, hello! 2026 x über Über'), 2);
   assertEquals(distinctWords('سيد سيد سيد'), 1);
   assertEquals(distinctWords(''), 0);
+});
+
+/* ---------- isLinkNotice: a description that only says where to look ---------- */
+
+Deno.test('isLinkNotice: uploader notices from the 2026-11-05 snapshot are stubs', () => {
+  // archive_org descriptions stored under many different items (contact addresses replaced by example.org)
+  const notices = [
+    'لمزيد من التفاصيل يرجى زيارة ketabpedia.com لمزيد من التفاصيل يرجى زيارة ketabpedia.com',
+    'للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org',
+    'Raw Scan images of a Canister of the Sim Collection: https://archive.org/details/SerialsOnMicrofilmCollection Archival backup. See Sim collection: https://archive.org/details/sim_microfilm All the issues from this canister',
+    'Archived blog snapshot from Wedzat (https://www.wedzat.com). Archived blog snapshot from Wedzat (https://www.wedzat.com).',
+    'Backup of http://www.islc.net/~ccronan/ from 4 March 2019 Backup of http://www.islc.net/~ccronan/ from 4 March 2019',
+  ];
+  for (const n of notices) {
+    assert(isLinkNotice(n), n);
+    assert(isStub('ktp2019-item', n, n), n);
+  }
+});
+
+Deno.test('isLinkNotice: a real description that cites a link is kept, and so is text with no link', () => {
+  const abstract = 'We release a benchmark of 12,000 annotated claims drawn from news and encyclopaedia text, with labels for support, contradiction and missing evidence, and we report baselines from three model families. Code and data are available at https://github.com/example/claims.';
+  assertEquals(isLinkNotice(abstract), false);
+  assertEquals(isStub('A claim benchmark', abstract, abstract), false);
+  assertEquals(isLinkNotice('Elementary algebra encompasses the basic concepts of algebra, such as variables and terms, and U.S. schools teach it.'), false);
+  assertEquals(isLinkNotice(''), false);
+  // numbers with a dot are not domains
+  assertEquals(isLinkNotice('Dose 2.5 mg, version 1.2.3, p. 4.'), false);
 });

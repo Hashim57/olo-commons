@@ -68,3 +68,30 @@ def test_usable_atoms_drops_duplicates_stubs_and_housekeeping_once_each_and_keep
                     content="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont. It has existed since 2006.")
     kept2, counts2 = quality.usable_atoms([wiki_cat])
     assert len(kept2) == 1 and counts2["housekeeping"] == 0
+
+
+# Same examples as tests/text_test.ts (isLinkNotice); contact addresses replaced by example.org.
+NOTICES = [
+    "لمزيد من التفاصيل يرجى زيارة ketabpedia.com لمزيد من التفاصيل يرجى زيارة ketabpedia.com",
+    "للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org",
+    "Raw Scan images of a Canister of the Sim Collection: https://archive.org/details/SerialsOnMicrofilmCollection Archival backup. See Sim collection: https://archive.org/details/sim_microfilm All the issues from this canister",
+    "Archived blog snapshot from Wedzat (https://www.wedzat.com). Archived blog snapshot from Wedzat (https://www.wedzat.com).",
+    "Backup of http://www.islc.net/~ccronan/ from 4 March 2019 Backup of http://www.islc.net/~ccronan/ from 4 March 2019",
+]
+
+
+def test_uploader_notices_are_stubs():
+    for n in NOTICES:
+        assert quality.is_link_notice(n), n
+        assert quality.is_stub("ktp2019-item", n, n), n
+
+
+def test_a_description_that_cites_a_link_is_kept_and_text_without_a_link_is_not_a_notice():
+    abstract = ("We release a benchmark of 12,000 annotated claims drawn from news and encyclopaedia text, with labels for "
+                "support, contradiction and missing evidence, and we report baselines from three model families. Code and "
+                "data are available at https://github.com/example/claims.")
+    assert not quality.is_link_notice(abstract)
+    assert not quality.is_stub("A claim benchmark", abstract, abstract)
+    assert not quality.is_link_notice("Elementary algebra encompasses the basic concepts of algebra, such as variables and terms, and U.S. schools teach it.")
+    assert not quality.is_link_notice("")
+    assert not quality.is_link_notice("Dose 2.5 mg, version 1.2.3, p. 4.")

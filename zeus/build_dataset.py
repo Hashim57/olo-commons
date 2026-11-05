@@ -974,6 +974,23 @@ def add_hard_negatives(train, atoms, eval_share, seed=7):
     return hard
 
 
+def compose_contra(s, texts, rng):
+    """A hard-v1 contradiction of sentence s (the first rule that applies cleanly), for compose.py. None when no rule applies."""
+    if UNASSERTED_RE.search(s) or not _english(s):
+        return None
+    for name in rng.sample(CONTRA_GENERATORS, len(CONTRA_GENERATORS)):
+        r = run_hard_generator(name, s, next((t for t in texts if s in t), ""), texts, rng)
+        if r:
+            return r
+    return None
+
+
+def add_composed_train(train, atoms, eval_share, seed=7):
+    """compose-v1 (zeus/compose.py): two-passage claims and century paraphrases, train atoms only."""
+    import compose
+    return compose.add_composed(train, atoms, eval_share, compose_contra, seed)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", "https://bfldflbkebyapfagsxnr.supabase.co"))
@@ -983,6 +1000,7 @@ def main():
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
+    ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v1 train examples (two-passage claims and century paraphrases; train only)")
     ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
                     help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
     args = ap.parse_args()
@@ -999,6 +1017,7 @@ def main():
     atoms, dropped = quality.usable_atoms(atoms)
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     hard = [] if args.no_hard_negatives else add_hard_negatives(data["train"], atoms, args.eval_share)
+    composed = [] if args.no_compose else add_composed_train(data["train"], atoms, args.eval_share)
     data["eval2"] = build_eval2(atoms, args.eval_share)
     os.makedirs(args.out, exist_ok=True)
     for split in ("train", "eval", "eval2"):
@@ -1023,7 +1042,10 @@ def main():
             "from": "snapshot" if args.snapshot else "live"}
     # which generators made the train split, so a training run can say what it trained on
     meta["train_generators"] = ["rules-v1"] + ([] if args.no_hard_negatives else [HARD_NEGATIVES_VERSION])
+    import compose
+    meta["train_generators"] = meta["train_generators"] + ([] if args.no_compose else [compose.COMPOSE_VERSION])
     meta["train_hard_by_kind"] = {k: sum(1 for ex in hard if ex["kind"] == k) for k in sorted({ex["kind"] for ex in hard})}
+    meta["train_composed_by_kind"] = {k: sum(1 for ex in composed if ex["kind"] == k) for k in sorted({ex["kind"] for ex in composed})}
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta))

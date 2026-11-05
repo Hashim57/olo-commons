@@ -47,6 +47,17 @@ Determinism and versioning: each atom draws from its own generator seeded by its
 
 Example counts from an offline build of the 26 Oct 2026 snapshot (1,851 atoms; counts of examples, not scores): 1,725 hard examples in 781 contrastive sets, that is 781 supported twins, 694 contradicted (291 value shift, 255 antonym flip, 92 negation, 51 entity swap, 5 quantifier, 0 order swap, a pattern the snapshot's short summaries rarely contain) and 250 not covered (153 added clause, 47 modal shift, 29 scope shift, 21 relation shift). The rule-made train split grows from 5,766 to 7,491 examples: supported 1,496 to 2,277, contradicted 1,314 to 2,008, not covered 2,956 to 3,206, so the hard sets also pull the labels closer to balance (not covered had been the largest by far, because of the near misses).
 
+### 1c. Composed train examples (generator `compose-v1`, added 5 Nov 2026)
+
+Why: v16 scored 0.0 on eval3's two_passage pattern (59 supported claims whose halves come from two passages) and 0.18 on paraphrase_decade. Every rule-made and hard-v1 supported example was one sentence quoted from one passage, so the model had learned that a supported claim has exactly one quote. `zeus/compose.py` adds, over train atoms only with train distractors only:
+
+- `compose_supported` (supported): a sentence from atom A and one from atom B of the same source in one claim, A and B both among the passages; the evidence quotes both.
+- `compose_missing_half` (not_covered): the same claim with B left out of the passages.
+- `compose_false_half` (contradicted): the same claim with B's half edited by a hard-v1 contradiction rule; the evidence quotes B.
+- `century_supported` (supported) and `century_wrong` (contradicted): "in 1863" restated as "in the 19th century", and as the century before or after (never a century that has not begun; years ending in 00 are skipped).
+
+One train atom in five starts a composed set, one in two may give a century pair. The joints are "; ", ", while ", " Also, " and " In addition, " (English joints only between English sentences), never eval3's ", and", and years become centuries, never decades, so a gain on eval3 after this change measures transfer of the skill rather than a copied template. On the 2026-11-05 snapshot it adds 1,988 examples (773 supported, 773 missing half, 216 false half, 113 and 113 century). `eval.jsonl`, `eval2.jsonl` and `eval3.jsonl` are byte-identical with or without it, and `--no-compose` reproduces the train split without it; `meta.json` records `compose-v1` in `train_generators` and the counts in `train_composed_by_kind`.
+
 ## 2. Gold examples (hand-written)
 
 `data/gold/*.jsonl`, validated by `validate_gold.py` on every build and in CI. Written against real atoms with their ids and urls kept, aimed at what rules cannot make: contradictions that change a relation rather than a number, near-miss claims that sit next to a passage without being stated by it, support that needs two passages, paraphrases with no shared wording. Passage texts are the atoms' own text (or excerpts of it, marked with " ... " when cut). Licence: each passage's source licence; the claims and rationales are released with the repository under Apache 2.0.
