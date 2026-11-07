@@ -166,7 +166,10 @@ final class TalkToOloSession {
         stream = s
         turns.append(Turn(you: false, text: ""))
         let index = turns.count - 1
-        let task = Task { [weak self] in await self?.streamAnswer(content, into: s, at: index, api: api) }
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.streamAnswer(content, into: s, at: index, api: api)
+        }
         answering = task
         await task.value
         answering = nil
