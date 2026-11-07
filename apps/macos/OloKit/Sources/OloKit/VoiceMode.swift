@@ -33,6 +33,49 @@ public enum VoiceMode {
         return .ask(text)
     }
 
+    /// An answer as Talk to Olo's panel shows it: plain sentences, no Markdown marks (no "##", no "**",
+    /// no "|" tables) and no em or en dashes. Line breaks stay, list items become "•" lines, and code and
+    /// charts are left to the chat. The same rules as plainForDisplay in olo-web and the iPhone app.
+    public static func plainForDisplay(_ text: String) -> String {
+        func re(_ s: String, _ pattern: String, _ template: String) -> String {
+            s.replacingOccurrences(of: pattern, with: template, options: .regularExpression)
+        }
+        var t = text
+        t = re(t, #"```chart[\s\S]*?(?:```|$)"#, "")
+        t = re(t, #"```[\s\S]*?(?:```|$)"#, "(Code is in the chat.)")
+        t = re(t, #"<!--[\s\S]*?-->"#, "")
+        t = re(t, #"!\[[^\]]*\]\([^)]*\)"#, "")
+        t = re(t, #"\[([^\]]+)\]\([^)]*\)"#, "$1")
+        t = re(t, #"(?m)^[ \t]*\|?[ \t]*:?-{3,}:?[ \t]*(\|[ \t]*:?-{3,}:?[ \t]*)*\|?[ \t]*\n?"#, "")
+        t = tableRows(t)
+        t = re(t, #"(?m)^#{1,6}[ \t]+"#, "")
+        t = re(t, #"(?m)^[ \t]*>[ \t]?"#, "")
+        t = re(t, #"(?m)^[ \t]*[-*+][ \t]+"#, "\u{2022} ")
+        t = re(t, #"\*\*([^*\n]+)\*\*"#, "$1")
+        t = re(t, #"__([^_\n]+)__"#, "$1")
+        t = re(t, #"(?m)(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?;:]|$)"#, "$1$2")
+        t = t.replacingOccurrences(of: "**", with: "")
+        t = re(t, #"`([^`\n]+)`"#, "$1")
+        t = re(t, #"(\d)[ \t]*\u2013[ \t]*(\d)"#, "$1-$2")
+        t = re(t, #"[ \t]*[\u2014\u2013][ \t]*(?=[.!?;:,)\n])"#, "")
+        t = re(t, #",?[ \t]*\u2014[ \t]*"#, ", ")
+        t = re(t, #",?[ \t]+\u2013[ \t]+"#, ", ")
+        t = t.replacingOccurrences(of: "\u{2013}", with: "-")
+        t = re(t, #"[ \t]+\n"#, "\n")
+        t = re(t, #"\n{3,}"#, "\n\n")
+        return t.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// "| a | b |" lines become "a, b".
+    static func tableRows(_ text: String) -> String {
+        text.components(separatedBy: "\n").map { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.count > 1, trimmed.hasPrefix("|"), trimmed.hasSuffix("|") else { return line }
+            return trimmed.dropFirst().dropLast().split(separator: "|")
+                .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }.joined(separator: ", ")
+        }.joined(separator: "\n")
+    }
+
     public static let listeningWords = "Go ahead, I'm listening."
     public static let stopWords = "Okay. Talk to you later."
     public static let buildStarted = "I'm on it. I'll tell you when it's ready; you can keep asking me things meanwhile."
