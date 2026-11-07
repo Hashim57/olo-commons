@@ -338,6 +338,14 @@ final class AppModel {
         Task { await loadMessages(id, serverId: sid) }
     }
 
+    /// Talk to Olo answered in a conversation: the list and, if it is open, its messages catch up.
+    func noteVoiceAnswer(_ serverId: Int?) {
+        Task {
+            await refreshConversations()
+            if let serverId, let c = conversations.first(where: { $0.serverId == serverId }) { await loadMessages(c.id, serverId: serverId) }
+        }
+    }
+
     func openServerConversation(_ serverId: Int) {
         if let c = conversations.first(where: { $0.serverId == serverId }) { open(c.id); return }
         let c = LocalConversation(serverId: serverId, title: "Conversation")

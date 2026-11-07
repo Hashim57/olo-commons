@@ -107,3 +107,105 @@ struct BreakNudgeBanner: View {
         }
     }
 }
+
+/// A spoken stream for Talk to Olo: pieces are pushed as the answer is written and spoken in
+/// order, each fetched while the one before it plays. `end()` returns when the last piece has been
+/// heard (or at once if stopped). A piece Olo's voice cannot read is spoken by the Mac's own voice,
+/// so nothing is skipped.
+@MainActor
+final class SpokenStream: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelegate {
+    private let api: OloAPI
+    private var queue: [String] = []
+    private var fetches: [Int: Task<Data?, Never>] = [:]
+    private var played = 0
+    private var ended = false
+    private var stopped = false
+    private var running: Task<Void, Never>?
+    private var wake: CheckedContinuation<Void, Never>?
+    private var finished: CheckedContinuation<Void, Never>?
+    private var player: AVAudioPlayer?
+    private let synth = AVSpeechSynthesizer()
+    private(set) var spokeWithOlo = false
+
+    init(api: OloAPI) {
+        self.api = api
+        super.init()
+        synth.delegate = self
+    }
+
+    func push(_ piece: String) {
+        guard !stopped, !ended, !piece.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        queue.append(piece)
+        if running == nil { running = Task { await run() } }
+        wake?.resume(); wake = nil
+    }
+
+    func end() async {
+        ended = true
+        wake?.resume(); wake = nil
+        await running?.value
+    }
+
+    func stop() {
+        stopped = true
+        player?.stop(); player = nil
+        if synth.isSpeaking { synth.stopSpeaking(at: .immediate) }
+        wake?.resume(); wake = nil
+        finished?.resume(); finished = nil
+    }
+
+    private func fetch(_ i: Int) {
+        guard i < queue.count, fetches[i] == nil else { return }
+        let (text, previous, next) = (queue[i], i > 0 ? queue[i - 1] : nil, i + 1 < queue.count ? queue[i + 1] : nil)
+        let api = self.api
+        fetches[i] = Task { await api.speak(text, previous: previous, next: next) }
+    }
+
+    private func run() async {
+        while !stopped {
+            if played >= queue.count {
+                if ended { break }
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in wake = c }
+                continue
+            }
+            let i = played
+            fetch(i); fetch(i + 1)
+            let data: Data? = await fetches[i]?.value ?? nil
+            if stopped { break }
+            fetch(i + 2)
+            if let data, let p = try? AVAudioPlayer(data: data) {
+                spokeWithOlo = true
+                player = p
+                p.delegate = self
+                p.prepareToPlay()
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    finished = c
+                    if !p.play() { finished?.resume(); finished = nil }
+                }
+                player = nil
+            } else {
+                await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                    finished = c
+                    synth.speak(AVSpeechUtterance(string: queue[i]))
+                }
+            }
+            played += 1
+        }
+    }
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in self.finished?.resume(); self.finished = nil }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor in self.finished?.resume(); self.finished = nil }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.finished?.resume(); self.finished = nil }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor in self.finished?.resume(); self.finished = nil }
+    }
+}

@@ -36,7 +36,7 @@ targets:
         LSMinimumSystemVersion: "14.0"
         NSHumanReadableCopyright: "2026 Helius Network"
         ITSAppUsesNonExemptEncryption: false
-        NSMicrophoneUsageDescription: Olo listens only while you dictate a question.
+        NSMicrophoneUsageDescription: Olo listens only while you dictate a question or talk to Olo by voice.
         NSSpeechRecognitionUsageDescription: Olo turns what you say into the text of your question.
         CFBundleURLTypes:
           - CFBundleURLName: io.helius-olo.desktop
