@@ -25,6 +25,10 @@ struct MainView: View {
                     .help("New conversation (Cmd+N)")
             }
             ToolbarItem(placement: .primaryAction) {
+                Button { TalkToOloController.shared.show(continuing: model.conversation(model.selection)?.serverId) } label: { Label("Talk to Olo", systemImage: "waveform") }
+                    .help("Talk to Olo: a whole conversation by voice. Speak, pause, hear the answer, speak again; say stop to finish (Cmd+Shift+T)")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button { model.panel = .build } label: { Label("Build with Olo", systemImage: "hammer") }
                     .help("Build with Olo: code in Olo's editor while Olo reviews, suggests and writes with you")
             }

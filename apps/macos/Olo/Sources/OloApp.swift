@@ -51,6 +51,8 @@ struct OloCommands: Commands {
             Button("Build with Olo") { model.panel = .build; model.showMainWindow() }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
             Button("Ask Olo (Quick Ask)") { QuickAskController.shared.toggle() }
+            Button("Talk to Olo") { TalkToOloController.shared.show(continuing: model.conversation(model.selection)?.serverId) }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
             Divider()
             Button("Attach Files...") { model.requestAttachFiles = true }
                 .keyboardShortcut("o")
@@ -87,6 +89,7 @@ struct MenuBarMenu: View {
 
     var body: some View {
         Button("Ask Olo...  \u{2325}Space") { QuickAskController.shared.show() }
+        Button("Talk to Olo...") { TalkToOloController.shared.show() }
         Button("New Conversation") { model.newConversation(); NSApp.activate(ignoringOtherApps: true); openWindow(id: "main") }
         Button("Open Olo") { NSApp.activate(ignoringOtherApps: true); openWindow(id: "main") }
         Divider()

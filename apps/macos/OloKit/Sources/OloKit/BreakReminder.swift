@@ -29,20 +29,30 @@ public struct BreakReminder: Equatable, Sendable {
     public mutating func nudged(now: Date = Date()) { self = BreakReminder(now: now) }
 }
 
-/// Olo's voice: POST /api/voice/speak returns the answer read aloud by ElevenLabs as MP3, or
-/// fails (no key on the server, signed out, offline), when the Mac reads it with its own voice.
+/// Olo's voice: POST /api/voice/speak returns one piece of the answer read aloud by ElevenLabs as MP3, or
+/// fails (no key on the server, signed out, offline), when the Mac reads it with its own voice. The
+/// neighbouring pieces go with it so the voice keeps its pace and tone across the joins (SpeechPieces).
 extension OloAPI {
-    public struct SpeakInput: Encodable, Sendable { public let text: String }
+    public struct SpeakInput: Encodable, Sendable {
+        public let text: String
+        public let previousText: String?
+        public let nextText: String?
+        public init(text: String, previousText: String? = nil, nextText: String? = nil) {
+            self.text = text; self.previousText = previousText; self.nextText = nextText
+        }
+    }
 
-    public func speak(_ text: String) async -> Data? {
+    public func speak(_ text: String, previous: String? = nil, next: String? = nil) async -> Data? {
         var req = URLRequest(url: base.appendingPathComponent("api/voice/speak"))
         req.httpMethod = "POST"
-        req.timeoutInterval = 60
         req.setValue("application/json", forHTTPHeaderField: "content-type")
         TRPC.authorise(&req, token)
-        req.httpBody = try? JSONEncoder().encode(SpeakInput(text: text))
+        // After authorise, which sets the usual 30 seconds: a long piece takes ElevenLabs a few seconds per sentence.
+        req.timeoutInterval = 60
+        req.httpBody = try? JSONEncoder().encode(SpeakInput(text: text, previousText: previous, nextText: next))
         guard let (data, response) = try? await session.data(for: req),
-              (response as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { return nil }
+              let http = response as? HTTPURLResponse, http.statusCode == 200, !data.isEmpty,
+              (http.value(forHTTPHeaderField: "content-type") ?? "").lowercased().contains("audio") else { return nil }
         return data
     }
 }

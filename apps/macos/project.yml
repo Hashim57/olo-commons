@@ -10,7 +10,7 @@ options:
 settings:
   base:
     MARKETING_VERSION: "1.3.0"
-    CURRENT_PROJECT_VERSION: "15"
+    CURRENT_PROJECT_VERSION: "17"
     SWIFT_VERSION: "5.0"
     DEVELOPMENT_TEAM: ""
 packages:
@@ -36,7 +36,7 @@ targets:
         LSMinimumSystemVersion: "14.0"
         NSHumanReadableCopyright: "2026 Helius Network"
         ITSAppUsesNonExemptEncryption: false
-        NSMicrophoneUsageDescription: Olo listens only while you dictate a question.
+        NSMicrophoneUsageDescription: Olo listens only while you dictate a question or talk to Olo by voice.
         NSSpeechRecognitionUsageDescription: Olo turns what you say into the text of your question.
         CFBundleURLTypes:
           - CFBundleURLName: io.helius-olo.desktop
