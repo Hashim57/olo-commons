@@ -10,7 +10,7 @@ when there is something new to learn from:
   * the training set grew by a tenth or more since the serving version, or
   * the training recipe changed: meta.json lists a train generator (rules-v1,
     hard-v1, compose-v1, ...) the serving version was not trained with, or lacks
-    one it was (the set is capped at 5,000 atoms, so a new generator that adds
+    one it was (the set is capped at 7,000 atoms, so a new generator that adds
     2,000 examples can fall short of the tenth and still be the whole point), or
   * a week has passed since the last measured version (the Commons re-checks and
     grows every day, and a weekly retrain keeps Zeus on its current text).

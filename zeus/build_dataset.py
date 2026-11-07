@@ -9,7 +9,7 @@ so atoms never move between splits as the Commons grows.
 
 Usage:
   python zeus/build_dataset.py --supabase-url https://X.supabase.co --anon-key KEY \
-      [--out zeus/data] [--max-atoms 5000] [--eval-share 0.1]
+      [--out zeus/data] [--max-atoms 7000] [--eval-share 0.1]
   python zeus/build_dataset.py --snapshot commons.json      # offline, from the snapshot branch
 
 The offline snapshot (git show origin/snapshot:commons.json, also served by
@@ -996,7 +996,7 @@ def main():
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", "https://bfldflbkebyapfagsxnr.supabase.co"))
     ap.add_argument("--anon-key", default=os.environ.get("SUPABASE_ANON_KEY"))
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "data"))
-    ap.add_argument("--max-atoms", type=int, default=5000)
+    ap.add_argument("--max-atoms", type=int, default=7000)
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
