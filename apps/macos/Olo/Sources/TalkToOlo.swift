@@ -336,7 +336,7 @@ struct TalkToOloView: View {
                         ForEach(session.turns) { turn in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(turn.you ? "YOU" : "OLO").font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
-                                Text(turn.text.isEmpty ? "..." : turn.text).font(.body).textSelection(.enabled)
+                                Text(Self.shown(turn)).font(.body).textSelection(.enabled)
                                     .opacity(turn.you ? 0.8 : 1)
                             }
                             .id(turn.id)
@@ -400,6 +400,12 @@ struct TalkToOloView: View {
             .padding(.horizontal, 20).padding(.vertical, 14)
         }
         .frame(minWidth: 480, minHeight: 560)
+    }
+
+    /// Olo's turns without Markdown marks or dashes (VoiceMode.plainForDisplay); what was heard as said.
+    private static func shown(_ turn: TalkToOloSession.Turn) -> String {
+        let text = turn.you ? turn.text : VoiceMode.plainForDisplay(turn.text)
+        return text.isEmpty ? "..." : text
     }
 
     private func openInChat(_ serverId: Int) {

@@ -37,4 +37,9 @@ final class VoiceModeTests: XCTestCase {
         XCTAssertTrue(VoiceMode.buildDone(summary: "**A page** with three sections.", filename: "bakery.html").hasPrefix("bakery.html is ready. A page with three sections."))
         XCTAssertTrue(VoiceMode.buildFailed(error: nil).hasPrefix("That build did not finish."))
     }
+
+    func testPanelShowsPlainText() {
+        let shown = VoiceMode.plainForDisplay("## Facts\n\n- **Plasma** \u{2014} not gas.\n- Years 1990\u{2013}2000.\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```js\nx\n```")
+        XCTAssertEqual(shown, "Facts\n\n\u{2022} Plasma, not gas.\n\u{2022} Years 1990-2000.\n\nA, B\n1, 2\n\n(Code is in the chat.)")
+    }
 }
