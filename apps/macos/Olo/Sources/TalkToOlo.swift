@@ -152,7 +152,7 @@ final class TalkToOloSession {
         guard phase != .stopped else { return }
         turns.append(Turn(you: true, text: transcript))
         switch VoiceMode.command(transcript) {
-        case .stop: await stop(spoken: true)
+        case .stop: stop(spoken: true)
         case .build(let prompt): await startBuild(prompt)
         case .ask(let text): await ask(text)
         }
