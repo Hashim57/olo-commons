@@ -98,7 +98,7 @@ appstoreconnect.apple.com > **Apps** > **Olo** (macOS) > in the left sidebar und
    - Subscription Duration: **1 month**
    - **Subscription Prices** > Add: pick the base country (United Kingdom) and the price tier you want; Apple fills the other countries. The app shows whatever you choose.
    - **App Store Localization** (English (UK)): Display Name `Olo Starter`, Description `500 messages a month, 10 analyses`.
-   - **Review Information**: a screenshot of the Olo subscription sheet (any size over 640 x 920 is accepted; a Mac screenshot of the sheet works) and a note such as `Sign in with any email, open Olo > Subscribe, choose a plan.`
+   - **Review Information**: a screenshot of the Olo subscription sheet (any size over 640 x 920 is accepted; a Mac screenshot of the sheet works) and a note such as `Sign in with the demo account (email and fixed code in App Review Information), open Olo > Subscribe, choose a plan.`
    - Save.
 3. Repeat for the second product:
    - Reference Name `Olo Growth Monthly (Mac)`, Product ID `com.helius.olo.desktop.growth.monthly`, duration **1 month**, your price, Display Name `Olo Growth`, Description `5,000 messages a month, 100 analyses`, the same screenshot.
@@ -114,7 +114,7 @@ The server also needs the App Store Server API key and the shared secret for thi
 ### 5.3 Submit the subscriptions with the version
 
 - The **first** subscription of an app must be submitted together with a new app version: on the version page (1.2.0, or 1.3.0 if 1.2.0 was never submitted) scroll to **In-App Purchases and Subscriptions**, press **+**, tick both products, then submit the version. After that, later changes to a subscription can be submitted on their own.
-- App Review tests the purchase in the sandbox. Add to the **Notes for the reviewer**: `Olo > Subscribe opens the plans. Sign-in is required first because the plan is tied to the account (use any email; the code arrives within a minute). Payment goes through StoreKit; the server verifies the transaction with Apple. Restore Purchases is in the same sheet.`
+- App Review tests the purchase in the sandbox. Add to the **Notes for the reviewer**: `Olo > Subscribe opens the plans. Sign-in is required first because the plan is tied to the account. Use the demo account in App Review Information: enter its email, press Send Code, then enter the six digit code given there and press Sign In; no email is sent for that address, the code is fixed. Payment goes through StoreKit; the server verifies the transaction with Apple. Restore Purchases is in the same sheet.`
 - **EULA**: App Review needs either Apple's standard EULA or a custom one in the listing. The app links Apple's standard EULA (https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) in the terms sheet and the subscription sheet; in App Store Connect > the app > **App Information** > **License Agreement**, leave "Apple's Standard License Agreement" selected unless Hashim's lawyer supplies a custom one, in which case paste it there and change `Legal.eulaURL` in `OloKit/Sources/OloKit/Legal.swift` to the page that hosts it.
 - **Paid Apps agreement**: Agreements, Tax, and Banking must show the Paid Apps agreement as Active, with bank and tax forms done, or the products stay "Missing Metadata" whatever you do on the product pages.
 - The listing's description may mention the plans but must carry the price only as "from" wording or not at all, because Apple shows the price per storefront.
