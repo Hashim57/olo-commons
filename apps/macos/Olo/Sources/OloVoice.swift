@@ -58,7 +58,7 @@ final class OloVoice: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelega
     }
 
     private func deviceVoice(_ text: String) {
-        synth.speak(AVSpeechUtterance(string: String(text.prefix(5000))))
+        synth.speak(MacVoice.utterance(String(text.prefix(5000))))
     }
 
     private func resumeFinished() {
@@ -84,6 +84,25 @@ final class OloVoice: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDelega
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in self.stop() }
+    }
+}
+
+/// The Mac's own voice, used when Olo's voice cannot read (signed out, offline, or no voice key on the
+/// server): the best British English voice installed (Premium, then Enhanced, then the default), so the
+/// fallback sounds as little like a robot as the Mac allows. More voices: System Settings > Accessibility >
+/// Spoken Content > System voice > Manage Voices.
+enum MacVoice {
+    static let best: AVSpeechSynthesisVoice? = {
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        let british = voices.filter { $0.language == "en-GB" }
+        let pool = british.isEmpty ? voices.filter { $0.language.hasPrefix("en") } : british
+        return pool.max { $0.quality.rawValue < $1.quality.rawValue } ?? AVSpeechSynthesisVoice(language: "en-GB")
+    }()
+
+    static func utterance(_ text: String) -> AVSpeechUtterance {
+        let u = AVSpeechUtterance(string: text)
+        if let best { u.voice = best }
+        return u
     }
 }
 
@@ -186,7 +205,7 @@ final class SpokenStream: NSObject, AVAudioPlayerDelegate, AVSpeechSynthesizerDe
             } else {
                 await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
                     finished = c
-                    synth.speak(AVSpeechUtterance(string: queue[i]))
+                    synth.speak(MacVoice.utterance(queue[i]))
                 }
             }
             played += 1

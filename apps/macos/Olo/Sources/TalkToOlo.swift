@@ -199,9 +199,9 @@ final class TalkToOloSession {
                 case .error(let message, _, let code):
                     if code == "quota_exceeded" {
                         quota = message
-                        s.push("You have used your free messages for now. Subscribe to keep talking.")
+                        say("You have used your free messages for now. Subscribe to keep talking.", into: s, at: index, keeping: full)
                     } else {
-                        s.push("Something went wrong with that answer. Ask me again.")
+                        say("Something went wrong with that answer. Ask me again.", into: s, at: index, keeping: full)
                     }
                 default: break
                 }
@@ -213,12 +213,18 @@ final class TalkToOloSession {
         } catch {
             if let f = error as? OloAPI.StreamFailure, f.isQuota {
                 quota = f.message
-                s.push("You have used your free messages for now. Subscribe to keep talking.")
+                say("You have used your free messages for now. Subscribe to keep talking.", into: s, at: index, keeping: full)
             } else {
-                s.push("Something went wrong with that answer. Ask me again.")
+                say("Something went wrong with that answer. Ask me again.", into: s, at: index, keeping: full)
             }
         }
         await s.end()
+    }
+
+    /// Speaks a problem and shows it in Olo's turn too, so the panel never sits on "..." after a failed answer.
+    private func say(_ words: String, into s: SpokenStream, at index: Int, keeping full: String) {
+        s.push(words)
+        if index < turns.count { turns[index].text = full.isEmpty ? words : full + "\n\n" + words }
     }
 
     private func startBuild(_ prompt: String) async {
@@ -386,6 +392,10 @@ struct TalkToOloView: View {
                 }
                 Text("Say \"stop\" or \"that's all\" to finish. \"Build me a...\" starts a build.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if model.api.token == nil {
+                    Text("Sign in to hear Olo's own voice. Until then the Mac's voice reads the answers.")
+                        .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                }
             }
             .padding(.horizontal, 20).padding(.vertical, 14)
         }
