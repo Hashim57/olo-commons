@@ -85,3 +85,14 @@ def test_cloudflare_pick_is_the_best_mistral_version_and_never_demoted():
     assert promote.choose(cf)["version"] == "v6"
     assert promote.choose(cf, {"version": "v6"})["version"] == "v6"
     assert promote.choose(cands)["version"] == "v5"  # the overall best can stay a version Cloudflare cannot serve
+
+
+def test_best_carries_the_train_generators_of_the_chosen_version(tmp_path):
+    p = tmp_path / "STATUS.md"
+    p.write_text(STATUS)
+    write_out(tmp_path, "v2", 0.80, 0.75)
+    d = write_out(tmp_path, "v5", 0.835, 0.81)
+    (d / "train_summary.json").write_text(json.dumps({"base": "b", "train_examples": 3882, "train_generators": ["rules-v1", "hard-v1"]}))
+    cands = {c["version"]: c for c in promote.candidates(str(tmp_path / "out"), promote.measured_rows(str(p)))}
+    assert cands["v5"]["train_generators"] == ["rules-v1", "hard-v1"]
+    assert "train_generators" not in cands["v2"]  # no train_summary.json: the key is left out, not invented

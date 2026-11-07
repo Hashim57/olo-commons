@@ -3,6 +3,10 @@
   "framework": "peft-cloud",
   "gpu": "A100-40GB",
   "train_examples": 22497,
+  "train_generators": [
+    "rules-v1",
+    "hard-v1"
+  ],
   "eval_examples": 200,
   "epochs": 1.0,
   "steps": 1406,

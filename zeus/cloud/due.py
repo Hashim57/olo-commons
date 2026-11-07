@@ -8,6 +8,10 @@ same to $GITHUB_OUTPUT. Training costs about $1.50 of GPU time, so it runs only
 when there is something new to learn from:
   * accepted feedback flags became gold lines today, or
   * the training set grew by a tenth or more since the serving version, or
+  * the training recipe changed: meta.json lists a train generator (rules-v1,
+    hard-v1, compose-v1, ...) the serving version was not trained with, or lacks
+    one it was (the set is capped at 5,000 atoms, so a new generator that adds
+    2,000 examples can fall short of the tenth and still be the whole point), or
   * a week has passed since the last measured version (the Commons re-checks and
     grows every day, and a weekly retrain keeps Zeus on its current text).
 The version is the next vN after the highest with results.
@@ -24,6 +28,18 @@ sys.path.insert(0, ZEUS)
 from request_training import highest_version  # noqa: E402
 
 
+def recipe_change(had, now):
+    """What differs between the generators the serving version was trained with and the fresh build's, as
+    "compose-v1 added" / "hard-v1 removed", or "" when nothing differs or either side is unknown (an older
+    BEST.json without the key never triggers a run by itself)."""
+    if not had or not now:
+        return ""
+    added = sorted(set(now) - set(had))
+    removed = sorted(set(had) - set(now))
+    parts = ([", ".join(added) + " added"] if added else []) + ([", ".join(removed) + " removed"] if removed else [])
+    return "; ".join(parts)
+
+
 def decide(best, meta, new_feedback, today, force=False):
     """(due, reason) from the serving version, the fresh dataset meta and today's feedback count."""
     if force:
@@ -37,6 +53,9 @@ def decide(best, meta, new_feedback, today, force=False):
     now = int(meta.get("train_total") or meta.get("train") or 0)
     if had and now >= 1.10 * had:
         return True, f"training set grew from {had:,} to {now:,}"
+    changed = recipe_change(best.get("train_generators"), meta.get("train_generators"))
+    if changed:
+        return True, f"training recipe changed: {changed} (since {best.get('version')})"
     try:
         last = date.fromisoformat(str(best.get("date", ""))[:10])
         if (today - last).days >= 7:
