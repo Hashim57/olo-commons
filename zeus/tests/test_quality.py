@@ -95,3 +95,44 @@ def test_a_description_that_cites_a_link_is_kept_and_text_without_a_link_is_not_
     assert not quality.is_link_notice("Elementary algebra encompasses the basic concepts of algebra, such as variables and terms, and U.S. schools teach it.")
     assert not quality.is_link_notice("")
     assert not quality.is_link_notice("Dose 2.5 mg, version 1.2.3, p. 4.")
+
+
+DELPHER = ("Title: De 's Gravenhaagsche nieuwsbode Datum: 06-02-1859 Editie: Dag Plaats van uitgave: 's Gravenhage Uitgever: "
+           "J.A. de la Vieter Verspreidingsgebied: Regionaal/lokaal Nummer: 220")
+
+
+def test_catalogue_records_are_stubs():
+    records = [
+        "Title: Algemeen Handelsblad Datum: 22-05-1861 Editie: Dag Plaats van uitgave: Amsterdam Uitgever: P. den Hengst en Zoon [etc.] Verspreidingsgebied: Landelijk Nummer: 120",
+        DELPHER + " " + DELPHER,
+        "Title: Journal de la province de Limbourg Datum: 09-10-1824 Editie: Dag Plaats van uitgave: Maastricht Uitgever: L.Th. N\u0133pels Verspreidingsgebied: Regionaal/lokaal Nummer: 238",
+        "Gazette Type: Extraordinary Date: 2022-05-26 Department: Home Election Department Subject: designates the officer, Gazette Source: URL",
+        "Gazette Type: Daily Date: 2022-04-20 Department: Gazette contains multiple Departments/Organizations Subject: Gazette contains multiple Subjects Gazette Source: URL",
+        "Gazette Type: Extra Ordinary Gazette Number: 611 Date: 2024-10-01 Gazette Type: Extra Ordinary Gazette Number: 611 Date: 2024-10-01",
+    ]
+    for r in records:
+        assert quality.is_catalogue_record(r), r
+        assert quality.is_stub("Algemeen Handelsblad 22-05-1861", r, r), r
+
+
+def test_prose_with_headings_and_real_atoms_pass_the_catalogue_rule():
+    abstract = ("OBJECTIVE: To estimate the effectiveness of neuromuscular training and training load management interventions in "
+                "preventing injuries in youth football. METHODS: We searched five databases to March 2025 for randomised trials. "
+                "RESULTS: Twelve trials with 9,412 players were included; training programmes reduced injury incidence by a third. "
+                "CONCLUSIONS: Neuromuscular training prevents injuries in youth football.")
+    assert not quality.is_catalogue_record(abstract)
+    assert not quality.is_stub("Injury prevention in youth football", abstract[:200], abstract)
+    assert not quality.is_catalogue_record("Bezugnehmend auf: Arnold Schering: Bach und das Symbol, insbesondere die Symbolik seines Kanons. BJ 1925, S. 40-63 "
+                                           "Darauf bezugnehmend: Arnold Schering: Bach und das Symbol. 3. Studie: Psychologische Grundlegung des "
+                                           "Symbolbegriffs aus Christian Wolffs Psychologia empirica. BJ 1937, S. 83-95")
+    assert not quality.is_catalogue_record("Dataset published by Wake County. Wake County farmers market locations, hours, and descriptions. Source: county GIS. Updated: weekly.")
+    assert not quality.is_catalogue_record("Ehnen: town. Described in 10 Wikimedia projects.")
+    assert not quality.is_catalogue_record("")
+    assert not quality.is_catalogue_record("At 10:20 AM, the Prime Minister revealed his cabinet; at 11:05 the list was published and at 12:30 the first ministers were sworn in by the King.")
+
+
+def test_oncely_reads_a_doubled_text_once():
+    once = "Title: Arnhemsche courant Datum: 10-12-1814 Editie: Dag Nummer: 147"
+    assert quality.oncely(once + " " + once) == once
+    assert quality.oncely(once) == once
+    assert quality.oncely("short short") == "short short"

@@ -1,6 +1,6 @@
 """Atom quality rules shared with the ingester, so Zeus trains on the same Commons the ingester would keep.
 
-Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice) and
+Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice and isCatalogueRecord) and
 functions/olo-ingest/sources.ts (wikidataHousekeeping); tests/text_test.ts and
 zeus/tests/test_quality.py hold the same examples so the two stay in step.
 
@@ -26,6 +26,12 @@ STUB_LINK_REST = 160        # characters a body holding a link, an email address
 
 # Links, email addresses and bare domains, the parts of a body that point elsewhere (LINK_RE in text.ts).
 LINK_RE = re.compile(r"https?://\S+|www\.\S+|[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|\b[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:com|org|net|info|ir|io|co|edu|gov|me|tk|ru|de|uk)\b(?:/\S*)?")
+
+CATALOGUE_MIN_LABELS = 3            # a body with fewer "Label: value" fields than this is read as prose
+CATALOGUE_MAX_WORDS_PER_LABEL = 5   # ...and one with more words than this per field is prose with headings (a structured abstract)
+
+# "Label: " fields: a capitalised word, up to three more words, a colon and a space (LABEL_RE in text.ts).
+LABEL_RE = re.compile(r"(?:^|\s)(?:[A-Z][\w'\u2019.-]*(?: (?:[a-z]+|[A-Z][\w'\u2019.-]*)){0,3}): (?=\S)")
 
 NAMESPACE_RE = re.compile(r"^(Category|Template|Module|Wikipedia|Portal|Help|MediaWiki|File|Draft|Book|Wikidata|Property|Lexeme):", re.I)
 PAGE_KIND_RE = re.compile(r"^Wikimedia (category|disambiguation page|list article|template|project page|internal item|module|navigational template|KML file|set index article|permanent duplicate item|human name disambiguation page)\b|^(taxonomy|navigational|infobox|stub|citation) template$", re.I)
@@ -53,8 +59,29 @@ def is_link_notice(body):
     return len(rest) < STUB_LINK_REST
 
 
+def oncely(s):
+    """A text written twice in a row ("X X"), read once; anything else unchanged."""
+    h = (len(s) - 1) // 2
+    return s[:h] if len(s) > 40 and s[h] == " " and s[:h] == s[h + 1:] else s
+
+
+def is_catalogue_record(body):
+    """True when a body is a catalogue record, not a description: at least CATALOGUE_MIN_LABELS "Label: value"
+    fields with at most CATALOGUE_MAX_WORDS_PER_LABEL words per field. Delpher newspaper issues ("Title: Algemeen
+    Handelsblad Datum: 22-05-1861 Editie: Dag Plaats van uitgave: Amsterdam ...") and Indian gazettes ("Gazette
+    Type: Extraordinary Date: 2022-05-26 Department: ...") were 365 of the 999 archive_org atoms on the 2026-11-07
+    snapshot; no atom of any other source matched (the closest, an abstract written as a list of citations, has
+    6.6 words per label; a structured abstract has 19 or more)."""
+    b = oncely(clean(body))
+    labels = len(LABEL_RE.findall(b))
+    if labels < CATALOGUE_MIN_LABELS:
+        return False
+    return len(words(b)) / labels <= CATALOGUE_MAX_WORDS_PER_LABEL
+
+
 def is_stub(title, summary, content, authors=None):
-    """True when an atom carries no knowledge: a label, one line repeated, or nothing beyond its title and authors."""
+    """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
+    record, or nothing beyond its title and authors."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
@@ -66,6 +93,8 @@ def is_stub(title, summary, content, authors=None):
     if distinct < STUB_REPEAT_DISTINCT and distinct / len(w) < STUB_REPEAT_RATIO:
         return True
     if is_link_notice(body):
+        return True
+    if is_catalogue_record(body):
         return True
     rest = " " + body.lower() + " "
     for name in [title] + list(authors or []):
