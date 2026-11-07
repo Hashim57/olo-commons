@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, isLinkNotice, isStub, joinParts, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, isCatalogueRecord, isLinkNotice, isStub, joinParts, oncely, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -123,4 +123,46 @@ Deno.test('isLinkNotice: a real description that cites a link is kept, and so is
   assertEquals(isLinkNotice(''), false);
   // numbers with a dot are not domains
   assertEquals(isLinkNotice('Dose 2.5 mg, version 1.2.3, p. 4.'), false);
+});
+
+/* ---------- isCatalogueRecord: a description that is a metadata record ---------- */
+
+Deno.test('isCatalogueRecord: Delpher and gazette records from the 2026-11-07 snapshot are stubs', () => {
+  const records = [
+    // Delpher newspaper issues, the description once and (as the Archive returns it) twice
+    'Title: Algemeen Handelsblad Datum: 22-05-1861 Editie: Dag Plaats van uitgave: Amsterdam Uitgever: P. den Hengst en Zoon [etc.] Verspreidingsgebied: Landelijk Nummer: 120',
+    "Title: De 's Gravenhaagsche nieuwsbode Datum: 06-02-1859 Editie: Dag Plaats van uitgave: 's Gravenhage Uitgever: J.A. de la Vieter Verspreidingsgebied: Regionaal/lokaal Nummer: 220 Title: De 's Gravenhaagsche nieuwsbode Datum: 06-02-1859 Editie: Dag Plaats van uitgave: 's Gravenhage Uitgever: J.A. de la Vieter Verspreidingsgebied: Regionaal/lokaal Nummer: 220",
+    'Title: Journal de la province de Limbourg Datum: 09-10-1824 Editie: Dag Plaats van uitgave: Maastricht Uitgever: L.Th. N\u0133pels Verspreidingsgebied: Regionaal/lokaal Nummer: 238',
+    // Indian gazettes
+    'Gazette Type: Extraordinary Date: 2022-05-26 Department: Home Election Department Subject: designates the officer, Gazette Source: URL',
+    'Gazette Type: Daily Date: 2022-04-20 Department: Gazette contains multiple Departments/Organizations Subject: Gazette contains multiple Subjects Gazette Source: URL',
+    'Gazette Type: Extra Ordinary Gazette Number: 611 Date: 2024-10-01 Gazette Type: Extra Ordinary Gazette Number: 611 Date: 2024-10-01',
+  ];
+  for (const r of records) {
+    assert(isCatalogueRecord(r), r);
+    assert(isStub('Algemeen Handelsblad 22-05-1861', r, r), r);
+  }
+});
+
+Deno.test('isCatalogueRecord: prose with headings and real atoms of every source pass', () => {
+  // a structured abstract has labels but many words between them
+  const abstract = 'OBJECTIVE: To estimate the effectiveness of neuromuscular training and training load management interventions in preventing injuries in youth football. METHODS: We searched five databases to March 2025 for randomised trials. RESULTS: Twelve trials with 9,412 players were included; training programmes reduced injury incidence by a third. CONCLUSIONS: Neuromuscular training prevents injuries in youth football.';
+  assertEquals(isCatalogueRecord(abstract), false);
+  assertEquals(isStub('Injury prevention in youth football', abstract.slice(0, 200), abstract), false);
+  // an abstract written as a list of citations (openalex, 6.6 words per label) is kept
+  assertEquals(isCatalogueRecord('Bezugnehmend auf: Arnold Schering: Bach und das Symbol, insbesondere die Symbolik seines Kanons. BJ 1925, S. 40-63 Darauf bezugnehmend: Arnold Schering: Bach und das Symbol. 3. Studie: Psychologische Grundlegung des Symbolbegriffs aus Christian Wolffs Psychologia empirica. BJ 1937, S. 83-95'), false);
+  // one or two labels are a normal way to start a description
+  assertEquals(isCatalogueRecord('Dataset published by Wake County. Wake County farmers market locations, hours, and descriptions. Source: county GIS. Updated: weekly.'), false);
+  assertEquals(isCatalogueRecord('Ehnen: town. Described in 10 Wikimedia projects.'), false);
+  assertEquals(isCatalogueRecord(''), false);
+  // a time of day is not a label
+  assertEquals(isCatalogueRecord('At 10:20 AM, the Prime Minister revealed his cabinet; at 11:05 the list was published and at 12:30 the first ministers were sworn in by the King.'), false);
+});
+
+Deno.test('oncely reads a text written twice once and leaves anything else alone', () => {
+  const once = 'Title: Arnhemsche courant Datum: 10-12-1814 Editie: Dag Nummer: 147';
+  assertEquals(oncely(once + ' ' + once), once);
+  assertEquals(oncely(once), once);
+  assertEquals(oncely('a a'), 'a a');
+  assertEquals(oncely('short short'), 'short short');
 });

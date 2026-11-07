@@ -41,3 +41,15 @@ def test_compact_prefers_the_summary_and_caps_the_text():
     assert row[-1] == "2026-11-03"
     long_summary = bs.compact(atom(2))
     assert long_summary[2] == "s" * 250
+
+
+def test_compact_does_not_write_a_summary_that_starts_its_content_twice():
+    desc = "Title: Arnhemsche courant Datum: 10-12-1814 Editie: Dag Plaats van uitgave: Arnhem Uitgever: C.A. Thieme Nummer: 147"
+    # the connectors store a short description as both summary and content
+    assert bs.compact(atom(1, summary=desc, content=desc))[2] == desc
+    # ...and a longer one as summary = the first 600 characters of the content
+    long = "We study coral reef recovery after bleaching. " * 20
+    row = bs.compact(atom(2, summary=long[:150], content=long))
+    assert row[2] == " ".join(long.split())[:bs.TEXT_MAX]
+    # a summary that is not the start of the content is still followed by the content
+    assert bs.compact(atom(3, summary="A short one.", content="Then the rest."))[2] == "A short one. Then the rest."

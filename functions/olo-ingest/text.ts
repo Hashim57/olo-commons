@@ -73,10 +73,46 @@ export function isLinkNotice(body: unknown): boolean {
   return rest.length < STUB_LINK_REST;
 }
 
+export const CATALOGUE_MIN_LABELS = 3;    // a body with fewer "Label: value" fields than this is read as prose
+export const CATALOGUE_MAX_WORDS_PER_LABEL = 5; // ...and one with more words than this per field is prose with headings (a structured abstract)
+
+/** "Label: " fields: a capitalised word, up to three more words, a colon and a space ("Title: ", "Plaats van uitgave: ", "Gazette Type: "). */
+export const LABEL_RE = /(?:^|\s)(?:[A-Z][\w'’.-]*(?: (?:[a-z]+|[A-Z][\w'’.-]*)){0,3}): (?=\S)/g;
+
+/** A text written twice in a row ("X X"), read once; anything else unchanged. */
+export function oncely(s: string): string {
+  const h = Math.floor((s.length - 1) / 2);
+  return s.length > 40 && s[h] === ' ' && s.slice(0, h) === s.slice(h + 1) ? s.slice(0, h) : s;
+}
+
+/**
+ * True when a body is a catalogue record, not a description: a list of
+ * "Label: value" fields with almost no words between the labels. The Internet
+ * Archive holds library and government metadata records whose description
+ * field is the record itself: Delpher newspaper issues ("Title: Algemeen
+ * Handelsblad Datum: 22-05-1861 Editie: Dag Plaats van uitgave: Amsterdam
+ * Uitgever: ... Nummer: 44") and Indian gazettes ("Gazette Type: Extraordinary
+ * Date: 2022-05-26 Department: Home Election Department Subject: ..."). On the
+ * 2026-11-07 snapshot 365 of the 999 archive_org atoms were of that kind, about
+ * 14 more arriving a day, and no atom of any other source matched: a record
+ * has at most 5 words per field (Delpher about 4.3), while the closest real
+ * text, an abstract written as a list of citations, has 6.6, and a structured
+ * abstract ("OBJECTIVE: ... METHODS: ...") has 19 or more. The claim such a
+ * record would support ("the paper was published in Amsterdam") is in the
+ * title and the date already; the body adds nothing a reader could check.
+ */
+export function isCatalogueRecord(body: unknown): boolean {
+  const b = oncely(clean(body));
+  const labels = (b.match(LABEL_RE) || []).length;
+  if (labels < CATALOGUE_MIN_LABELS) return false;
+  return words(b).length / labels <= CATALOGUE_MAX_WORDS_PER_LABEL;
+}
+
 /**
  * True when an atom would carry no knowledge: its body is a label, one word
- * or one line repeated, a notice that points elsewhere (isLinkNotice), or
- * says nothing beyond the title and the authors.
+ * or one line repeated, a notice that points elsewhere (isLinkNotice), a
+ * catalogue record (isCatalogueRecord), or says nothing beyond the title and
+ * the authors.
  * The Internet Archive search returns many uploads whose description is the
  * identifier, a file name or a word typed twice ("new book new book", "fhfh
  * fhfh", "P P"); a third of the archive_org atoms in the Commons on 2026-11-03
@@ -96,6 +132,7 @@ export function isStub(title: unknown, summary: unknown, content: unknown, autho
   if (distinct < STUB_MIN_DISTINCT) return true;
   if (distinct < STUB_REPEAT_DISTINCT && distinct / w.length < STUB_REPEAT_RATIO) return true;
   if (isLinkNotice(body)) return true;
+  if (isCatalogueRecord(body)) return true;
   // What the body says once the title and the authors are taken out of it.
   let rest = ' ' + body.toLowerCase() + ' ';
   const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);

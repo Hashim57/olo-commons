@@ -15,6 +15,7 @@ Format (v1): {"v":1,"built_at","count","licence_note","fields":[...],"atoms":[[.
 with fields id, title, text, url, source, licence, published_at. text is the
 summary, or the start of the content when the summary is short (at most 600
 characters), which is enough to search and to quote with a link to the source.
+A summary that is the start of its content is not written twice.
 """
 import argparse
 import json
@@ -54,10 +55,18 @@ def page(after, limit=500, tries=4):
 
 
 def compact(a):
-    summary = (a.get("summary") or "").strip()
-    content = (a.get("content") or "").strip()
-    text = summary if len(summary) >= 200 or not content else (summary + " " + content).strip()
-    text = " ".join(text.split())[:TEXT_MAX]
+    summary = " ".join((a.get("summary") or "").split())
+    content = " ".join((a.get("content") or "").split())
+    if len(summary) >= 200 or not content:
+        text = summary
+    elif content.startswith(summary):
+        # The connectors write the summary as the start of the content, and for a short description
+        # (archive_org under 600 characters) the two are the same text: joining them doubled it.
+        # 582 of the 7,149 texts in the 2026-11-07 snapshot were one description written twice.
+        text = content
+    else:
+        text = (summary + " " + content).strip()
+    text = text[:TEXT_MAX]
     return [a.get("id"), (a.get("title") or "").strip()[:300], text, a.get("url") or "", a.get("source") or "", a.get("licence") or "", a.get("published_at"),
             a.get("status") or "candidate", a.get("credibility"), a.get("valid_from"), a.get("valid_to"), (a.get("observed_at") or "")[:10] or None]
 

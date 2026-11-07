@@ -53,9 +53,19 @@ def candidates(out_dir, rows):
                 held_out = float(vit["label_accuracy"]) if "label_accuracy" in vit else None
             except (OSError, ValueError, TypeError):
                 held_out = None
+        # The train generators (rules-v1, hard-v1, compose-v1, ...) the version was built with, as record.py
+        # copied them from meta.json into train_summary.json; due.py retrains when the recipe changes.
+        gens = None
+        sum_path = os.path.join(out_dir, f"zeus-{v}", "train_summary.json")
+        if os.path.exists(sum_path):
+            try:
+                gens = json.load(open(sum_path, encoding="utf-8")).get("train_generators")
+            except (OSError, ValueError, AttributeError):
+                gens = None
         out.append({"version": v, "date": row["date"], "base": ev.get("base") or row["base"], "train_examples": row["train_examples"],
                     "label_accuracy": float(ev.get("label_accuracy", row["label_accuracy"])), "evidence_hit": float(ev.get("evidence_hit", row["evidence_hit"])),
-                    "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1"), "held_out_accuracy": held_out})
+                    "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1"), "held_out_accuracy": held_out,
+                    **({"train_generators": gens} if gens else {})})
     return out
 
 

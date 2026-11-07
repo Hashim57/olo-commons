@@ -32,11 +32,30 @@ def add_row(status_path, row, version):
     return True
 
 
+def note_generators(summary_path, summary, meta_path):
+    """Copy the train generators of the build this version was trained on (meta.json, the same run) into
+    train_summary.json, which is committed, so promote.py can put them in BEST.json and due.py can see when
+    the recipe changes. Returns the list, or None when meta.json has none."""
+    if summary.get("train_generators"):
+        return summary["train_generators"]
+    try:
+        gens = json.load(open(meta_path, encoding="utf-8")).get("train_generators")
+    except (OSError, ValueError, AttributeError):
+        gens = None
+    if gens:
+        summary["train_generators"] = gens
+        with open(summary_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, indent=2)
+            f.write("\n")
+    return gens
+
+
 def main():
     v = sys.argv[1]
     out = os.path.join(ZEUS, "out", f"zeus-{v}")
     ev = json.load(open(os.path.join(out, "eval.json")))
     s = json.load(open(os.path.join(out, "train_summary.json")))
+    note_generators(os.path.join(out, "train_summary.json"), s, os.path.join(ZEUS, "data", "meta.json"))
     row = recipe.status_row(datetime.now(timezone.utc).date().isoformat(), v, s.get("base") or ev.get("base"), f"{s.get('train_examples'):,}", ev, s.get("minutes"), s.get("gpu"))
     ext_path = os.path.join(out, "eval-external.json")
     if os.path.exists(ext_path):
