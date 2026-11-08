@@ -10,8 +10,9 @@ const fs = require("node:fs");
 const { Settings } = require("./settings");
 const shields = require("./shields");
 const safety = require("./safety");
+const scam = require("./scam");
 const { toUrl, ENGINES } = require("./urlbar");
-const { PolNet, allowedApi, parsePolUrl } = require("./polnet");
+const { PolNet, allowedApi, parsePolUrl, humanRequest } = require("./polnet");
 const { Olo } = require("./olo");
 
 const UI_HEIGHT = 86;
@@ -129,11 +130,61 @@ function tabOfWebContentsId(id) {
   return null;
 }
 
-function warningFor(host) {
+function warningFor(host, pathname = "/") {
   if (trustedHosts.has(host)) return null;
   const look = safety.lookalike(host);
   if (look) return { kind: "lookalike", brand: look.brand, official: look.official, why: look.why };
+  if (settings.data.protectedMode && scam.remoteAccessSite(host, pathname)) return { kind: "remote-access" };
   return null;
+}
+
+/** The warning page, in protected mode with a short pause before "open anyway", and a word to helpers. */
+function showWarning(w, tab, warn, url) {
+  const prot = settings.data.protectedMode;
+  tab.view.webContents.loadURL(page("warning", { ...warn, url, ...(prot ? { protected: "1" } : {}) }));
+  let host = "";
+  try { host = new URL(url).hostname; } catch { /* not a URL */ }
+  if (host) alertHelpers(w, host, warn.kind);
+}
+
+/**
+ * Tells the person's helpers (family help) that a warning was shown: the site's host name and the kind
+ * of warning, nothing else. Only in protected mode, only for members with helpers, never from private windows.
+ */
+function alertHelpers(w, host, kind) {
+  if (!settings.data.protectedMode || !settings.pass() || w?.isPrivate || !scam.ALERT_KINDS.includes(kind)) return;
+  polnet.call("POST", "/v1/helpers/alerts", { host, kind }).catch(() => undefined);
+}
+
+/**
+ * After a page loads: read what it says and what it asks for, in an isolated world the page cannot see,
+ * and warn about scam pages, and (in protected mode) pause before a password or card on a new site.
+ */
+async function inspectPage(w, tab) {
+  const wc = tab.view.webContents;
+  let url = "";
+  let host = "";
+  try {
+    url = wc.getURL();
+    if (!/^https?:/.test(url)) return;
+    host = new URL(url).hostname;
+  } catch { return; }
+  if (trustedHosts.has(host)) return;
+  let probe;
+  try {
+    probe = await wc.executeJavaScriptInIsolatedWorld(999, [{ code: scam.PAGE_PROBE }]);
+  } catch { return; }
+  if (!probe || wc.isDestroyed() || wc.getURL() !== url) return;
+  const found = scam.scamPage(probe.text);
+  if (found) {
+    showWarning(w, tab, { kind: "scam-page", why: JSON.stringify(found.reasons) }, url);
+    return;
+  }
+  if (settings.data.protectedMode && !w.isPrivate) {
+    const field = scam.needsPause(probe, settings.knownSince(host));
+    settings.noteHost(host);
+    if (field) showWarning(w, tab, { kind: "pause", field }, url);
+  }
 }
 
 function prepareSession(ses, { isPrivate }) {
@@ -160,11 +211,12 @@ function prepareSession(ses, { isPrivate }) {
     const shieldsOn = settings.siteShieldsOn(topHost);
     if (mainFrame && found) {
       found.tab.blocked = 0;
-      const host = new URL(details.url).hostname;
-      const warn = warningFor(host) || (settings.data.safetyList && settings.pass() && !trustedHosts.has(host) && (await Promise.race([polnet.flagged(host, safety.hostHash), new Promise((r) => setTimeout(() => r(false), 1500))])) ? { kind: "reported" } : null);
+      const target = new URL(details.url);
+      const host = target.hostname;
+      const warn = warningFor(host, target.pathname) || (settings.data.safetyList && settings.pass() && !trustedHosts.has(host) && (await Promise.race([polnet.flagged(host, safety.hostHash), new Promise((r) => setTimeout(() => r(false), 1500))])) ? { kind: "reported" } : null);
       if (warn) {
         callback({ cancel: true });
-        setImmediate(() => found.tab.view.webContents.loadURL(page("warning", { ...warn, url: details.url })));
+        setImmediate(() => showWarning(found.win, found.tab, warn, details.url));
         return;
       }
     }
@@ -229,6 +281,16 @@ function prepareSession(ses, { isPrivate }) {
     const name = item.getFilename();
     if (safety.riskyDownload(name)) {
       const win = BrowserWindow.fromWebContents(wc) || [...windows][0]?.win;
+      if (settings.data.protectedMode) {
+        // Protected mode: programs are not downloaded at all. The person can turn protected mode off, or ask a helper.
+        item.cancel();
+        let host = "";
+        try { host = new URL(item.getURL()).hostname; } catch { /* no url */ }
+        const found = tabOfWebContentsId(wc.id);
+        if (host) alertHelpers(found?.win, host, "download");
+        dialog.showMessageBox(win, { type: "warning", buttons: ["OK"], message: `POL Net stopped ${name}.`, detail: "Protected mode does not download files that can run programs. If someone on the phone or in a message asked you to download it, that is a common scam: hang up and call someone you trust. If you need this file, ask your helper." }).catch(() => undefined);
+        return;
+      }
       const answer = dialog.showMessageBoxSync(win, { type: "warning", buttons: ["Cancel", "Download anyway"], defaultId: 0, cancelId: 0, message: `${name} can run programs on your computer.`, detail: "Only download it if you trust where it came from. Scammers often send files like this pretending to be invoices, parcels or software updates." });
       if (answer !== 1) item.cancel();
     }
@@ -295,6 +357,7 @@ function createTab(w, url, { background = false } = {}) {
     pushState(w);
   });
   wc.on("did-navigate-in-page", () => pushState(w));
+  wc.on("did-finish-load", () => { inspectPage(w, tab).catch(() => undefined); });
   wc.on("did-fail-load", (_e, code, desc, failedUrl, isMainFrame) => {
     if (!isMainFrame || code === -3) return;
     // An http site that has no https version: say so, and let the person choose.
@@ -401,6 +464,7 @@ function contextMenu(w, tab, p) {
   if (p.selectionText) {
     items.push({ label: "Copy", role: "copy" });
     items.push({ label: `Ask Olo about "${p.selectionText.slice(0, 30)}${p.selectionText.length > 30 ? "..." : ""}"`, click: () => { w.panel = true; layout(w); pushState(w); w.win.webContents.send("olo-prefill", p.selectionText.slice(0, 2000)); } });
+    items.push({ label: "Check this claim with Olo and Zeus", click: () => { w.panel = true; layout(w); pushState(w); w.win.webContents.send("olo-check", p.selectionText.slice(0, 2000)); } });
     items.push({ type: "separator" });
   }
   if (p.isEditable) items.push({ label: "Paste", role: "paste" }, { label: "Select all", role: "selectAll" }, { type: "separator" });
@@ -551,7 +615,11 @@ function registerIpc() {
     if (found && /^(https?|pol|polnet):/.test(url)) createTab(found.win, url);
   });
   ipcMain.handle("page:settings", (event, patch) => {
-    if (!(event.senderFrame?.url || "").startsWith("polnet://settings")) return null;
+    const from = event.senderFrame?.url || "";
+    // The family page may switch protected mode and nothing else; the settings page may change everything.
+    if (from.startsWith("polnet://family")) patch = patch && "protectedMode" in patch ? { protectedMode: Boolean(patch.protectedMode) } : null;
+    else if (!from.startsWith("polnet://settings")) return null;
+    if (patch && patch.protectedMode === false) settings.clearKnownHosts();
     const out = patch ? settings.set(patch) : settings.get();
     polnet.names.clear();
     pushAll();
@@ -579,6 +647,28 @@ function registerIpc() {
       else trustedHosts.add(host);
       found.tab.view.webContents.loadURL(url);
     } catch { /* bad url */ }
+  });
+  // "Show this site I am a real person": only from the consent page, only for the site the person came from.
+  ipcMain.handle("page:human-check", (event, query) => {
+    if (!(event.senderFrame?.url || "").startsWith("polnet://human")) return { error: "forbidden" };
+    const wc = event.sender;
+    const i = wc.navigationHistory.getActiveIndex();
+    const prev = i > 0 ? wc.navigationHistory.getEntryAtIndex(i - 1)?.url : null;
+    const r = humanRequest(query || {}, prev);
+    return r.error ? r : { origin: r.origin, host: r.host };
+  });
+  ipcMain.handle("page:human", async (event, query) => {
+    if (!(event.senderFrame?.url || "").startsWith("polnet://human")) return { error: "forbidden" };
+    const wc = event.sender;
+    const i = wc.navigationHistory.getActiveIndex();
+    const prev = i > 0 ? wc.navigationHistory.getEntryAtIndex(i - 1)?.url : null;
+    const r = humanRequest(query || {}, prev);
+    if (r.error) return r;
+    if (!settings.pass()) return { error: "Join POL Net first." };
+    const res = await polnet.call("POST", "/v1/human", { origin: r.origin, nonce: r.nonce });
+    if (res.status !== 200 || !res.human) return { error: res.message || "POL Net could not answer right now." };
+    wc.loadURL(`${r.returnTo}#${new URLSearchParams({ pol_human: res.human })}`);
+    return { ok: true };
   });
   ipcMain.handle("join:complete", async (event, pass) => {
     const server = new URL(settings.data.server).origin;
@@ -622,6 +712,7 @@ function buildMenu() {
       submenu: [
         { label: "Tasks that pay", click: () => { const w = focused(); if (w) createTab(w, "polnet://tasks/"); } },
         { label: "Wallet", click: () => { const w = focused(); if (w) createTab(w, "polnet://wallet/"); } },
+        { label: "Family help and protected mode", click: () => { const w = focused(); if (w) createTab(w, "polnet://family/"); } },
         { label: "pol:// Names", click: () => { const w = focused(); if (w) createTab(w, "polnet://names/"); } },
         { label: "History", accelerator: "CmdOrCtrl+Y", click: () => { const w = focused(); if (w) createTab(w, "polnet://history/"); } },
         { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => { const w = focused(); if (w) createTab(w, "polnet://settings/"); } },
@@ -666,5 +757,5 @@ app.on("window-all-closed", () => {
 
 // For the end-to-end test only (POLNET_E2E=1): a way to see inside without touching the UI.
 if (process.env.POLNET_E2E === "1") {
-  global.__polnet = { windows, settings: () => settings, stateOf, activeTab, createTab, createWindow, navigate, acceptPass };
+  global.__polnet = { windows, settings: () => settings, stateOf, activeTab, createTab, createWindow, navigate, acceptPass, trustedHosts };
 }

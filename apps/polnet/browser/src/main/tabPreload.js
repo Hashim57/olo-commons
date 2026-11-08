@@ -15,5 +15,7 @@ if (location.protocol === "polnet:") {
     history: (opts) => ipcRenderer.invoke("page:history", opts),
     clearData: () => ipcRenderer.invoke("page:clear-data"),
     proceed: (url, kind) => ipcRenderer.send("page:proceed", { url, kind }),
+    humanCheck: (query) => ipcRenderer.invoke("page:human-check", query),
+    human: (query) => ipcRenderer.invoke("page:human", query),
   });
 }

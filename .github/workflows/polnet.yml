@@ -41,8 +41,9 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -c "create role anon; create role authenticated;"
-          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f supabase/migrations/001_polnet.sql
-          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f supabase/migrations/001_polnet.sql
+          for i in 1 2; do
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f supabase/migrations/001_polnet.sql -f supabase/migrations/002_polnet_helpers.sql
+          done
       - run: deno lint
       - run: deno check supabase/functions/polnet-api/index.ts scripts/*.ts
       - run: deno test -A tests/

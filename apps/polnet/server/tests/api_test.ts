@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 // deno test -A tests/   (POLNET_TEST_PG=postgres://... also runs the whole suite against real Postgres)
-import { createApi, validName, validTarget } from "../supabase/functions/_shared/api.ts";
+import { createApi, validHost, validName, validOrigin, validTarget } from "../supabase/functions/_shared/api.ts";
 import { loadSigner, newSigningJwk, verify } from "../supabase/functions/_shared/jwt.ts";
 import { MemoryStore, type Store } from "../supabase/functions/_shared/store.ts";
 
@@ -272,11 +272,104 @@ async function suite(name: string, makeStore: () => Promise<Store>) {
     eq((await h.call("GET", "/v1/me", undefined, org.pass)).j.error, "member_suspended");
     eq((await h.call("POST", "/v1/join", { pol_token: "good:o:padding", handle: "x_y_z" })).j.error, "member_suspended", "a suspended person cannot rejoin under a new handle");
   });
+
+  Deno.test(`${name}: family help links a helper by code, and alerts carry only the host and kind`, async () => {
+    const h = await harness(await makeStore());
+    const gran = await h.join("gran", "gran_may");
+    const son = await h.join("son", "son_tom");
+    const other = await h.join("other", "other_one");
+    // No helper yet: an alert goes nowhere and nothing is stored.
+    eq((await h.call("POST", "/v1/helpers/alerts", { host: "paypa1.com", kind: "lookalike" }, gran.pass)).j.sent, 0);
+    const inv = await h.call("POST", "/v1/helpers/invite", {}, gran.pass);
+    eq(inv.status, 201);
+    assert(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/.test(inv.j.code), inv.j.code);
+    eq((await h.call("POST", "/v1/helpers/accept", { code: inv.j.code }, gran.pass)).j.error, "own_code", "nobody can help themselves");
+    const inv2 = await h.call("POST", "/v1/helpers/invite", {}, gran.pass);
+    eq((await h.call("POST", "/v1/helpers/accept", { code: inv2.j.code.toLowerCase().replace("-", " ") }, son.pass)).j.helping, "gran_may", "codes forgive case and spacing");
+    eq((await h.call("POST", "/v1/helpers/accept", { code: inv2.j.code }, other.pass)).j.error, "code_unknown", "a code works once");
+    const list = await h.call("GET", "/v1/helpers", undefined, gran.pass);
+    eq(list.j.helpers.map((x: any) => x.handle), ["son_tom"]);
+    eq((await h.call("GET", "/v1/helpers", undefined, son.pass)).j.helping.map((x: any) => x.handle), ["gran_may"]);
+    // Alerts: validated, and the helper sees host, kind and when; the other member sees nothing.
+    eq((await h.call("POST", "/v1/helpers/alerts", { host: "not a host", kind: "lookalike" }, gran.pass)).status, 400);
+    eq((await h.call("POST", "/v1/helpers/alerts", { host: "anydesk.com", kind: "keylogger" }, gran.pass)).status, 400);
+    eq((await h.call("POST", "/v1/helpers/alerts", { host: "AnyDesk.com", kind: "remote-access", url: "https://anydesk.com/secret?x=1" }, gran.pass)).j.sent, 1);
+    const seen = await h.call("GET", "/v1/helpers/alerts", undefined, son.pass);
+    eq(seen.j.alerts.length, 1);
+    eq(Object.keys(seen.j.alerts[0]).sort(), ["at", "handle", "host", "kind"]);
+    eq(seen.j.alerts[0].host, "anydesk.com");
+    eq((await h.call("GET", "/v1/helpers/alerts", undefined, other.pass)).j.alerts.length, 0);
+    // Alerts older than 30 days are not shown.
+    h.tick(20 * 86400_000);
+    son.pass = (await h.call("GET", "/v1/me", undefined, son.pass)).j.pass;
+    gran.pass = (await h.call("GET", "/v1/me", undefined, gran.pass)).j.pass;
+    other.pass = (await h.call("GET", "/v1/me", undefined, other.pass)).j.pass;
+    h.tick(11 * 86400_000);
+    eq((await h.call("GET", "/v1/helpers/alerts", undefined, son.pass)).j.alerts.length, 0);
+    // Either side ends the link; then alerts stop reaching the helper.
+    eq((await h.call("DELETE", `/v1/helpers/${list.j.helpers[0].id}`, undefined, other.pass)).j.ended, false, "a stranger cannot end it");
+    eq((await h.call("DELETE", `/v1/helpers/${list.j.helpers[0].id}`, undefined, son.pass)).j.ended, true);
+    eq((await h.call("POST", "/v1/helpers/alerts", { host: "anydesk.com", kind: "remote-access" }, gran.pass)).j.sent, 0);
+    // Invites expire after a day.
+    const late = await h.call("POST", "/v1/helpers/invite", {}, gran.pass);
+    h.tick(25 * 3600_000);
+    eq((await h.call("POST", "/v1/helpers/accept", { code: late.j.code }, son.pass)).j.error, "code_unknown");
+  });
+
+  Deno.test(`${name}: at most three helpers`, async () => {
+    const h = await harness(await makeStore());
+    const p = await h.join("p", "protected_p");
+    for (const who of ["a", "b", "c"]) {
+      const inv = await h.call("POST", "/v1/helpers/invite", {}, p.pass);
+      const helper = await h.join(who, `helper_${who}`);
+      eq((await h.call("POST", "/v1/helpers/accept", { code: inv.j.code }, helper.pass)).status, 201);
+    }
+    eq((await h.call("POST", "/v1/helpers/invite", {}, p.pass)).j.error, "helper_limit");
+  });
+
+  Deno.test(`${name}: human passes are per site, unlinkable, short and bound to a nonce`, async () => {
+    const h = await harness(await makeStore());
+    const a = await h.join("ha", "human_a");
+    eq((await h.call("POST", "/v1/human", { origin: "https://shop.example", nonce: "n0nce-123" })).status, 401, "members only");
+    for (const bad of ["http://shop.example", "https://shop.example/", "https://shop.example/path", "https://localhost", "https://10.0.0.1", "javascript:alert(1)"]) {
+      eq((await h.call("POST", "/v1/human", { origin: bad, nonce: "n0nce-123" }, a.pass)).j.error, "origin_invalid", bad);
+    }
+    eq((await h.call("POST", "/v1/human", { origin: "https://shop.example", nonce: "short" }, a.pass)).j.error, "nonce_invalid");
+    const one = await h.call("POST", "/v1/human", { origin: "https://shop.example", nonce: "n0nce-123" }, a.pass);
+    const two = await h.call("POST", "/v1/human", { origin: "https://forum.example", nonce: "n0nce-456" }, a.pass);
+    const again = await h.call("POST", "/v1/human", { origin: "https://shop.example", nonce: "n0nce-789" }, a.pass);
+    const c1 = await verify(one.j.human, [h.signer.publicJwk], ISS, h.now());
+    const c2 = await verify(two.j.human, [h.signer.publicJwk], ISS, h.now());
+    const c3 = await verify(again.j.human, [h.signer.publicJwk], ISS, h.now());
+    assert(c1 && c2 && c3);
+    eq([c1.typ, c1.aud, c1.nonce], ["human", "https://shop.example", "n0nce-123"]);
+    eq(c1.sub, c3.sub, "stable for one site");
+    assert(c1.sub !== c2.sub && c1.sub !== a.id, "different on every site and never the member id");
+    eq(Number(c1.exp) - Number(c1.iat), 300);
+    eq((await h.call("GET", "/v1/me", undefined, one.j.human)).status, 401, "a human pass is useless against the API");
+    assert(!(await verify(one.j.human, [h.signer.publicJwk], ISS, h.now() + 301_000)), "expired after five minutes");
+  });
 }
 
 Deno.test("names and targets: rules", () => {
   assert(validName("community-garden") && validName("a1b") && !validName("ab") && !validName("-ab") && !validName("ab-") && !validName("a--b") && !validName("olo"));
+  assert(validOrigin("https://example.org") && !validOrigin("https://example.org/") && !validOrigin("https://EXAMPLE.org") && !validOrigin("http://example.org"));
+  assert(validHost("anydesk.com") && validHost("a.b-c.co.uk") && validHost("192.168.1.20") && !validHost("999.1.1.1") && !validHost("localhost") && !validHost("bad host.com") && !validHost("-x.com"));
   assert(validTarget("https://example.org/x") && !validTarget("http://example.org") && !validTarget("https://localhost/") && !validTarget("https://10.0.0.1/") && !validTarget("https://user:pw@example.org") && !validTarget("javascript:alert(1)"));
+});
+
+Deno.test("pilot-town task templates are all accepted by the API", async () => {
+  const h = await harness(new MemoryStore());
+  const org = await h.join("pilot", "pilot_org");
+  await h.call("POST", `/v1/admin/posters/${org.id}`, {}, "admin-secret");
+  const file = JSON.parse(await Deno.readTextFile(new URL("../../pilot/tasks.json", import.meta.url)));
+  assert(file.tasks.length >= 5);
+  for (const t of file.tasks) {
+    const fill = (x: string) => x.replaceAll("{town}", "Leeds").replaceAll("{area}", "Briggate");
+    const r = await h.call("POST", "/v1/org/tasks", { title: fill(t.title), description: fill(t.description), instructions: fill(t.instructions), category: t.category, reward_pence: t.reward_pence, slots: t.slots }, org.pass);
+    eq(r.status, 201, t.title);
+    assert(t.minutes > 0 && t.reward_pence / (t.minutes / 60) >= 1300, `${t.title}: at least 13 pounds an hour`);
+  }
 });
 
 await suite("memory", async () => new MemoryStore());

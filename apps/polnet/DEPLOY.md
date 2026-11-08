@@ -4,7 +4,7 @@ About an hour, once. Nothing here deploys itself.
 
 ## 1. The API
 
-1. Use the Proof-of-Life Supabase project (`helius-pol`) or a new one. SQL editor: run `server/supabase/migrations/001_polnet.sql` (safe to run again). Optional: `select cron.schedule('polnet-hits', '23 * * * *', 'select polnet.purge_hits()');`
+1. Use the Proof-of-Life Supabase project (`helius-pol`) or a new one. SQL editor: run `server/supabase/migrations/001_polnet.sql`, then `002_polnet_helpers.sql` (family help; both safe to run again). Optional: `select cron.schedule('polnet-hits', '23 * * * *', 'select polnet.purge_hits()');`
 2. In the Proof-of-Life console, create a site "POL Net" with hostname `polnet.heliusnetwork.app`. Keep its `pk_` and `sk_` keys.
 3. From `apps/polnet/server`: `deno task keys` prints `POLNET_SIGNING_JWK` and `POLNET_ADMIN_SECRET`. Keep them in a password manager; never commit them.
 4. Secrets and deploy:

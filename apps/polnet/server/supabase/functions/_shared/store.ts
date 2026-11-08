@@ -77,6 +77,12 @@ export type LedgerEntry = {
 
 export type ReportKind = "name" | "task" | "member" | "site";
 
+export type HelperLink = { id: string; protected_id: string; helper_id: string; created_at: string };
+
+export type AlertKind = "lookalike" | "reported" | "scam-page" | "remote-access" | "pause" | "download";
+
+export type HelperAlert = { id: string; protected_id: string; host: string; kind: AlertKind; created_at: string };
+
 export type ClaimError = "task_not_found" | "task_not_open" | "already_claimed" | "no_slots" | "own_task" | "past_deadline";
 
 export interface Store {
@@ -124,6 +130,21 @@ export interface Store {
   /** Targets of one kind reported by at least `min` distinct members (for the community safety list). */
   reportedTargets(kind: ReportKind, min: number): Promise<string[]>;
 
+  /** A one-time invite for a helper, stored by the hash of its code. */
+  helperInviteCreate(codeHash: string, memberId: string, expiresAt: string): Promise<void>;
+  /** Uses up an invite: the inviting member's id, or null when unknown or expired. */
+  helperInviteTake(codeHash: string, now: string): Promise<string | null>;
+  /** False when the link exists already or the protected member has `max` helpers. */
+  helperLink(link: Omit<HelperLink, "created_at">, max: number): Promise<boolean>;
+  helpersOf(protectedId: string): Promise<HelperLink[]>;
+  helping(helperId: string): Promise<HelperLink[]>;
+  /** Ends a link from either side. */
+  helperUnlink(id: string, memberId: string): Promise<boolean>;
+  /** Stores an alert and drops this member's alerts older than `pruneBefore`. */
+  helperAlertAdd(a: Omit<HelperAlert, "created_at">, now: string, pruneBefore: string): Promise<void>;
+  /** Alerts from everyone this helper helps, newest first, since `since`. */
+  helperAlertsFor(helperId: string, since: string, limit: number): Promise<HelperAlert[]>;
+
   /** Counts a hit; true while under the limit for the window. */
   hit(key: string, windowMs: number, limit: number, nowMs: number): Promise<boolean>;
 }
@@ -136,6 +157,9 @@ export class MemoryStore implements Store {
   entries: LedgerEntry[] = [];
   reports: Array<{ id: string; reporter: string; kind: ReportKind; target: string; reason: string; created_at: string }> = [];
   hits = new Map<string, number[]>();
+  invites = new Map<string, { member_id: string; expires_at: string }>();
+  links: HelperLink[] = [];
+  alerts: HelperAlert[] = [];
   private now = () => new Date().toISOString();
 
   async memberBySubject(subject: string) { return [...this.members.values()].find((m) => m.subject === subject) ?? null; }
@@ -246,6 +270,35 @@ export class MemoryStore implements Store {
     const by = new Map<string, Set<string>>();
     for (const r of this.reports) if (r.kind === kind) by.set(r.target, (by.get(r.target) ?? new Set()).add(r.reporter));
     return [...by].filter(([, who]) => who.size >= min).map(([t]) => t);
+  }
+
+  async helperInviteCreate(codeHash: string, memberId: string, expiresAt: string) { this.invites.set(codeHash, { member_id: memberId, expires_at: expiresAt }); }
+  async helperInviteTake(codeHash: string, now: string) {
+    const i = this.invites.get(codeHash);
+    this.invites.delete(codeHash);
+    return i && i.expires_at > now ? i.member_id : null;
+  }
+  async helperLink(l: Omit<HelperLink, "created_at">, max: number) {
+    const mine = this.links.filter((x) => x.protected_id === l.protected_id);
+    if (mine.length >= max || mine.some((x) => x.helper_id === l.helper_id) || l.protected_id === l.helper_id) return false;
+    this.links.push({ ...l, created_at: this.now() });
+    return true;
+  }
+  async helpersOf(protectedId: string) { return this.links.filter((x) => x.protected_id === protectedId); }
+  async helping(helperId: string) { return this.links.filter((x) => x.helper_id === helperId); }
+  async helperUnlink(id: string, memberId: string) {
+    const i = this.links.findIndex((x) => x.id === id && (x.protected_id === memberId || x.helper_id === memberId));
+    if (i < 0) return false;
+    this.links.splice(i, 1);
+    return true;
+  }
+  async helperAlertAdd(a: Omit<HelperAlert, "created_at">, now: string, pruneBefore: string) {
+    this.alerts = this.alerts.filter((x) => !(x.protected_id === a.protected_id && x.created_at < pruneBefore));
+    this.alerts.push({ ...a, created_at: now });
+  }
+  async helperAlertsFor(helperId: string, since: string, limit: number) {
+    const who = new Set(this.links.filter((x) => x.helper_id === helperId).map((x) => x.protected_id));
+    return this.alerts.filter((a) => who.has(a.protected_id) && a.created_at >= since).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit);
   }
 
   async hit(key: string, windowMs: number, limit: number, nowMs: number) {

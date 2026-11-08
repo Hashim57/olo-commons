@@ -23,7 +23,7 @@ contextBridge.exposeInMainWorld("browser", {
   oloAsk: (req) => ipcRenderer.invoke("ui:olo-ask", req),
   oloStop: send("ui:olo-stop"),
   on: (channel, fn) => {
-    if (!["state", "olo-event", "olo-prefill", "focus-address", "report-site"].includes(channel)) return;
+    if (!["state", "olo-event", "olo-prefill", "olo-check", "focus-address", "report-site"].includes(channel)) return;
     ipcRenderer.on(channel, (_e, data) => fn(data));
   },
 });

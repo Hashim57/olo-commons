@@ -1,0 +1,68 @@
+{
+  "about": "Task templates for a POL Net pilot town. Replace {town} and {area}, set the reward and slots with the funding organisation, and post them through POST /v1/org/tasks with a poster pass (see docs/PILOT_TOWN.md). Rewards are suggestions of at least 13 pounds an hour for the expected time, above the UK National Living Wage when written; check the current rate and agree them with the funder.",
+  "tasks": [
+    {
+      "title": "Map step-free entrances in {area}",
+      "category": "accessibility",
+      "description": "Walk {area} in {town} and record which shops, cafes and public buildings have a step-free entrance, for a public accessibility map that disabled residents and visitors can use.",
+      "instructions": "For each place: name, address, step-free yes or no, a photo of the entrance taken from the street (no people in the photo), and anything that would help (a ramp on request, a bell, a side door). Send a link to a shared sheet or an OpenStreetMap changeset.",
+      "minutes": 90,
+      "reward_pence": 1950,
+      "slots": 10
+    },
+    {
+      "title": "Report flooding, blocked drains and broken streetlights on your street",
+      "category": "local-data",
+      "description": "Help {town} council find problems faster: check the drains, gullies and streetlights on your own street and nearby, and report what needs fixing.",
+      "instructions": "Note the street, the exact spot, what is wrong, and a photo. Report each problem through the council's own reporting page as well, and paste the reference numbers in your evidence.",
+      "minutes": 30,
+      "reward_pence": 650,
+      "slots": 40
+    },
+    {
+      "title": "Translate a {town} advice leaflet into your first language",
+      "category": "translation",
+      "description": "A local advice service needs its leaflet on energy bills and help with costs translated so more residents can use it.",
+      "instructions": "Translate the leaflet linked by the organisation. Keep phone numbers and addresses exactly as written. Send the translation as a shared document. A second member who speaks the language will check it.",
+      "minutes": 120,
+      "reward_pence": 3000,
+      "slots": 6
+    },
+    {
+      "title": "Check a claim in a local news story",
+      "category": "fact-checking",
+      "description": "Help readers in {town} trust what they read: find the original source for a claim in a recent local story, and say whether the story reports it fairly.",
+      "instructions": "Use Olo in POL Net to find sources, then open them yourself. Give the claim, the original source link, and one or two sentences on whether the story matches it. Do not guess: say if you could not find a source.",
+      "minutes": 45,
+      "reward_pence": 1000,
+      "slots": 20
+    },
+    {
+      "title": "Check a local website for scam warning signs",
+      "category": "community",
+      "description": "Help a local charity protect older residents: test whether their website and their supporters' common sites show the warning signs scammers copy, and report anything that could fool someone.",
+      "instructions": "Follow the checklist the charity provides. Report any lookalike addresses, missing https, or contact details that do not match the charity's real ones. Never enter real passwords or card details anywhere.",
+      "minutes": 40,
+      "reward_pence": 900,
+      "slots": 10
+    },
+    {
+      "title": "Record a tree, hedge or green space for the {town} nature survey",
+      "category": "environment",
+      "description": "Add to an open record of trees and green spaces in {town}, used by local groups to protect them and plan planting.",
+      "instructions": "Record the location, the kind of tree or space if you know it (or 'unknown'), its condition, and a photo. Upload to the survey's open platform and paste the link.",
+      "minutes": 30,
+      "reward_pence": 650,
+      "slots": 50
+    },
+    {
+      "title": "Test a council or charity web page for accessibility",
+      "category": "accessibility",
+      "description": "Check whether an important local web page works for people who use a screen reader, keyboard only, or large text.",
+      "instructions": "Use the steps in the organisation's brief (keyboard only, zoom to 200%, a free screen reader). Write down each problem with what you were trying to do and what happened.",
+      "minutes": 60,
+      "reward_pence": 1500,
+      "slots": 8
+    }
+  ]
+}
