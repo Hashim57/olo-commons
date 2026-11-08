@@ -75,6 +75,13 @@ final class TalkToOloSession {
     @ObservationIgnored private var silence: Task<Void, Never>?
     @ObservationIgnored private var buildWatch: Task<Void, Never>?
     @ObservationIgnored private var buildAnnounced = false
+    /// When the mic last opened or the person last spoke, for the keep-listening limit.
+    @ObservationIgnored private var turnStartedAt = Date.distantPast
+    @ObservationIgnored private var reopen: Task<Void, Never>?
+    /// The Mac's recogniser closes a session after a stretch of silence or about a minute. While it is still
+    /// the person's turn the mic is opened again, for up to this long since they last spoke; then the atom
+    /// waits for a click, so a forgotten Mac does not hold the microphone all afternoon.
+    static let keepListening: TimeInterval = 3 * 60
 
     var label: String {
         if let problem { return problem }
@@ -120,19 +127,45 @@ final class TalkToOloSession {
         heard = ""
         problem = nil
         phase = .listening
-        dictation.toggle { [weak self] text, final in
+        turnStartedAt = Date()
+        open()
+    }
+
+    /// Starts a recognition session (listen() for a new turn; again from onEnd when the recogniser gave up mid-turn).
+    private func open() {
+        // Start, never toggle: a toggle while the last session was still closing stopped nothing and left the
+        // panel saying "Listening" with no one listening (build 17).
+        dictation.start(onText: { [weak self] text, final in
             guard let self, self.phase == .listening else { return }
             self.heard = text
             self.silence?.cancel()
             let said = text.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !said.isEmpty else { return }
+            self.turnStartedAt = Date()
             self.silence = Task { [weak self] in
                 try? await Task.sleep(nanoseconds: final ? 300_000_000 : 1_500_000_000)
                 guard !Task.isCancelled, let self, self.phase == .listening else { return }
+                self.silence = nil
                 self.dictation.stop()
                 await self.handle(said)
             }
-        }
+        }, onEnd: { [weak self] _ in
+            // The session ended on its own while it is still the person's turn (the Mac gives up after a
+            // silence, or after about a minute): open the mic again, so "Listening" is true for as long as
+            // it is shown. Before build 19 the panel kept saying "Listening" after the recogniser had
+            // closed, and a follow-up asked after a pause was never heard.
+            guard let self, self.phase == .listening, self.silence == nil else { return }
+            if Date().timeIntervalSince(self.turnStartedAt) > Self.keepListening {
+                self.phase = .idle
+                return
+            }
+            self.reopen?.cancel()
+            self.reopen = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard !Task.isCancelled, let self, self.phase == .listening else { return }
+                self.open()
+            }
+        })
         // The recogniser starts asynchronously; a refused permission or a missing microphone shows up shortly after.
         Task { [weak self] in
             try? await Task.sleep(nanoseconds: 800_000_000)
@@ -142,9 +175,18 @@ final class TalkToOloSession {
         }
     }
 
+    /// The language to listen for changed: if listening now, start again in it.
+    func languageChanged() {
+        guard phase == .listening else { return }
+        stopListening()
+        listen()
+    }
+
     private func stopListening() {
         silence?.cancel()
         silence = nil
+        reopen?.cancel()
+        reopen = nil
         dictation.stop()
     }
 
@@ -320,6 +362,8 @@ final class TalkToOloSession {
 struct TalkToOloView: View {
     @Environment(AppModel.self) private var model
     @Bindable var session: TalkToOloSession
+    /// The language to listen for: "auto" follows the Mac's language (VoiceLanguage). Shared with the composer's dictation.
+    @AppStorage(VoiceLanguage.preferenceKey) private var voiceLanguage: String = VoiceLanguage.auto
 
     var body: some View {
         VStack(spacing: 0) {
@@ -392,6 +436,16 @@ struct TalkToOloView: View {
                 }
                 Text("Say \"stop\" or \"that's all\" to finish. \"Build me a...\" starts a build.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                HStack(spacing: 6) {
+                    Text("Listening in").font(.caption).foregroundStyle(.secondary)
+                    Picker("Language to listen for", selection: $voiceLanguage) {
+                        Text("Automatic (\(VoiceLanguage.label(VoiceLanguage.resolve(preference: VoiceLanguage.auto, deviceLocale: Locale.current.identifier))))").tag(VoiceLanguage.auto)
+                        ForEach(VoiceLanguage.options) { option in Text(option.label).tag(option.code) }
+                    }
+                    .labelsHidden().frame(maxWidth: 220)
+                    .onChange(of: voiceLanguage) { session.languageChanged() }
+                }
+                Text("Olo answers in the language you speak.").font(.caption).foregroundStyle(.secondary)
                 if model.api.token == nil {
                     Text("Sign in to hear Olo's own voice. Until then the Mac's voice reads the answers.")
                         .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
