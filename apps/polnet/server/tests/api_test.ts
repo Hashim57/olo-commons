@@ -289,7 +289,6 @@ if (pgUrl) {
     const s = PgStore.connect(pgUrl);
     stores.push(s);
     // A clean slate for each test.
-    // deno-lint-ignore no-explicit-any
     await (s as any).sql`truncate polnet.reports, polnet.hits, polnet.claims, polnet.tasks, polnet.names, polnet.members cascade`.catch(() => undefined);
     return s;
   });
