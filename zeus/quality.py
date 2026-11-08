@@ -108,31 +108,42 @@ def without_physical_description(body):
     return clean(CATALOGUE_NOTES_RE.sub(" ", body[m.end():]))
 
 
-def is_stub(title, summary, content, authors=None):
-    """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
-    record, a shelf mark, or nothing beyond its title, authors and physical description."""
+STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "no_rest")
+
+
+def stub_reason(title, summary, content, authors=None):
+    """The name of the rule that makes an atom a stub, or None when it carries knowledge. The rules run in the
+    ingester's order (isStub in text.ts), so the first that fires is named: "empty" (no body), "label" (fewer than
+    STUB_MIN_DISTINCT different words), "repeat" (one line written over and over), "link_notice", "catalogue_record",
+    "shelf_mark", and "no_rest" (nothing beyond the title, the authors and a physical description)."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
-        return True
+        return "empty"
     w = words(body)
     distinct = len(set(w))
     if distinct < STUB_MIN_DISTINCT:
-        return True
+        return "label"
     if distinct < STUB_REPEAT_DISTINCT and distinct / len(w) < STUB_REPEAT_RATIO:
-        return True
+        return "repeat"
     if is_link_notice(body):
-        return True
+        return "link_notice"
     if is_catalogue_record(body):
-        return True
+        return "catalogue_record"
     if is_shelf_mark(body):
-        return True
+        return "shelf_mark"
     rest = " " + without_physical_description(body).lower() + " "
     for name in [title] + list(authors or []):
         n = clean(name).lower()
         if len(n) >= 3:
             rest = rest.replace(n, " ")
-    return len(clean(rest)) < STUB_MIN_REST
+    return "no_rest" if len(clean(rest)) < STUB_MIN_REST else None
+
+
+def is_stub(title, summary, content, authors=None):
+    """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
+    record, a shelf mark, or nothing beyond its title, authors and physical description (stub_reason names which)."""
+    return stub_reason(title, summary, content, authors) is not None
 
 
 def wikidata_housekeeping(label, desc):
@@ -149,17 +160,20 @@ def wikidata_description(a):
 
 def usable_atoms(atoms):
     """The atoms a build should see: each id once, no stubs, no Wikidata housekeeping items.
-    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "housekeeping": n}."""
+    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "housekeeping": n, "stub_by_rule": {rule: n}},
+    where stub_by_rule names the rule that refused each stub (STUB_RULES), so a build can say which rule did the work."""
     seen, kept = set(), []
-    counts = {"duplicate": 0, "stub": 0, "housekeeping": 0}
+    counts = {"duplicate": 0, "stub": 0, "housekeeping": 0, "stub_by_rule": {}}
     for a in atoms:
         aid = a.get("id")
         if aid in seen:
             counts["duplicate"] += 1
             continue
         seen.add(aid)
-        if is_stub(a.get("title"), a.get("summary"), a.get("content"), a.get("authors")):
+        reason = stub_reason(a.get("title"), a.get("summary"), a.get("content"), a.get("authors"))
+        if reason:
             counts["stub"] += 1
+            counts["stub_by_rule"][reason] = counts["stub_by_rule"].get(reason, 0) + 1
             continue
         if (a.get("source") or a.get("source_slug")) == "wikidata" and wikidata_housekeeping(a.get("title"), wikidata_description(a)):
             counts["housekeeping"] += 1

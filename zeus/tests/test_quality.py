@@ -62,7 +62,7 @@ def test_usable_atoms_drops_duplicates_stubs_and_housekeeping_once_each_and_keep
     town = {"id": "t1", "title": "Ehnen", "summary": "Ehnen: town.", "content": "Ehnen. town. Described in 10 Wikimedia projects.", "source": "wikidata"}
     kept, counts = quality.usable_atoms([good, stub, dict(good), cat, town, dict(stub)])
     assert [a["id"] for a in kept] == ["g1", "t1"]
-    assert counts == {"duplicate": 2, "stub": 1, "housekeeping": 1}
+    assert counts == {"duplicate": 2, "stub": 1, "housekeeping": 1, "stub_by_rule": {"label": 1}}
     # a non-wikidata atom is never judged by the wikidata rule
     wiki_cat = dict(cat, id="w1", source="wikipedia", summary="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont.",
                     content="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont. It has existed since 2006.")
@@ -184,3 +184,38 @@ def test_records_with_a_summary_after_the_measurements_are_kept():
     news = "12 people were injured when a bus left the road near Tromso on Tuesday."
     assert quality.without_physical_description(news) == news
     assert quality.without_physical_description("") == ""
+
+
+def test_stub_reason_names_the_first_rule_that_fires_in_the_ingester_order():
+    shelf = " - ".join(["Karnataka State Archives", "Mysore", "Gazettes", "Gazette-6", "HRS-Historical Record Section", "R", "369 (ID 102517)"])
+    cases = [
+        ("Anything", "", "", "empty"),
+        ("patronyt", "P P", "P P", "label"),
+        ("New Book", "new book new book new book new book", "new book new book new book new book", "label"),
+        ("Tags", "radio drama season picks and more music " * 6, "radio drama season picks and more music " * 6, "repeat"),
+        ("ktp2019-item", NOTICES[0], NOTICES[0], "link_notice"),
+        ("Algemeen Handelsblad", DELPHER, DELPHER, "catalogue_record"),
+        ("76_PART_2_4_OCT_DEC_1903_118.pdf", shelf, shelf, "shelf_mark"),
+        ("Some scanned book", "ix, 203 pages : 24 cm Includes bibliographical references and index", "ix, 203 pages : 24 cm Includes bibliographical references and index", "no_rest"),
+        ("Hydropower Engineering Module Five Lecture Notes", "Hydropower Engineering Module Five Lecture Notes by IIT Kharagpur", "Hydropower Engineering Module Five Lecture Notes by IIT Kharagpur", "no_rest"),
+    ]
+    for title, summary, content, rule in cases:
+        assert quality.stub_reason(title, summary, content) == rule, (summary, rule)
+        assert rule in quality.STUB_RULES
+        assert quality.is_stub(title, summary, content)
+    assert quality.stub_reason("Project Gutenberg", ABS[:120], ABS) is None
+    assert not quality.is_stub("Project Gutenberg", ABS[:120], ABS)
+
+
+def test_usable_atoms_counts_stubs_by_rule():
+    shelf = " - ".join(["Karnataka State Archives", "Mysore", "Gazettes", "Gazette-6", "HRS-Historical Record Section", "R", "369 (ID 102517)"])
+    atoms = [
+        {"id": "a", "title": "Project Gutenberg", "summary": ABS[:120], "content": ABS, "source": "wikipedia"},
+        {"id": "b", "title": "x", "summary": shelf, "content": shelf, "source": "archive_org"},
+        {"id": "c", "title": "y", "summary": shelf, "content": shelf, "source": "archive_org"},
+        {"id": "d", "title": "z", "summary": DELPHER, "content": DELPHER, "source": "archive_org"},
+    ]
+    kept, counts = quality.usable_atoms(atoms)
+    assert [x["id"] for x in kept] == ["a"]
+    assert counts["stub"] == 3
+    assert counts["stub_by_rule"] == {"shelf_mark": 2, "catalogue_record": 1}
