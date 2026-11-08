@@ -99,9 +99,22 @@ enum MacVoice {
         return pool.max { $0.quality.rawValue < $1.quality.rawValue } ?? AVSpeechSynthesisVoice(language: "en-GB")
     }()
 
+    /// The voice for a text: the British one for English and for text whose language cannot be told, else the
+    /// best installed voice for the text's language (VoiceLanguage.languageOf), so an answer in German, Arabic
+    /// or Japanese is read with its own sounds. Olo answers in the language it was spoken to in.
+    static func voice(for text: String) -> AVSpeechSynthesisVoice? {
+        guard let lang = VoiceLanguage.languageOf(text), !lang.lowercased().hasPrefix("en") else { return best }
+        let voices = AVSpeechSynthesisVoice.speechVoices()
+        let wanted = lang.replacingOccurrences(of: "_", with: "-").lowercased()
+        let base = wanted.split(separator: "-").first.map(String.init) ?? wanted
+        let exact = voices.filter { $0.language.replacingOccurrences(of: "_", with: "-").lowercased() == wanted }
+        let pool = exact.isEmpty ? voices.filter { $0.language.lowercased().hasPrefix(base + "-") || $0.language.lowercased() == base } : exact
+        return pool.max { $0.quality.rawValue < $1.quality.rawValue } ?? AVSpeechSynthesisVoice(language: lang) ?? best
+    }
+
     static func utterance(_ text: String) -> AVSpeechUtterance {
         let u = AVSpeechUtterance(string: text)
-        if let best { u.voice = best }
+        if let voice = voice(for: text) { u.voice = voice }
         return u
     }
 }
