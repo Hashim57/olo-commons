@@ -136,3 +136,51 @@ def test_oncely_reads_a_doubled_text_once():
     assert quality.oncely(once + " " + once) == once
     assert quality.oncely(once) == once
     assert quality.oncely("short short") == "short short"
+
+
+def test_shelf_marks_are_stubs():
+    dash = " \u2013 "
+    parts = ["Karnataka State Archives", "Mysore", "Gazettes", "Gazette-6", "HRS-Historical Record Section", "R", "369 (ID 102517)"]
+    for sep in (dash, " - ", " | ", " / "):
+        r = sep.join(parts)
+        assert quality.is_shelf_mark(r), r
+        assert quality.is_shelf_mark(r + " " + r), r
+        assert quality.is_stub("76_PART_2_4_OCT_DEC_1903_118.pdf", r, r), r
+
+
+def test_sentences_with_asides_and_publisher_chains_pass_the_shelf_rule():
+    assert not quality.is_shelf_mark("Dataset published by DOC/NOAA/NESDIS/NCEI > National Centers for Environmental Information, NESDIS, NOAA, "
+                                     "U.S. Department of Commerce. Daily summaries of temperature and precipitation from 1,200 stations.")
+    assert not quality.is_shelf_mark("The study - the first of its kind in Europe - followed 3,000 children for a decade and found that reading "
+                                     "aloud at home - even ten minutes a day - raised vocabulary scores.")
+    assert not quality.is_shelf_mark("Annual report - 1903 - Mysore - Railways")
+    assert not quality.is_shelf_mark("")
+
+
+def test_physical_descriptions_alone_are_stubs():
+    records = [
+        "ix, 203 pages : 24 cm Includes bibliographical references and index",
+        "121 pages ; 24 cm Includes bibliographical references (pages 112 -115) and index",
+        "xii, 386 p. : 23 cm Includes indexes Bibliography: p. 347-375",
+        "1 guide (191 p.) : 23 cm",
+        "1 volume (unpaged) : 24 cm Includes bibliography",
+        "287 pages, 16 unnumbered pages of plates : 24 cm",
+        "xv, 415 p. : ill. ; 24 cm Includes index",
+        "v, 268 pages : 24 cm English or French Includes bibliographies",
+    ]
+    for r in records:
+        assert len(quality.without_physical_description(r)) < 40, r
+        assert quality.is_stub("Some scanned book", r, r), r
+    assert quality.without_physical_description("ix, 203 pages : 24 cm Includes bibliographical references and index") == ""
+
+
+def test_records_with_a_summary_after_the_measurements_are_kept():
+    amish = ("282 pages ; 22 cm An Amish man leaves his community and family to escape parental abuse but he also leaves "
+             "behind the woman he planned to marry.")
+    assert quality.without_physical_description(amish) == amish[len("282 pages ; 22 cm "):]
+    assert not quality.is_stub("Lavina", amish, amish)
+    abstract = "We study coral reef recovery after bleaching. Reefs with high herbivore cover recovered faster across 40 sites over six years."
+    assert quality.without_physical_description(abstract) == abstract
+    news = "12 people were injured when a bus left the road near Tromso on Tuesday."
+    assert quality.without_physical_description(news) == news
+    assert quality.without_physical_description("") == ""
