@@ -1,6 +1,7 @@
 """Atom quality rules shared with the ingester, so Zeus trains on the same Commons the ingester would keep.
 
-Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice and isCatalogueRecord) and
+Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice, isCatalogueRecord, isShelfMark
+and withoutPhysicalDescription) and
 functions/olo-ingest/sources.ts (wikidataHousekeeping); tests/text_test.ts and
 zeus/tests/test_quality.py hold the same examples so the two stay in step.
 
@@ -32,6 +33,16 @@ CATALOGUE_MAX_WORDS_PER_LABEL = 5   # ...and one with more words than this per f
 
 # "Label: " fields: a capitalised word, up to three more words, a colon and a space (LABEL_RE in text.ts).
 LABEL_RE = re.compile(r"(?:^|\s)(?:[A-Z][\w'\u2019.-]*(?: (?:[a-z]+|[A-Z][\w'\u2019.-]*)){0,3}): (?=\S)")
+
+SHELF_MIN_SEGMENTS = 5            # a body divided into fewer parts than this is read as prose
+SHELF_MAX_WORDS_PER_SEGMENT = 4   # ...and one with a part longer than this holds a sentence, not a shelf mark
+
+# Separators between the parts of a shelf mark or a path: a spaced dash of any length, a bar, a slash, a chevron or a double colon (SEGMENT_RE in text.ts).
+SEGMENT_RE = re.compile(r"\s(?:[\u2013\u2014-]|\||/|>|\u00bb|::)\s")
+
+# A library catalogue's physical description at the start of a body ("ix, 203 pages : 24 cm") and its standard notes (PHYSICAL_RE and CATALOGUE_NOTES_RE in text.ts).
+PHYSICAL_RE = re.compile(r"^(?:[xivlc]+, )?(?:\d+ (?:p\.|pages?|v\.|volumes?|leaves)|volumes?|\d+ (?:volume|guide|portfolio) \((?:unpaged|\d+ p\.?)\))(?: of plates)?[^A-Za-z0-9]*(?:(?:ill\.?|illustrations|col\.|colou?r|maps?|ports?\.?|facsims?\.?|music|charts?|plates)[^A-Za-z0-9]*)*(?:\d+(?: x \d+)? cm\.?)?", re.I)
+CATALOGUE_NOTES_RE = re.compile(r"\bIncludes? (?:bibliographical references?|bibliography|bibliographies|index(?:es)?|discography|filmography)(?: \((?:p\.|pages?)? ?[\d, -]+\))?(?: and index(?:es)?)?\.?|\bBibliography: (?:p\.|pages?) [\d, -]+\.?", re.I)
 
 NAMESPACE_RE = re.compile(r"^(Category|Template|Module|Wikipedia|Portal|Help|MediaWiki|File|Draft|Book|Wikidata|Property|Lexeme):", re.I)
 PAGE_KIND_RE = re.compile(r"^Wikimedia (category|disambiguation page|list article|template|project page|internal item|module|navigational template|KML file|set index article|permanent duplicate item|human name disambiguation page)\b|^(taxonomy|navigational|infobox|stub|citation) template$", re.I)
@@ -79,29 +90,60 @@ def is_catalogue_record(body):
     return len(words(b)) / labels <= CATALOGUE_MAX_WORDS_PER_LABEL
 
 
-def is_stub(title, summary, content, authors=None):
-    """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
-    record, or nothing beyond its title and authors."""
+def is_shelf_mark(body):
+    """True when a body is a shelf mark, not a description: at least SHELF_MIN_SEGMENTS parts joined by spaced dashes,
+    bars or slashes, each of at most SHELF_MAX_WORDS_PER_SEGMENT words ("Karnataka State Archives - Mysore - Gazettes -
+    Gazette-6 - HRS-Historical Record Section - R - 369 (ID 102517)", 76 archive_org atoms on the 2026-11-08 snapshot,
+    no atom of any other source)."""
+    segs = [s.strip() for s in SEGMENT_RE.split(oncely(clean(body))) if s.strip()]
+    return len(segs) >= SHELF_MIN_SEGMENTS and all(len(words(s)) <= SHELF_MAX_WORDS_PER_SEGMENT for s in segs)
+
+
+def without_physical_description(body):
+    """A body with its library physical description and catalogue notes taken out ("ix, 203 pages : 24 cm Includes
+    bibliographical references and index" becomes ""); a body with no physical description comes back unchanged."""
+    m = PHYSICAL_RE.match(body)
+    if not m or not m.group(0).strip():
+        return body
+    return clean(CATALOGUE_NOTES_RE.sub(" ", body[m.end():]))
+
+
+STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "no_rest")
+
+
+def stub_reason(title, summary, content, authors=None):
+    """The name of the rule that makes an atom a stub, or None when it carries knowledge. The rules run in the
+    ingester's order (isStub in text.ts), so the first that fires is named: "empty" (no body), "label" (fewer than
+    STUB_MIN_DISTINCT different words), "repeat" (one line written over and over), "link_notice", "catalogue_record",
+    "shelf_mark", and "no_rest" (nothing beyond the title, the authors and a physical description)."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
-        return True
+        return "empty"
     w = words(body)
     distinct = len(set(w))
     if distinct < STUB_MIN_DISTINCT:
-        return True
+        return "label"
     if distinct < STUB_REPEAT_DISTINCT and distinct / len(w) < STUB_REPEAT_RATIO:
-        return True
+        return "repeat"
     if is_link_notice(body):
-        return True
+        return "link_notice"
     if is_catalogue_record(body):
-        return True
-    rest = " " + body.lower() + " "
+        return "catalogue_record"
+    if is_shelf_mark(body):
+        return "shelf_mark"
+    rest = " " + without_physical_description(body).lower() + " "
     for name in [title] + list(authors or []):
         n = clean(name).lower()
         if len(n) >= 3:
             rest = rest.replace(n, " ")
-    return len(clean(rest)) < STUB_MIN_REST
+    return "no_rest" if len(clean(rest)) < STUB_MIN_REST else None
+
+
+def is_stub(title, summary, content, authors=None):
+    """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
+    record, a shelf mark, or nothing beyond its title, authors and physical description (stub_reason names which)."""
+    return stub_reason(title, summary, content, authors) is not None
 
 
 def wikidata_housekeeping(label, desc):
@@ -118,17 +160,20 @@ def wikidata_description(a):
 
 def usable_atoms(atoms):
     """The atoms a build should see: each id once, no stubs, no Wikidata housekeeping items.
-    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "housekeeping": n}."""
+    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "housekeeping": n, "stub_by_rule": {rule: n}},
+    where stub_by_rule names the rule that refused each stub (STUB_RULES), so a build can say which rule did the work."""
     seen, kept = set(), []
-    counts = {"duplicate": 0, "stub": 0, "housekeeping": 0}
+    counts = {"duplicate": 0, "stub": 0, "housekeeping": 0, "stub_by_rule": {}}
     for a in atoms:
         aid = a.get("id")
         if aid in seen:
             counts["duplicate"] += 1
             continue
         seen.add(aid)
-        if is_stub(a.get("title"), a.get("summary"), a.get("content"), a.get("authors")):
+        reason = stub_reason(a.get("title"), a.get("summary"), a.get("content"), a.get("authors"))
+        if reason:
             counts["stub"] += 1
+            counts["stub_by_rule"][reason] = counts["stub_by_rule"].get(reason, 0) + 1
             continue
         if (a.get("source") or a.get("source_slug")) == "wikidata" and wikidata_housekeeping(a.get("title"), wikidata_description(a)):
             counts["housekeeping"] += 1

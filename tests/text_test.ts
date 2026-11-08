@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, isCatalogueRecord, isLinkNotice, isStub, joinParts, oncely, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, isCatalogueRecord, isLinkNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -165,4 +165,73 @@ Deno.test('oncely reads a text written twice once and leaves anything else alone
   assertEquals(oncely(once), once);
   assertEquals(oncely('a a'), 'a a');
   assertEquals(oncely('short short'), 'short short');
+});
+
+/* ---------- isShelfMark: a description that is a path of short names ---------- */
+
+Deno.test('isShelfMark: Karnataka State Archives records from the 2026-11-08 snapshot are stubs', () => {
+  const dash = ' \u2013 ';
+  const records = [
+    ['Karnataka State Archives', 'Mysore', 'Gazettes', 'Gazette-6', 'HRS-Historical Record Section', 'R', '369 (ID 102517)'].join(dash),
+    ['Karnataka State Archives', 'Mysore', 'Gazettes', 'Gazette-6', 'HRS-Historical Record Section', 'L B P', '14486 (ID 103498)'].join(dash),
+    ['Karnataka State Archives', 'Mysore', 'Gazettes', 'Gazette-6', 'HRS-Historical Record Section', 'FRENCH ROCKS', '1903 (ID 102866)'].join(dash),
+    // the same path with a plain hyphen, a bar or a slash between the parts, and written twice
+    ['Karnataka State Archives', 'Mysore', 'Gazettes', 'Gazette-6', 'HRS-Historical Record Section', 'DC', '1903 (ID 101348)'].join(' - '),
+    ['State Archives', 'Region', 'Series 4', 'Box 12', 'Folder 3', 'Item 7'].join(' | '),
+    ['State Archives', 'Region', 'Series 4', 'Box 12', 'Folder 3'].join(' / '),
+  ];
+  for (const r of records) {
+    assert(isShelfMark(r), r);
+    assert(isShelfMark(r + ' ' + r), r);
+    assert(isStub('76_PART_2_4_OCT_DEC_1903_118.pdf', r, r), r);
+  }
+});
+
+Deno.test('isShelfMark: sentences with asides, publisher chains and real atoms of every source pass', () => {
+  // a dataset publisher chain has two parts, one of them long
+  assertEquals(isShelfMark('Dataset published by DOC/NOAA/NESDIS/NCEI > National Centers for Environmental Information, NESDIS, NOAA, U.S. Department of Commerce. Daily summaries of temperature and precipitation from 1,200 stations.'), false);
+  // a sentence with spaced dashes as asides has long parts
+  assertEquals(isShelfMark('The study - the first of its kind in Europe - followed 3,000 children for a decade and found that reading aloud at home - even ten minutes a day - raised vocabulary scores.'), false);
+  // fewer than five short parts is a title line, not a shelf mark
+  assertEquals(isShelfMark('Annual report - 1903 - Mysore - Railways'), false);
+  // Gutenberg subject lists use double hyphens without spaces around the words, and are kept by isStub anyway
+  assertEquals(isStub('Pride and Prejudice', 'Pride and Prejudice. Subjects: Courtship; England; Sisters; Social classes; Young women; Love stories', 'Subjects: Courtship -- Fiction; England -- Fiction; Sisters -- Fiction; Social classes -- Fiction; Young women -- Fiction; Love stories'), false);
+  assertEquals(isShelfMark(''), false);
+});
+
+/* ---------- withoutPhysicalDescription: a library record that only measures the book ---------- */
+
+Deno.test('withoutPhysicalDescription: a body that is only pagination, size and notes is a stub', () => {
+  const records = [
+    'ix, 203 pages : 24 cm Includes bibliographical references and index',
+    '121 pages ; 24 cm Includes bibliographical references (pages 112 -115) and index',
+    'xii, 386 p. : 23 cm Includes indexes Bibliography: p. 347-375',
+    'ix, 245 p. 21 cm Includes bibliographies',
+    '1 guide (191 p.) : 23 cm',
+    '1 volume (unpaged) : 24 cm Includes bibliography',
+    '287 pages, 16 unnumbered pages of plates : 24 cm',
+    '101 pages ; 12 x 16 cm',
+    'xv, 415 p. : ill. ; 24 cm Includes index',
+    'v, 268 pages : 24 cm English or French Includes bibliographies',
+  ];
+  for (const r of records) {
+    assert(withoutPhysicalDescription(r).length < 40, `${r} -> ${withoutPhysicalDescription(r)}`);
+    assert(isStub('Some scanned book', r, r), r);
+  }
+  assertEquals(withoutPhysicalDescription('ix, 203 pages : 24 cm Includes bibliographical references and index'), '');
+});
+
+Deno.test('withoutPhysicalDescription: a record with a real summary after the measurements is kept', () => {
+  const amish = '282 pages ; 22 cm An Amish man leaves his community and family to escape parental abuse but he also leaves behind the woman he planned to marry.';
+  assertEquals(withoutPhysicalDescription(amish), 'An Amish man leaves his community and family to escape parental abuse but he also leaves behind the woman he planned to marry.');
+  assertEquals(isStub('Lavina', amish, amish), false);
+  const words = '36 p. : 25 cm Includes index High-powered words -- Wavelength -- Sometimes slippery welcome -- A word for every season.';
+  assert(withoutPhysicalDescription(words).startsWith('High-powered words'));
+  assertEquals(isStub('High-powered words', words, words), false);
+  // a body with no physical description comes back unchanged
+  const abs = 'We study coral reef recovery after bleaching. Reefs with high herbivore cover recovered faster across 40 sites over six years.';
+  assertEquals(withoutPhysicalDescription(abs), abs);
+  // a sentence that happens to start with a number is not a physical description
+  assertEquals(withoutPhysicalDescription('12 people were injured when a bus left the road near Tromso on Tuesday.'), '12 people were injured when a bus left the road near Tromso on Tuesday.');
+  assertEquals(withoutPhysicalDescription(''), '');
 });
