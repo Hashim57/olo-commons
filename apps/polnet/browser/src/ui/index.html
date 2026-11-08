@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; base-uri 'none'; form-action 'none'">
+<title>POL Net</title>
+<link rel="stylesheet" href="ui.css">
+</head>
+<body>
+<header id="chrome">
+  <div id="tabstrip" role="tablist" aria-label="Tabs">
+    <div id="tabs"></div>
+    <button id="newtab" class="icon" title="New tab (Cmd+T)" aria-label="New tab">+</button>
+    <span id="private-badge" hidden>Private</span>
+  </div>
+  <div id="toolbar">
+    <button id="back" class="icon" title="Back" aria-label="Back">&#8592;</button>
+    <button id="forward" class="icon" title="Forward" aria-label="Forward">&#8594;</button>
+    <button id="reload" class="icon" title="Reload" aria-label="Reload">&#8635;</button>
+    <button id="shield" class="pill" title="Shields" aria-label="Shields"><span class="shield-icon" aria-hidden="true"></span><span id="shield-count">0</span></button>
+    <form id="addressform" autocomplete="off">
+      <span id="lock" aria-hidden="true"></span>
+      <input id="address" spellcheck="false" placeholder="Search privately or type an address" aria-label="Address">
+    </form>
+    <button id="olo" class="pill" title="Ask Olo (Cmd+Shift+O)">Ask Olo</button>
+    <button id="tasks" class="pill earn" title="Tasks that pay">Earn</button>
+    <button id="member" class="pill" title="Your POL Net membership">Join</button>
+    <button id="more" class="icon" title="More" aria-label="More" aria-haspopup="menu">&#8943;</button>
+  </div>
+</header>
+<img id="pagebg" alt="" hidden>
+<div id="menu" role="menu" hidden>
+  <button data-go="polnet://wallet/">Wallet</button>
+  <button data-go="polnet://names/">pol:// Names</button>
+  <button data-go="polnet://history/">History</button>
+  <button data-go="polnet://settings/">Settings</button>
+  <hr>
+  <button id="private-window">New private window</button>
+  <button id="report">Report this site as a scam</button>
+  <button id="signout" hidden>Sign out of POL Net</button>
+  <hr>
+  <button data-go="polnet://about/">About POL Net</button>
+</div>
+<div id="shield-pop" hidden>
+  <strong id="shield-title">Shields are on</strong>
+  <p id="shield-text"></p>
+  <button id="shield-toggle"></button>
+</div>
+<div id="report-pop" hidden role="dialog" aria-label="Report a site">
+  <strong id="report-title">Report this site</strong>
+  <p class="dim">Reports come from verified people. Once three members agree, POL Net warns everyone before the site opens.</p>
+  <textarea id="report-reason" rows="2" placeholder="What is wrong? e.g. fake bank login"></textarea>
+  <div class="row"><button id="report-cancel">Cancel</button><button id="report-send" class="primary">Send report</button></div>
+  <p id="report-result" class="dim" hidden></p>
+</div>
+<aside id="panel" hidden aria-label="Olo">
+  <div id="panel-head"><strong>Olo</strong><span class="sub">Answers checked by Zeus</span><button id="panel-close" class="icon" aria-label="Close">&#215;</button></div>
+  <div id="chat" aria-live="polite"><p class="hint">Ask anything, or about the page you are reading. Private: helius-olo.io keeps nothing from these questions.</p></div>
+  <form id="askform">
+    <textarea id="question" rows="3" placeholder="Ask Olo..." aria-label="Question"></textarea>
+    <label class="check"><input type="checkbox" id="includepage" checked> Include this page</label>
+    <button id="askbtn" type="submit">Ask</button>
+  </form>
+</aside>
+<script src="ui.js"></script>
+</body>
+</html>

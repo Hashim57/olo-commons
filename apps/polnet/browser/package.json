@@ -1,0 +1,43 @@
+{
+  "name": "pol-net",
+  "productName": "POL Net",
+  "version": "0.1.0",
+  "description": "A private, safe browser for verified people, with Olo built in, that pays members for real work.",
+  "license": "Apache-2.0",
+  "author": "Helius Network Ltd",
+  "homepage": "https://github.com/Hashim57/olo-commons/tree/main/apps/polnet",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/unit/*.test.js",
+    "e2e": "node test/e2e.mjs",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux AppImage --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8",
+    "playwright": "1.49.1"
+  },
+  "build": {
+    "appId": "app.heliusnetwork.polnet",
+    "productName": "POL Net",
+    "files": ["src/**/*", "lists/**/*", "package.json"],
+    "directories": { "output": "dist", "buildResources": "build" },
+    "protocols": [
+      { "name": "POL Net members' network", "schemes": ["pol"] }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "hardenedRuntime": true,
+      "identity": null,
+      "extendInfo": {
+        "NSCameraUsageDescription": "A website you allow can use the camera, for example for a video call.",
+        "NSMicrophoneUsageDescription": "A website you allow can use the microphone, for example for a call or dictation.",
+        "NSLocationWhenInUseUsageDescription": "A website you allow can know your approximate location."
+      }
+    },
+    "linux": { "category": "Network" }
+  }
+}
