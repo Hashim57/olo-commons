@@ -5,7 +5,7 @@ const os = require("node:os");
 const fs = require("node:fs");
 const path = require("node:path");
 const { toUrl } = require("../../src/main/urlbar");
-const { PolNet, allowedApi, parsePolUrl } = require("../../src/main/polnet");
+const { PolNet, allowedApi, parsePolUrl, humanRequest } = require("../../src/main/polnet");
 const { Olo, questionWithPage, ndjson } = require("../../src/main/olo");
 const { Settings } = require("../../src/main/settings");
 const { hostHash } = require("../../src/main/safety");
@@ -112,4 +112,40 @@ test("settings stay on this computer; secrets are encrypted when the keychain al
   assert.equal(st.history().length, 1);
   st.clearHistory();
   assert.equal(st.history().length, 0);
+});
+
+test("family help routes are allowed for the browser's pages, alerts and human passes are not", () => {
+  assert.ok(allowedApi("GET", "/v1/helpers"));
+  assert.ok(allowedApi("GET", "/v1/helpers/alerts"));
+  assert.ok(allowedApi("POST", "/v1/helpers/invite"));
+  assert.ok(allowedApi("POST", "/v1/helpers/accept"));
+  assert.ok(allowedApi("DELETE", "/v1/helpers/00000000-0000-4000-8000-000000000001"));
+  assert.ok(!allowedApi("POST", "/v1/helpers/alerts"), "only the main process sends alerts");
+  assert.ok(!allowedApi("POST", "/v1/human"), "only the consent page, through the main process, asks for a human pass");
+});
+
+test("a real-person request goes only back to the site that asked, from that site", () => {
+  const q = { origin: "https://shop.example", return: "https://shop.example/verified?x=1#old", nonce: "abcdefgh12" };
+  const ok = humanRequest(q, "https://shop.example/checkout");
+  assert.deepEqual(ok, { origin: "https://shop.example", returnTo: "https://shop.example/verified?x=1", nonce: "abcdefgh12", host: "shop.example" });
+  assert.match(humanRequest(q, "https://evil.example/").error, /did not come from shop.example/);
+  assert.match(humanRequest(q, null).error, /did not come from/);
+  assert.match(humanRequest({ ...q, return: "https://evil.example/cb" }, "https://shop.example/").error, /different site/);
+  assert.match(humanRequest({ ...q, origin: "http://shop.example", return: "http://shop.example/cb" }, "http://shop.example/").error, /secure/);
+  assert.match(humanRequest({ ...q, origin: "https://shop.example/" }, "https://shop.example/").error, /secure/);
+  assert.ok(humanRequest({ ...q, nonce: "x" }, "https://shop.example/").error);
+  assert.ok(humanRequest({}, "https://shop.example/").error);
+});
+
+test("protected mode remembers first visits only while it is on, and forgets them when switched off", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "polnet-known-"));
+  const s = new Settings(dir);
+  s.noteHost("a.example");
+  assert.equal(s.knownSince("a.example"), null, "nothing kept while protected mode is off");
+  s.set({ protectedMode: true });
+  s.noteHost("a.example");
+  assert.ok(s.knownSince("a.example"));
+  assert.ok(!("knownHosts" in s.get()), "pages never receive the list");
+  s.clearKnownHosts();
+  assert.equal(s.knownSince("a.example"), null);
 });

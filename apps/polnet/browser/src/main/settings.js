@@ -19,6 +19,8 @@ const DEFAULTS = {
   oloIncludePage: true,
   permissions: {},
   safetyList: true,
+  protectedMode: false,
+  knownHosts: {},
 };
 const HISTORY_MAX = 5000;
 
@@ -48,12 +50,12 @@ class Settings {
   }
 
   get() {
-    const { pass: _pass, oloToken: _olo, ...rest } = this.data;
+    const { pass: _pass, oloToken: _olo, knownHosts: _known, ...rest } = this.data;
     return { ...rest, member: this.data.member ?? null };
   }
 
   set(patch) {
-    const allowed = ["server", "olo", "search", "shields", "httpsOnly", "history", "oloPrivate", "oloIncludePage", "safetyList"];
+    const allowed = ["server", "olo", "search", "shields", "httpsOnly", "history", "oloPrivate", "oloIncludePage", "safetyList", "protectedMode"];
     for (const k of allowed) if (k in patch) this.data[k] = patch[k];
     if (typeof this.data.server === "string") this.data.server = this.data.server.replace(/\/+$/, "");
     if (typeof this.data.olo === "string") this.data.olo = this.data.olo.replace(/\/+$/, "");
@@ -102,6 +104,23 @@ class Settings {
   permission(origin, perm) { return this.data.permissions[origin]?.[perm] ?? null; }
   setPermission(origin, perm, value) {
     this.data.permissions[origin] = { ...(this.data.permissions[origin] ?? {}), [perm]: value };
+    this.write(this.file, this.data);
+  }
+
+  /**
+   * When the person first opened a host, kept only in protected mode, so POL Net can pause before a
+   * password or card is typed on a site they have never used. Stays on this computer.
+   */
+  knownSince(host) { return this.data.knownHosts?.[host] ?? null; }
+  noteHost(host) {
+    if (!this.data.protectedMode || !host || this.data.knownHosts?.[host]) return;
+    this.data.knownHosts = { ...(this.data.knownHosts ?? {}), [host]: new Date().toISOString() };
+    const hosts = Object.keys(this.data.knownHosts);
+    if (hosts.length > 20000) for (const h of hosts.slice(0, hosts.length - 20000)) delete this.data.knownHosts[h];
+    this.write(this.file, this.data);
+  }
+  clearKnownHosts() {
+    this.data.knownHosts = {};
     this.write(this.file, this.data);
   }
 

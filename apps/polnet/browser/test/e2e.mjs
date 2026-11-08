@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
+import { verifyHumanPass } from "../../trust/polnet-trust.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -41,7 +42,31 @@ const api = async (method, p, body, token) => {
 
 // --- A local site: a page with trackers on it, and a members-only page behind pol:// -----------------
 let lastVisitHeader = null;
+const NONCE = "e2e-nonce-12345";
 const site = http.createServer((req, res) => {
+  const me = `http://127.0.0.1:${site.address().port}`;
+  if (req.url.startsWith("/support")) {
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end(`<!doctype html><title>Security alert</title><h1>WARNING: Your computer has been infected with a Trojan</h1><p>Do not close this window. Call Microsoft Support on +1 (888) 555-0199 now.</p>`);
+  }
+  if (req.url.startsWith("/login")) {
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end(`<!doctype html><title>Sign in</title><form><input name="user"><input type="password" name="pw"></form>`);
+  }
+  if (req.url.startsWith("/verify-other")) {
+    const q = new URLSearchParams({ origin: "https://shop.example", return: "https://shop.example/cb", nonce: NONCE });
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end(`<!doctype html><title>Other</title><a id="prove" href="polnet://human/?${q}">Prove</a>`);
+  }
+  if (req.url.startsWith("/verify")) {
+    const q = new URLSearchParams({ origin: me, return: `${me}/verified`, nonce: NONCE });
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end(`<!doctype html><title>Verify</title><a id="prove" href="polnet://human/?${q}">Show I am a real person with POL Net</a>`);
+  }
+  if (req.url.startsWith("/verified")) {
+    res.writeHead(200, { "content-type": "text/html" });
+    return res.end(`<!doctype html><title>Thanks</title><p id="v">verified page</p>`);
+  }
   if (req.url.startsWith("/members")) {
     lastVisitHeader = req.headers["x-polnet-visit"] || null;
     res.writeHead(200, { "content-type": "text/html" });
@@ -180,6 +205,55 @@ try {
     await waitFor(async () => (await tabEval("typeof window.polnet")) === "object", "bridge on polnet:// pages");
     const r = await tabEval("window.polnet.api('POST', '/v1/admin/posters/x', {})");
     assert.equal(r.error, "not_allowed");
+  });
+
+  await check("a page that uses scam tricks is replaced by a warning that explains them", async () => {
+    await go(`${SITE}/support`);
+    await waitFor(async () => (await tabUrl()).startsWith("polnet://warning"), "the warning page");
+    assert.match(await tabUrl(), /kind=scam-page/);
+    await waitFor(async () => /phone a support line/.test(await tabEval("document.body.innerText")), "the explanation");
+  });
+
+  await check("a site learns a real person is here, with consent, under an id only it sees", async () => {
+    await go(`${SITE}/verify`);
+    await waitFor(async () => (await tabEval("document.getElementById('prove') ? 1 : 0")) === 1, "the verify page");
+    await tabEval("document.getElementById('prove').click()");
+    await waitFor(async () => /asks if you are a real person/.test(await tabEval("document.body.innerText")), "the consent page");
+    assert.match(await tabEval("document.body.innerText"), /will not get/);
+    await tabEval("[...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('Yes, tell')).click()");
+    await waitFor(async () => (await tabUrl()).startsWith(`${SITE}/verified#pol_human=`), "back on the site with a pass");
+    const token = new URLSearchParams(new URL(await tabUrl()).hash.slice(1)).get("pol_human");
+    const claims = await verifyHumanPass(token, { origin: SITE, nonce: NONCE, issuer: "http://localhost:8787", jwksUrl: `${API}/.well-known/jwks.json` });
+    assert.ok(claims, "the site verifies the pass with the published keys");
+    assert.equal(claims.typ, "human");
+    assert.notEqual(claims.sub, joined.member.id);
+    // A page cannot ask on behalf of another site.
+    await go(`${SITE}/verify-other`);
+    await waitFor(async () => (await tabEval("document.getElementById('prove') ? 1 : 0")) === 1, "the other verify page");
+    await tabEval("document.getElementById('prove').click()");
+    await waitFor(async () => /did not come from shop.example/.test(await tabEval("document.body.innerText")), "the refusal");
+  });
+
+  await check("protected mode: remote-control and new-site pauses warn, and a helper hears only the host and kind", async () => {
+    const helper = await api("POST", "/v1/join", { pol_token: "dev-e2e-helper", handle: "e2e_helper" });
+    const inv = await api("POST", "/v1/helpers/invite", {}, joined.pass);
+    assert.equal(inv.status, 201, JSON.stringify(inv));
+    assert.equal((await api("POST", "/v1/helpers/accept", { code: inv.code }, helper.pass)).helping, "e2e_member");
+    await main(() => global.__polnet.settings().set({ protectedMode: true }));
+    await go("https://anydesk.com/");
+    await waitFor(async () => /kind=remote-access/.test(await tabUrl()), "the remote-access warning");
+    await waitFor(async () => /Is someone asking you to install this/.test(await tabEval("document.body.innerText")), "the warning text");
+    assert.equal(await tabEval("[...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('I asked someone')).disabled"), true, "open anyway waits first");
+    await go(`${SITE}/login`);
+    await waitFor(async () => /kind=pause/.test(await tabUrl()), "the pause before a password on a new site");
+    const seen = await waitFor(async () => {
+      const r = await api("GET", "/v1/helpers/alerts", undefined, helper.pass);
+      return r.alerts && r.alerts.length >= 2 ? r : null;
+    }, "two alerts for the helper");
+    assert.deepEqual(seen.alerts.map((a) => a.kind).sort(), ["pause", "remote-access"]);
+    assert.ok(seen.alerts.some((a) => a.host === "anydesk.com"));
+    assert.deepEqual(Object.keys(seen.alerts[0]).sort(), ["at", "handle", "host", "kind"]);
+    await main(() => global.__polnet.settings().set({ protectedMode: false }));
   });
 
   await check("a private window keeps no history", async () => {

@@ -4,7 +4,7 @@
 // to anon or authenticated. Racy operations run in one transaction with row locks.
 
 import postgres from "npm:postgres@3.4.5";
-import type { Claim, ClaimError, LedgerEntry, Member, PolName, ReportKind, Store, Task, TaskStatus } from "./store.ts";
+import type { Claim, ClaimError, HelperAlert, HelperLink, LedgerEntry, Member, PolName, ReportKind, Store, Task, TaskStatus } from "./store.ts";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -32,6 +32,10 @@ const entry = (r: Record<string, unknown>): LedgerEntry => ({
   id: String(r.id), member_id: String(r.member_id), amount_pence: Number(r.amount_pence), currency: r.currency as LedgerEntry["currency"],
   kind: r.kind as LedgerEntry["kind"], ref: String(r.ref), created_at: ts(r.created_at),
 });
+
+const link = (r: Record<string, unknown>): HelperLink => ({ id: String(r.id), protected_id: String(r.protected_id), helper_id: String(r.helper_id), created_at: ts(r.created_at) });
+const alert = (r: Record<string, unknown>): HelperAlert => ({ id: String(r.id), protected_id: String(r.protected_id), host: String(r.host), kind: r.kind as HelperAlert["kind"], created_at: ts(r.created_at) });
+const isId = (v: string) => /^[0-9a-f-]{36}$/i.test(v);
 
 export class PgStore implements Store {
   constructor(private sql: Sql) {}
@@ -171,6 +175,42 @@ export class PgStore implements Store {
   async reportedTargets(kind: ReportKind, min: number) {
     const rows = await this.sql`select target from polnet.reports where kind = ${kind} group by target having count(distinct reporter) >= ${min}`;
     return rows.map((r) => String(r.target));
+  }
+
+  async helperInviteCreate(codeHash: string, memberId: string, expiresAt: string) {
+    await this.sql`insert into polnet.helper_invites (code_hash, member_id, expires_at) values (${codeHash}, ${memberId}, ${expiresAt})
+      on conflict (code_hash) do update set member_id = excluded.member_id, expires_at = excluded.expires_at`;
+  }
+  async helperInviteTake(codeHash: string, now: string) {
+    const [r] = await this.sql`delete from polnet.helper_invites where code_hash = ${codeHash} returning member_id, expires_at`;
+    return r && ts(r.expires_at) > now ? String(r.member_id) : null;
+  }
+  async helperLink(l: Omit<HelperLink, "created_at">, max: number) {
+    if (l.protected_id === l.helper_id) return false;
+    return await this.sql.begin(async (tx) => {
+      // Locks the protected member's row so two accepts cannot pass the limit together.
+      await tx`select id from polnet.members where id = ${l.protected_id} for update`;
+      const [c] = await tx`select count(*)::int as n from polnet.helpers where protected_id = ${l.protected_id}`;
+      if (Number(c.n) >= max) return false;
+      const rows = await tx`insert into polnet.helpers (id, protected_id, helper_id) values (${l.id}, ${l.protected_id}, ${l.helper_id})
+        on conflict (protected_id, helper_id) do nothing returning id`;
+      return rows.length === 1;
+    }) as boolean;
+  }
+  async helpersOf(protectedId: string) { return (await this.sql`select * from polnet.helpers where protected_id = ${protectedId} order by created_at`).map(link); }
+  async helping(helperId: string) { return (await this.sql`select * from polnet.helpers where helper_id = ${helperId} order by created_at`).map(link); }
+  async helperUnlink(id: string, memberId: string) {
+    if (!isId(id)) return false;
+    const rows = await this.sql`delete from polnet.helpers where id = ${id} and (protected_id = ${memberId} or helper_id = ${memberId}) returning id`;
+    return rows.length === 1;
+  }
+  async helperAlertAdd(a: Omit<HelperAlert, "created_at">, now: string, pruneBefore: string) {
+    await this.sql`delete from polnet.helper_alerts where protected_id = ${a.protected_id} and created_at < ${pruneBefore}`;
+    await this.sql`insert into polnet.helper_alerts (id, protected_id, host, kind, created_at) values (${a.id}, ${a.protected_id}, ${a.host}, ${a.kind}, ${now})`;
+  }
+  async helperAlertsFor(helperId: string, since: string, limit: number) {
+    return (await this.sql`select a.* from polnet.helper_alerts a join polnet.helpers h on h.protected_id = a.protected_id
+      where h.helper_id = ${helperId} and a.created_at >= ${since} order by a.created_at desc limit ${limit}`).map(alert);
   }
 
   async hit(key: string, windowMs: number, limit: number, nowMs: number) {

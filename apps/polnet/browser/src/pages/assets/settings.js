@@ -8,7 +8,7 @@
   const saved = el("span", { class: "small dim" });
   const toggle = (key, label, help) => {
     const box = el("input", { type: "checkbox" });
-    box.checked = s[key] !== false;
+    box.checked = key === "protectedMode" ? Boolean(s[key]) : s[key] !== false;
     box.addEventListener("change", () => save({ [key]: box.checked }));
     return el("label", { class: "toggle" }, box, el("span", {}, el("strong", {}, label), el("br"), el("span", { class: "dim small" }, help)));
   };
@@ -29,7 +29,9 @@
     el("h2", {}, "Safety"),
     el("div", { class: "card" },
       toggle("safetyList", "Warn me about sites members have reported", "Checked without revealing the site: only 8 characters of a hash of the site's name are sent, shared by thousands of other sites."),
-      el("p", { class: "dim small" }, "Lookalike warnings (fake banks, parcel and tax scams) and download warnings are always on.")),
+      el("p", { class: "dim small" }, "Lookalike warnings (fake banks, parcel and tax scams), scam-page warnings and download warnings are always on."),
+      toggle("protectedMode", "Protected mode", "Stronger protection for anyone who might be targeted by scammers: a pause before passwords and cards on new sites, warnings before remote-control software, no program downloads, and a short wait before \"open anyway\". Off by default."),
+      el("button", { onclick: () => { location.href = "polnet://family/"; } }, "Family help")),
     el("h2", {}, "Olo"),
     el("div", { class: "card" },
       toggle("oloPrivate", "Private questions", "helius-olo.io does not store your questions to Olo from POL Net, train on them, or add them to the Olo brain."),

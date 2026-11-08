@@ -159,6 +159,7 @@
     return n;
   }
   window.browser.on("olo-prefill", (text) => { $("question").value = `What does this mean: "${text}"`; $("includepage").checked = true; $("question").focus(); });
+  window.browser.on("olo-check", (text) => { $("question").value = `Is this true? Show me what the sources say: "${text}"`; $("includepage").checked = false; $("question").focus(); });
   window.browser.on("olo-event", ({ id, event }) => {
     if (!current || current.id !== id) return;
     if (event.type === "delta") {

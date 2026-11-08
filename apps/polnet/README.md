@@ -19,4 +19,6 @@ In the browser: menu > Settings > Servers, set the POL Net server to `http://loc
 
 ## What it does
 
-Shields (trackers, third-party cookies, tracking parameters, https everywhere, Global Privacy Control), lookalike and reported-site warnings, download warnings, per-site permissions, private windows, the pol:// members' network with pairwise ids per site, Tasks that pay, a Wallet with Stripe Connect payouts, pol:// Names, local-only History, and Ask Olo with page context, private by default. No telemetry.
+Shields (trackers, third-party cookies, tracking parameters, https everywhere, Global Privacy Control), lookalike and reported-site warnings, scam-page warnings (fake virus alerts, support-line scams, gift-card and crypto-doubling tricks, "safe account" requests, seed-phrase grabs), download warnings, protected mode and family help for people scammers target, per-site permissions, private windows, the pol:// members' network with pairwise ids per site, Tasks that pay, a Wallet with Stripe Connect payouts, pol:// Names, local-only History, Ask Olo with page context (and "Check this claim"), private by default, and trust tools any website can use (a consented, pairwise "real person" pass: `trust/polnet-trust.mjs`, docs/TRUST_TOOLS.md). No telemetry.
+
+Pilot-town task templates: `pilot/tasks.json` (docs/PILOT_TOWN.md).

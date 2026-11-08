@@ -27,6 +27,9 @@ POL Net grows in stages, so that it is useful from the first day and never depen
 - **Names.** `pol://name` addresses live in the members' registry. A member registers up to five names, each pointing at a public `https://` origin (no IP literals, no private networks, no credentials in the address). Only a member pass can resolve a name; a non-member sees "Members only".
 - **Visits.** When the browser opens `pol://name/path`, it asks the server for a visit pass for that name (`POST /v1/names/:name/visit`): ES256, ten minutes, `aud: "pol://name"`, `typ: "visit"`, and `sub` derived from the member and the name together, so the same member has a different id on every site and two sites cannot link their visitors. The browser fetches the page from the registered origin with the visit pass in the `x-polnet-visit` header, follows redirects only within that origin, and shows the result under the pol:// address. A site owner verifies the header with the published keys; a visit pass cannot be used against the POL Net API.
 - **Takedowns by members.** Any member can report a name, a task or a site. Three reports from three different verified people suspend a name, close a task or put a site on the community safety list, pending review. Because each reporter is a verified person, the threshold cannot be reached with bots.
+- **Scam protection.** Beyond lookalike addresses, the browser reads each page's visible text in an isolated world (the page cannot see or change the check, and nothing is sent anywhere) and warns when it uses the tricks scams rely on: fake virus alerts, "call Microsoft support" numbers, gift-card payments, crypto doubling, "move your money to a safe account", requests for a wallet's recovery phrase, combined with urgency. One weak signal is never enough; the warning lists the tricks it found in plain words.
+- **Protected mode and family help** (off by default). Protected mode pauses before a password or card number is typed on a site used for the first time (first visits are remembered on the device only while protected mode is on), warns before remote-control software scammers ask people to install, does not download programs at all, and waits ten seconds before "open anyway" on every warning. A member in protected mode can link up to three helpers with a one-time code (24 hours, single use). When a warning is shown, each helper sees the site's host name, the kind of warning and the time; never history, page content or anything typed. Private windows send nothing. Either side can end the link; alerts are kept for 30 days. The server checks host and kind against fixed rules and stores nothing else.
+- **Trust tools for any website** (docs/TRUST_TOOLS.md). A site links to `polnet://human/?origin=&return=&nonce=`; the member sees who is asking and what the site will get, and chooses. The browser refuses a request that did not come from a page on that origin, or that asks for the answer to go to another origin. The server signs a five-minute ES256 pass (`typ: "human"`, `aud` the site's origin, the site's nonce, and a `sub` pairwise to member and origin), which the site verifies offline with `apps/polnet/trust/polnet-trust.mjs`. The same library verifies pol:// visit passes and asks Olo what the sources say about a claim.
 - **The community safety list, privately.** The browser asks whether a site is flagged by sending only the first eight hexadecimal characters of the SHA-256 of its host name; the server returns the full hashes of flagged sites with that prefix and the browser compares locally. The server never learns which site was opened.
 
 ### Stage 2 (designed, not built): peer-to-peer
@@ -65,7 +68,8 @@ End-to-end encrypted messaging and payments between verified members, community 
 | Threat | What POL Net does |
 |---|---|
 | Cross-site tracking | Tracker list, third-party cookies refused, tracking parameters stripped, generic user agent, WebRTC limited to the public interface, pairwise ids on pol:// sites |
-| Phishing | Lookalike detection on every navigation, community safety list by hash prefix, warnings on executable downloads |
+| Phishing and scams | Lookalike detection on every navigation, scam-page text checks in an isolated world, community safety list by hash prefix, warnings on executable downloads; in protected mode a pause before passwords and cards on new sites, remote-control warnings, no program downloads, and alerts (host and kind only) to chosen helpers |
+| One site harvesting "real person" answers for another | The consent page refuses requests that did not come from the asking origin, the pass returns only to that origin, and the nonce binds it to the site's session |
 | Bots and second accounts | Proof-of-Life at join; one subject, one member; suspended subjects cannot rejoin |
 | A leaked pass | Visit passes are ten minutes, one site, and refused by the API; member passes are 30 days and refreshed on use |
 | A malicious page reaching the browser | Pages run sandboxed with context isolation; only the browser's own polnet:// pages get a bridge, every call is checked against the sender's address and an allowlist of API routes; no webviews, no file:// navigation |
@@ -76,8 +80,9 @@ End-to-end encrypted messaging and payments between verified members, community 
 
 ## Built today (November 2026)
 
-- The desktop browser: tabs, private windows, Shields, safety warnings, permissions asked per site, the members' layer, Olo, Tasks, Wallet, Names, History, Settings. 16 unit tests and an 11-step end-to-end test that drives the real browser against the API.
-- The server: join, passes, names, visits, the safety list, tasks, claims, review, the ledger, Stripe Checkout funding with a signed webhook, Stripe Connect payouts with reversal, reports and takedowns, admin routes. 18 tests, run against both the in-memory store and Postgres 16 with the migration applied twice, including a race of ten members for two places.
+- The desktop browser: tabs, private windows, Shields, lookalike and scam-page warnings, protected mode, Family help, the real-person consent page, permissions asked per site, the members' layer, Olo (with "Check this claim"), Tasks, Wallet, Names, History, Settings. 25 unit tests and a 14-step end-to-end test that drives the real browser against the API.
+- The server: join, passes, names, visits, the safety list, tasks, claims, review, the ledger, Stripe Checkout funding with a signed webhook, Stripe Connect payouts with reversal, reports and takedowns, family help, human passes, admin routes. 12 API tests run against both the in-memory store and Postgres 16 with both migrations applied twice (including a race of ten members for two places), plus 4 tests of the trust library.
+- Documents for the directions around it: docs/CHARTER.md (technology aligned with life), docs/OWNERSHIP_OPTIONS.md, docs/PILOT_TOWN.md with `apps/polnet/pilot/tasks.json`, docs/TRUST_TOOLS.md, docs/INTEROP.md.
 - CI builds the Mac app (unsigned) on every change.
 
 ## Not built yet, honestly
@@ -92,5 +97,9 @@ End-to-end encrypted messaging and payments between verified members, community 
 ## How to say it
 
 Short: "POL Net is a private browser for real people. It blocks tracking, warns you before scams, opens a members' network with no bots, and pays you for real work that helps."
+
+For families: "Protected mode makes POL Net slow down at the moments scammers rush people, and Family help lets someone you trust know when it had to warn, without ever seeing what you browse."
+
+For websites: "With one link and one file of code, your site can know a real person is here, and nothing else about them."
 
 What not to say: that POL Net replaces the internet, that it is anonymous (it is pseudonymous: one person, one id per site), that it is unhackable, that members will earn a living from it, or that it is a cryptocurrency. It is none of those.

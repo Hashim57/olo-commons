@@ -4,7 +4,7 @@
 // Pure request handling over a Store, so the same code runs in the Edge Function, in tests and locally.
 
 import { safeEqual, sign, type Signer, stripeSignatureOk, verify } from "./jwt.ts";
-import type { Claim, Member, ReportKind, Store, Task } from "./store.ts";
+import type { AlertKind, Claim, Member, ReportKind, Store, Task } from "./store.ts";
 
 export type Config = {
   /** This API's own address, the `iss` of member passes. */
@@ -40,6 +40,12 @@ const PASS_DAYS = 30;
 const CLAIM_STALE_MS = 72 * 3600_000;
 const REPORTS_TO_SUSPEND = 3;
 export const CATEGORIES = ["environment", "health", "education", "community", "accessibility", "fact-checking", "translation", "local-data", "research"] as const;
+const MAX_HELPERS = 3;
+const INVITE_MS = 24 * 3600_000;
+const ALERT_DAYS = 30;
+const HUMAN_PASS_SECONDS = 300;
+export const ALERT_KINDS: readonly AlertKind[] = ["lookalike", "reported", "scam-page", "remote-access", "pause", "download"];
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const UNIQUENESS_ORDER = ["none", "device", "history", "vouched"];
 
 export const RESERVED = new Set([
@@ -70,6 +76,30 @@ export function validTarget(url: string, allowLocal = false): boolean {
     return false;
   }
 }
+
+/** An https origin exactly as a browser writes it (no path, no credentials, no private network). */
+export function validOrigin(origin: string, allowLocal = false): boolean {
+  try {
+    const u = new URL(origin);
+    return u.origin === origin && validTarget(`${origin}/`, allowLocal);
+  } catch {
+    return false;
+  }
+}
+
+export function validHost(host: string): boolean {
+  if (/^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(host)) return true;
+  return host.length <= 253 && /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/.test(host);
+}
+
+/** An invite code for a helper: 8 characters people can read out over the phone (no 0/O, 1/I/L). */
+export function inviteCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  const c = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+  return `${c.slice(0, 4)}-${c.slice(4)}`;
+}
+
+const normCode = (code: string) => code.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 class HttpError extends Error {
   constructor(public status: number, public code: string, message?: string) {
@@ -173,7 +203,7 @@ export function createApi(deps: Deps) {
     if (m === "GET" && (p === "/" || p === "/v1/health")) return json({ ok: true, service: "polnet", time: iso() });
     if (m === "GET" && p === "/.well-known/jwks.json") return json({ keys: [signer.publicJwk] }, 200, { "cache-control": "public, max-age=300" });
     if (m === "GET" && p === "/v1/config") {
-      return json({ pol_api: config.polApi, pol_sitekey: config.polSitekey, payouts: Boolean(config.stripeSecret), min_payout_pence: config.minPayoutPence, fee_bps: config.feeBps, categories: CATEGORIES, join_url: `${config.publicUrl}/join` });
+      return json({ pol_api: config.polApi, pol_sitekey: config.polSitekey, payouts: Boolean(config.stripeSecret), min_payout_pence: config.minPayoutPence, fee_bps: config.feeBps, categories: CATEGORIES, alert_kinds: ALERT_KINDS, max_helpers: MAX_HELPERS, join_url: `${config.publicUrl}/join` });
     }
     if (m === "GET" && p === "/join") return new Response(joinPage(config), { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": joinCsp(config) } });
 
@@ -415,6 +445,71 @@ export function createApi(deps: Deps) {
         await store.ledgerAdd({ id: newId(), member_id: me.id, amount_pence: amount, currency, kind: "payout_reversal", ref: `payout:${ref}` });
         throw e;
       }
+    }
+
+    // --- Family help: helpers hear about scam warnings (host and kind only), nothing else ----------------
+    if (seg[0] === "v1" && seg[1] === "helpers") {
+      if (m === "POST" && seg[2] === "invite") {
+        await limit(`invite:${me.id}`, 10);
+        if ((await store.helpersOf(me.id)).length >= MAX_HELPERS) throw new HttpError(409, "helper_limit", `You can have up to ${MAX_HELPERS} helpers.`);
+        const code = inviteCode();
+        const expires = new Date(now() + INVITE_MS).toISOString();
+        await store.helperInviteCreate(await sha256hex(`polnet-invite:${normCode(code)}`), me.id, expires);
+        return json({ code, expires_at: expires }, 201);
+      }
+      if (m === "POST" && seg[2] === "accept") {
+        await limit(`accept:${me.id}`, 20);
+        const b = await body(req);
+        const code = normCode(str(b.code, 20, 8) ?? "");
+        if (code.length !== 8) throw new HttpError(400, "code_invalid", "Type the 8-character code exactly as it was given to you.");
+        const inviter = await store.helperInviteTake(await sha256hex(`polnet-invite:${code}`), iso());
+        if (!inviter) throw new HttpError(404, "code_unknown", "That code is not valid or has expired. Ask for a new one.");
+        if (inviter === me.id) throw new HttpError(400, "own_code", "That is your own code: give it to the person who will help you.");
+        const who = await store.memberById(inviter);
+        if (!who || who.suspended) throw new HttpError(404, "code_unknown");
+        if (!(await store.helperLink({ id: newId(), protected_id: inviter, helper_id: me.id }, MAX_HELPERS))) throw new HttpError(409, "link_exists", "You already help this person, or they have the most helpers allowed.");
+        return json({ helping: who.handle }, 201);
+      }
+      if (m === "GET" && !seg[2]) {
+        const [mine, theirs] = await Promise.all([store.helpersOf(me.id), store.helping(me.id)]);
+        const handle = async (id: string) => (await store.memberById(id))?.handle ?? "former member";
+        return json({
+          helpers: await Promise.all(mine.map(async (l) => ({ id: l.id, handle: await handle(l.helper_id), since: l.created_at }))),
+          helping: await Promise.all(theirs.map(async (l) => ({ id: l.id, handle: await handle(l.protected_id), since: l.created_at }))),
+        });
+      }
+      if (m === "DELETE" && seg[2] && !seg[3]) return json({ ended: await store.helperUnlink(seg[2], me.id) });
+      if (m === "POST" && seg[2] === "alerts") {
+        await limit(`alert:${me.id}`, 30);
+        const b = await body(req);
+        const host = (str(b.host, 253, 3) ?? "").toLowerCase();
+        const kind = ALERT_KINDS.find((k) => k === b.kind);
+        if (!validHost(host) || !kind) throw new HttpError(400, "alert_invalid");
+        const helpers = await store.helpersOf(me.id);
+        if (helpers.length === 0) return json({ sent: 0 });
+        await store.helperAlertAdd({ id: newId(), protected_id: me.id, host, kind }, iso(), new Date(now() - ALERT_DAYS * 86400_000).toISOString());
+        return json({ sent: helpers.length }, 201);
+      }
+      if (m === "GET" && seg[2] === "alerts") {
+        const rows = await store.helperAlertsFor(me.id, new Date(now() - ALERT_DAYS * 86400_000).toISOString(), 100);
+        const handles = new Map<string, string>();
+        for (const r of rows) if (!handles.has(r.protected_id)) handles.set(r.protected_id, (await store.memberById(r.protected_id))?.handle ?? "former member");
+        return json({ alerts: rows.map((r) => ({ handle: handles.get(r.protected_id), host: r.host, kind: r.kind, at: r.created_at })) });
+      }
+    }
+
+    // --- Trust tools: "a real person" for any https site, with consent, unlinkable across sites ----------
+    if (m === "POST" && p === "/v1/human") {
+      await limit(`human:${me.id}`, 120);
+      const b = await body(req);
+      const origin = str(b.origin, 300, 9) ?? "";
+      const nonce = str(b.nonce, 128, 8) ?? "";
+      if (!validOrigin(origin, config.allowLocalTargets)) throw new HttpError(400, "origin_invalid", "The site must be a public https:// origin.");
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(nonce)) throw new HttpError(400, "nonce_invalid", "The site's nonce must be 8 to 128 letters, digits, - or _.");
+      const iat = Math.floor(now() / 1000);
+      const sub = (await sha256hex(`polnet-human:${me.id}:${origin}`)).slice(0, 32);
+      const pass = await sign(signer, { iss: config.issuer, aud: origin, sub, typ: "human", nonce, iat, exp: iat + HUMAN_PASS_SECONDS });
+      return json({ human: pass, expires_in: HUMAN_PASS_SECONDS });
     }
 
     // --- Reports: members take bad things down ----------------------------------------------------------
