@@ -1,0 +1,8 @@
+{
+  "lint": { "rules": { "exclude": ["require-await", "no-import-prefix"] } },
+  "tasks": {
+    "test": "deno test -A tests/",
+    "dev": "deno run -A scripts/dev.ts",
+    "keys": "deno run scripts/keys.ts"
+  }
+}

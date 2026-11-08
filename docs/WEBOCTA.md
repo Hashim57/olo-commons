@@ -15,6 +15,7 @@ A knowledge system in which every statement carries its source, its licence, its
 | Olo | The assistant people talk to: web, iPhone, Mac. Writes answers with cloud models and shows only what Zeus could verify by default. | helius-olo.io, the App Store apps |
 | Zeus | The verifier: an open 7B model (Apache 2.0 base, open adapter) that labels every sentence supported, contradicted or not covered, with the exact words from the source. Trained in the cloud every day from reviewed feedback. | zeus/, Cloudflare Workers AI |
 | Olo Commons | The open knowledge base: atoms with provenance, licence, validity dates, credibility and status, grown daily from open and authoritative sources and re-checked at those sources. | heliusnetwork.app/olo, Supabase |
+| POL Net | The browser and members' network: private by default, warnings before harm, a pol:// network only verified people (Proof of Life) can open, Olo built in, and paid tasks from organisations for work with a public benefit. | apps/polnet, docs/POLNET.md |
 | The loop | Flags from the apps, reviewed by a person, become Zeus training data; questions the Commons cannot answer become the ingester's reading list; retractions and source edits flow back in. | docs/FEEDBACK.md, docs/TRUST.md |
 
 ## Principles (the rules of evidence)
@@ -29,7 +30,7 @@ A knowledge system in which every statement carries its source, its licence, its
 
 ## What the name must not claim
 
-- WEBOCTA is not a protocol, a standard or a new layer of the internet. It is Helius Network's system and the way it is run. Say "Helius Network's WEBOCTA" or "the WEBOCTA system", never "the next web".
+- WEBOCTA is not a standard or a replacement for the internet. Since November 2026 it includes a members' protocol, POL Net (docs/POLNET.md), which runs over the existing internet in its first stage. Say "Helius Network's WEBOCTA", "the WEBOCTA system" or "POL Net, a private browser for real people", and describe what it improves (tracking, scams, bots, unpaid work); never "the next web" or "a new internet".
 - It is not a neural network in the technical sense. "Innovative Neural Network" is a description of a network of people, sources and models; Zeus is the only neural network in it. Technical readers will check, so the long form should appear once with that gloss and the product names should carry the weight.
 - It is not "Web5". That name belongs in the public mind to a wound-down identity project and a third party's US trademark application; WEBOCTA makes no reference to it.
 - It is not "Web 4.0", which is the European Commission's term for virtual worlds. If asked, say so plainly.
