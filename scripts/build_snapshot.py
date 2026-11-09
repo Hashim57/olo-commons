@@ -15,11 +15,13 @@ Format (v1): {"v":1,"built_at","count","licence_note","fields":[...],"atoms":[[.
 with fields id, title, text, url, source, licence, published_at. text is the
 summary, or the start of the content when the summary is short (at most 600
 characters), which is enough to search and to quote with a link to the source.
-A summary that is the start of its content is not written twice.
+A summary that is the start of its content is not written twice, and neither are
+the words a summary and its content share (join_once).
 """
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -54,6 +56,44 @@ def page(after, limit=500, tries=4):
     raise SystemExit(f"export failed after {tries} tries: {last}")
 
 
+WORD = re.compile(r"\w+")
+OVERLAP_MIN = 4  # words the end of a summary and the start of its content must share before the join drops the repeat
+
+
+def join_once(summary, content):
+    """A short summary followed by its content, with the words they share written once.
+
+    The connectors do not all write a summary that is the literal start of the content: wikidata stores
+    "Label: description." beside "Label. description. Described in N Wikimedia projects.", gutenberg stores
+    "Title. Subjects: a; b" beside "Subjects: a; b", data_gov "Dataset published by X. notes" beside "notes".
+    Joined as they stood, 595 of the 608 wikidata texts, 16 gutenberg and 8 data_gov texts in the 2026-11-09
+    snapshot said the same thing twice. Words are compared without case or punctuation:
+      * the content starts with every word of the summary: the content alone;
+      * the summary ends with every word of the content: the summary alone;
+      * the summary ends with at least OVERLAP_MIN words the content starts with: the summary, then what the
+        content adds after them;
+      * otherwise the two are different texts and both are kept, as before.
+    """
+    sw = [m.group(0).lower() for m in WORD.finditer(summary)]
+    cm = list(WORD.finditer(content))
+    cw = [m.group(0).lower() for m in cm]
+    if not sw or not cw:
+        return (summary + " " + content).strip()
+    shared = 0
+    for n in range(min(len(sw), len(cw)), 0, -1):
+        if sw[-n:] == cw[:n]:
+            shared = n
+            break
+    if shared == len(sw):
+        return content
+    if shared == len(cw):
+        return summary
+    if shared >= OVERLAP_MIN:
+        rest = content[cm[shared - 1].end():].lstrip(" .,;:!?)\"'")
+        return (summary + " " + rest).strip()
+    return (summary + " " + content).strip()
+
+
 def compact(a):
     summary = " ".join((a.get("summary") or "").split())
     content = " ".join((a.get("content") or "").split())
@@ -65,7 +105,7 @@ def compact(a):
         # 582 of the 7,149 texts in the 2026-11-07 snapshot were one description written twice.
         text = content
     else:
-        text = (summary + " " + content).strip()
+        text = join_once(summary, content)
     text = text[:TEXT_MAX]
     return [a.get("id"), (a.get("title") or "").strip()[:300], text, a.get("url") or "", a.get("source") or "", a.get("licence") or "", a.get("published_at"),
             a.get("status") or "candidate", a.get("credibility"), a.get("valid_from"), a.get("valid_to"), (a.get("observed_at") or "")[:10] or None]

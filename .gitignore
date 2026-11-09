@@ -1,2 +1,4 @@
 .zeus-venv/
 *.whl
+__pycache__/
+*.pyc

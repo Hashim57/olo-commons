@@ -151,11 +151,25 @@ def wikidata_housekeeping(label, desc):
     return bool(NAMESPACE_RE.search(str(label or "")) or PAGE_KIND_RE.search(str(desc or "").strip()))
 
 
+WIKIDATA_TAIL_RE = re.compile(r"\.? ?Described in \d+ Wikimedia projects\.?$")
+
+
 def wikidata_description(a):
-    """The description part of a wikidata atom's summary, which the connector writes as "<label>: <description>."."""
+    """The description part of a wikidata atom. The connector writes the summary as "<label>: <description>." and the
+    content as "<label>. <description>. Described in N Wikimedia projects."; the live export gives the summary, the
+    snapshot gave both joined until 2026-11-09 and gives the content alone since (scripts/build_snapshot.py
+    join_once). All three read the same here: the label and the "Described in" sentence are taken off."""
     title, summary = str(a.get("title") or ""), str(a.get("summary") or "")
-    desc = summary[len(title) + 2:] if summary.startswith(title + ": ") else summary
-    return desc.rstrip(".").strip()
+    desc = summary
+    for sep in (": ", ". "):
+        if title and summary.startswith(title + sep):
+            desc = summary[len(title) + len(sep):]
+            break
+    # the joined form repeats the label and the description after the first one: keep the first
+    again = desc.find(". " + title + ". ") if title else -1
+    if again >= 0:
+        desc = desc[:again]
+    return WIKIDATA_TAIL_RE.sub("", desc).rstrip(".").strip()
 
 
 def usable_atoms(atoms):

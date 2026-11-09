@@ -12,7 +12,9 @@
 // Supabase with gte-small) merged with keyword search by reciprocal rank fusion
 // (see rank.ts), then reranked for the question's words (coverage, title,
 // proximity) with near duplicates moved last. Each result says
-// which retriever found it (`match`: both, semantic or keyword).
+// which retriever found it (`match`: both, semantic or keyword) and carries
+// its trust line (`status`, `credibility`, `corroboration`, when it was last
+// observed; see shape.ts and docs/TRUST.md).
 //
 // Deploy:  supabase functions deploy olo-query --no-verify-jwt
 // Optional secrets: OLO_API_KEYS="key1,key2" for partners who need the higher
@@ -23,7 +25,8 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { exportAfter, exportLimit } from './export.ts';
-import { citation, looseQuery, rank } from './rank.ts';
+import { looseQuery, rank } from './rank.ts';
+import { resultOf } from './shape.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400;
@@ -110,10 +113,8 @@ Deno.serve(async (req) => {
 
   // merge by reciprocal rank fusion (an atom found by both retrievers rises), then rerank the whole
   // pool for the question: distinct words covered, title over summary, words close together, near duplicates last
-  const results = rank(q, semantic, keyword, k).map((r: any) => ({
-    id: r.id, title: r.title, summary: r.summary, content: r.content || null, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence,
-    published_at: r.published_at || null, retrieved_at: r.retrieved_at, similarity: typeof r.similarity === 'number' ? r.similarity : null, match: r.match, citation: citation(r),
-  }));
+  // shape.ts: the fields the API has always returned, plus each atom's trust and time fields (status, credibility, ...)
+  const results = rank(q, semantic, keyword, k).map(resultOf);
   await sb.from('olo_query_log').insert({ ip_hash: ipHash, q_len: q.length, results: results.length, client: keyed ? 'keyed' : (req.headers.get('origin') || 'api').slice(0, 80) });
   return new Response(JSON.stringify({ q, k, mode, results, attribution: 'Olo Commons by Helius Network. Each result carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api' }), { headers: H });
 });
