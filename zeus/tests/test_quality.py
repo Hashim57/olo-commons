@@ -54,6 +54,26 @@ def test_wikidata_description_is_what_follows_the_label():
     assert quality.wikidata_description(b) == "a thing with a colon in its name"
 
 
+
+def test_wikidata_description_reads_every_form_the_text_has_had():
+    title = "Mercury"
+    live = {"title": title, "summary": "Mercury: Wikimedia disambiguation page."}
+    joined = {"title": title, "summary": "Mercury: Wikimedia disambiguation page. Mercury. Wikimedia disambiguation page. Described in 41 Wikimedia projects."}
+    content_only = {"title": title, "summary": "Mercury. Wikimedia disambiguation page. Described in 41 Wikimedia projects."}
+    for a in (live, joined, content_only):
+        assert quality.wikidata_description(a) == "Wikimedia disambiguation page"
+        assert quality.wikidata_housekeeping(a["title"], quality.wikidata_description(a))
+    # a description that must match to its end (PAGE_KIND_RE's "taxonomy template$") is found in the snapshot forms too
+    t = {"title": "Taxonomy/Aves", "summary": "Taxonomy/Aves. taxonomy template. Described in 5 Wikimedia projects."}
+    assert quality.wikidata_description(t) == "taxonomy template"
+    assert quality.wikidata_housekeeping(t["title"], quality.wikidata_description(t))
+    # a real thing stays a real thing in every form
+    for s in ("Kachari Kingdom: kingdom in medieval Assam, Northeast India.",
+              "Kachari Kingdom. kingdom in medieval Assam, Northeast India. Described in 13 Wikimedia projects."):
+        k = {"title": "Kachari Kingdom", "summary": s}
+        assert quality.wikidata_description(k) == "kingdom in medieval Assam, Northeast India"
+        assert not quality.wikidata_housekeeping(k["title"], quality.wikidata_description(k))
+
 def test_usable_atoms_drops_duplicates_stubs_and_housekeeping_once_each_and_keeps_order():
     good = {"id": "g1", "title": "Project Gutenberg", "summary": ABS[:120], "content": ABS, "source": "wikipedia"}
     stub = {"id": "s1", "title": "New Book", "summary": "new book new book", "content": "new book new book", "source": "archive_org"}
