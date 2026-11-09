@@ -24,12 +24,17 @@ Response:
       "id": "uuid", "title": "...", "summary": "...", "content": "up to 2000 chars or null",
       "url": "https://...", "source": "Wikipedia", "source_slug": "wikipedia", "licence": "CC BY-SA 4.0",
       "published_at": "2024-03-01", "retrieved_at": "2026-10-20T17:00:00Z", "similarity": 0.81, "match": "both",
-      "citation": "Title (Wikipedia, CC BY-SA 4.0). https://..."
+      "citation": "Title (Wikipedia, CC BY-SA 4.0). https://...",
+      "status": "verified", "credibility": 92, "corroboration": 2,
+      "valid_from": "2024-03-01", "valid_to": null, "observed_at": "2026-11-08T09:15:00Z",
+      "source_revision": "1250001", "source_kind": "encyclopedia"
     }
   ],
   "attribution": "..."
 }
 ```
+
+Each result carries its trust line (docs/TRUST.md), the same fields olo-answer gives with every passage: `status` (`candidate`, `verified` or `disputed`; retracted and superseded atoms are never returned), `credibility` (0 to 100), `corroboration` (how many other independent sources agree), `valid_from` and `valid_to` (when the fact holds), `observed_at` (when the source was last seen to say this), `source_revision` and `source_kind`. A field is `null` when the value is unknown. These were added after the fields above them, so a caller written against the earlier response keeps working.
 
 ## Answer: a checked answer in one call
 
