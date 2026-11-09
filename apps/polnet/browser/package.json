@@ -38,6 +38,7 @@
         "NSLocationWhenInUseUsageDescription": "A website you allow can know your approximate location."
       }
     },
-    "linux": { "category": "Network" }
+    "linux": { "category": "Network" },
+    "afterPack": "scripts/after-pack.js"
   }
 }

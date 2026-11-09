@@ -7,15 +7,17 @@ About an hour, once. Nothing here deploys itself.
 1. Use the Proof-of-Life Supabase project (`helius-pol`) or a new one. SQL editor: run `server/supabase/migrations/001_polnet.sql`, then `002_polnet_helpers.sql` (family help; both safe to run again). Optional: `select cron.schedule('polnet-hits', '23 * * * *', 'select polnet.purge_hits()');`
 2. In the Proof-of-Life console, create a site "POL Net" with hostname `polnet.heliusnetwork.app`. Keep its `pk_` and `sk_` keys.
 3. From `apps/polnet/server`: `deno task keys` prints `POLNET_SIGNING_JWK` and `POLNET_ADMIN_SECRET`. Keep them in a password manager; never commit them.
-4. Secrets and deploy:
+4. Secrets and deploy (from `server/`; `server/supabase/config.toml` lets the CLI find the function, and `--use-api` deploys without Docker):
    ```
    supabase secrets set --project-ref YOUR-PROJECT \
      POLNET_SIGNING_JWK='...' POLNET_ADMIN_SECRET='...' \
      POLNET_ISSUER='https://polnet.heliusnetwork.app' POLNET_PUBLIC_URL='https://polnet.heliusnetwork.app' \
      POL_SITEKEY='pk_...' POL_SECRET='sk_...'
-   supabase functions deploy polnet-api --no-verify-jwt --project-ref YOUR-PROJECT
+   supabase functions deploy polnet-api --no-verify-jwt --use-api --project-ref YOUR-PROJECT
    ```
-5. Point `polnet.heliusnetwork.app` at the function: a Netlify site with one redirect, `/* https://YOUR-PROJECT.supabase.co/functions/v1/polnet-api/:splat 200`, and the domain alias. Check: `curl https://polnet.heliusnetwork.app/v1/health`.
+5. Point `polnet.heliusnetwork.app` at the function with the ready Netlify site in `proxy/`: replace `YOUR-POLNET-PROJECT` in `proxy/netlify.toml`, then from `proxy/` run `netlify deploy --prod` (choose "Create & configure a new project", for example `helius-polnet`; never link it to another site), and add `polnet.heliusnetwork.app` under Domain management. The join page is served there as a static page, because Supabase shows HTML from Edge Functions on its own domain as plain text; it reads the Proof-of-Life site key from `/v1/config`, so it needs no editing. Check:
+   - `curl https://polnet.heliusnetwork.app/v1/health` answers `{"ok":true,"service":"polnet",...}`
+   - https://polnet.heliusnetwork.app/join shows "Join POL Net" with the Proof-of-Life box
 
 ## 2. Payouts (when ready)
 
@@ -31,4 +33,4 @@ After checking who they are: `curl -X POST https://polnet.heliusnetwork.app/v1/a
 
 ## 4. The Mac app
 
-The `POL Net browser` workflow builds an unsigned `.dmg` for Apple Silicon and Intel on every change (Actions > the run > Artifacts). Unsigned apps open with right-click > Open the first time. To sign and notarise, add an Apple Developer ID certificate and set `mac.identity` in `browser/package.json`. POL Net is meant to ship as a direct download from heliusnetwork.app.
+The `POL Net browser` workflow builds a `.dmg` for Apple Silicon and Intel on every change (Actions > the run > Artifacts). Without a Developer ID the app is ad-hoc signed (`browser/scripts/after-pack.js`), which stops macOS calling it "damaged"; the first time, open it with right-click > Open, or System Settings > Privacy & Security > Open Anyway. To sign and notarise, add an Apple Developer ID certificate and set `mac.identity` in `browser/package.json`. POL Net is meant to ship as a direct download from heliusnetwork.app.

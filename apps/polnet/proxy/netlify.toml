@@ -1,0 +1,27 @@
+# The Netlify site behind https://polnet.heliusnetwork.app (DEPLOY.md, step 5).
+# Replace YOUR-POLNET-PROJECT with the Supabase project ref (the xxxx in xxxx.supabase.co) in both places.
+#
+# The join page is a static page here because Supabase serves HTML from Edge Functions on its own
+# domain as plain text (browsers would show the code instead of the page). Everything else goes to the
+# POL Net API. Deploy from this folder: netlify deploy --prod
+[build]
+  publish = "public"
+
+[[redirects]]
+  from = "/join"
+  to = "/join.html"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "https://YOUR-POLNET-PROJECT.supabase.co/functions/v1/polnet-api/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+  for = "/join.html"
+  [headers.values]
+    Content-Security-Policy = "default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.heliusnetwork.app; connect-src 'self' https://api.heliusnetwork.app; frame-src https://api.heliusnetwork.app https://check.heliusnetwork.app; img-src data: https:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"
+    Referrer-Policy = "no-referrer"
+    X-Content-Type-Options = "nosniff"
