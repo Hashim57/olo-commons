@@ -1,0 +1,5 @@
+# Minimal Supabase CLI settings so `supabase functions deploy polnet-api` works from apps/polnet/server.
+project_id = "polnet"
+
+[functions.polnet-api]
+verify_jwt = false

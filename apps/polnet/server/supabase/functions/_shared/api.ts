@@ -583,6 +583,8 @@ function joinCsp(c: Config): string {
 }
 
 /**
+ * The join page for local development (scripts/dev.ts). In production the page is served by the Netlify
+ * site in apps/polnet/proxy, because Supabase serves HTML from Edge Functions on its domain as plain text.
  * The join page the browser opens: one Proof-of-Life check, a handle, done. The pass goes back to the
  * POL Net browser through the bridge its join window exposes (window.polnetBrowser), and nowhere else.
  */

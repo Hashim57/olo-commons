@@ -1,0 +1,31 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Join POL Net</title>
+<style>body{font:16px/1.5 -apple-system,system-ui,sans-serif;max-width:520px;margin:48px auto;padding:0 20px;color:#111;background:#fafaf7}h1{font-weight:600}input{font:inherit;padding:10px;width:100%;box-sizing:border-box;border:1px solid #bbb;border-radius:8px}small{color:#666}#msg{margin-top:16px}</style>
+<script src="https://cdn.heliusnetwork.app/pol/v1/gate.js" async defer></script></head><body>
+<h1>Join POL Net</h1><p>One check that you are a real person, then choose a handle. No email, no name, no phone number is kept: only an id that links to nothing else, and the handle you choose.</p>
+<label>Handle<br><input id="handle" maxlength="24" autocomplete="off" placeholder="e.g. river_fox"></label><small>3 to 24 lower-case letters, digits or underscores. Others see this, nothing else.</small>
+<div style="margin-top:20px" id="pol" data-action="polnet_join"></div>
+<div id="msg" role="status"></div>
+<script>
+// The Proof-of-Life site key comes from the API (/v1/config), so this page needs no editing.
+const msg = document.getElementById('msg');
+function done(token) {
+  const handle = document.getElementById('handle').value.trim().toLowerCase();
+  if (!/^[a-z0-9_]{3,24}$/.test(handle)) { msg.textContent = 'Choose a handle first (3 to 24 lower-case letters, digits or underscores), then tick the box again.'; return; }
+  msg.textContent = 'Checking...';
+  fetch('/v1/join', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pol_token: token, handle }) })
+    .then((r) => r.json()).then((j) => {
+      if (!j.pass) { msg.textContent = j.message || j.error || 'That did not work. Try again.'; return; }
+      msg.textContent = 'Welcome, ' + j.member.handle + '. You can close this window.';
+      if (window.polnetBrowser && window.polnetBrowser.complete) window.polnetBrowser.complete(j.pass);
+    }).catch(() => { msg.textContent = 'POL Net could not be reached. Try again.'; });
+}
+window.addEventListener('load', () => {
+  fetch('/v1/config').then((r) => r.json()).then((c) => {
+    if (!c.pol_sitekey) throw new Error('no site key');
+    const el = document.getElementById('pol');
+    el.setAttribute('data-sitekey', c.pol_sitekey);
+    if (window.PoL && window.PoL.render) window.PoL.render(el, { callback: done });
+    else msg.textContent = 'The Proof-of-Life check could not load.';
+  }).catch(() => { msg.textContent = 'POL Net could not be reached. Try again in a moment.'; });
+});
+</script></body></html>

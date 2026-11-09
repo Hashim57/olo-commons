@@ -7,6 +7,9 @@
   app.append(body);
   const me = await P.member(body);
   if (!me) return;
+  // The role saved at join time can be out of date (an organisation is approved later), so ask the server.
+  const fresh = await P.api("GET", "/v1/me");
+  if (fresh && fresh.member && fresh.member.role) me.role = fresh.member.role;
   const cfg = await window.polnet.config();
   const cats = (cfg && cfg.categories) || [];
   const filter = el("select", { "aria-label": "Category" }, el("option", { value: "" }, "All categories"), ...cats.map((c) => el("option", { value: c }, c.replace("-", " "))));

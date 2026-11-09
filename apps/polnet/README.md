@@ -4,6 +4,7 @@ A private, safe browser for real people, with Olo built in, that pays members fo
 
 - `browser/`: the desktop browser (Electron). `npm install`, `npm start`. Tests: `npm test` (unit), `xvfb-run -a npm run e2e` (the real browser against the dev API; needs deno).
 - `server/`: the POL Net API (a Supabase Edge Function in Deno). `deno task test` (add `POLNET_TEST_PG=postgres://...` to run against Postgres too), `deno task dev` for a local API on port 8787 with a fake Proof-of-Life that accepts any token starting `dev-`.
+- `proxy/`: the Netlify site that serves polnet.heliusnetwork.app (the join page, and everything else passed to the API).
 - `DEPLOY.md`: putting the API live and turning on payouts.
 - The design, the protocol stages, the threat model and the economics: [docs/POLNET.md](../../docs/POLNET.md).
 
