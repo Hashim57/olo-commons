@@ -220,6 +220,18 @@ def test_usable_atoms_run_before_the_split_so_a_stub_is_neither_claim_nor_passag
     assert all(ex["claim"] != "new book new book new book new book new book" for split in data.values() for ex in split)
 
 
+def test_cap_usable_filters_before_it_caps_so_junk_takes_no_slot():
+    stub = {"id": "stub-1", "title": "New Book", "summary": "new book new book new book new book new book", "content": "", "url": "https://archive.org/details/x", "source": "archive_org"}
+    real = [atom(i, f"Sentence number {i} says something true about topic {i} in enough words.") for i in range(5)]
+    atoms = [stub, dict(stub), real[0], real[1], dict(real[1]), real[2], real[3], real[4]]
+    kept, dropped, read = bd.cap_usable(atoms, 3)
+    assert [a["id"] for a in kept] == [real[0]["id"], real[1]["id"], real[2]["id"]], "the oldest three usable atoms, the stubs and the repeat passed over"
+    assert read == 8
+    assert dropped["stub"] == 1 and dropped["duplicate"] == 2, "the filter's counts cover every row read, not just the capped ones"
+    assert bd.cap_usable(real, 10)[0] == real, "a cap above the pool keeps everything"
+    assert bd.enough(atoms, 5) is True and bd.enough(atoms, 6) is False, "paging stops once the rows read hold the cap in usable atoms"
+
+
 def test_near_misses_index_matches_a_full_scan_and_follows_the_pool():
     pool = ATOMS + [atom(7, "Queensland has many beaches and a warm climate. Tourism is a major industry in the northern parts of the state."),
                     atom(8, "The Great Barrier Reef lies off the northern coast of Queensland, and it is the largest coral reef system on Earth today.")]

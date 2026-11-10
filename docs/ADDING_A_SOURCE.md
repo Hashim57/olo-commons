@@ -35,7 +35,8 @@ Rules that keep the Commons safe and clean:
 - Return at most `n` candidates. Randomise the window so repeated runs discover new items.
 - `url` must be https and stable; `external_id` is the source's own identifier.
 - Everything passes through `clean()` (in `text.ts`): tags stripped, entities decoded, whitespace collapsed. Never return HTML. If the source carries LaTeX (arXiv does), wrap the field in `delatex()` first so summaries read as plain text.
-- `licence` must be a real licence string for that item or the source's default. When the source mixes licences per item (Europeana, data.gov), check each item and drop the ones that are not open.
+- `licence` must be a real licence string for that item or the source's default, never a guess (the Internet Archive connector stored "as stated by the Archive" for items that stated nothing, and some were in-copyright library scans). When the source mixes licences per item (Europeana, the Internet Archive, data.gov), check each item and drop the ones that are not open: `openLicence()` in `licence.ts` turns a Creative Commons or public domain URL into the canonical name (Public Domain Mark 1.0, CC0 1.0, CC BY 4.0, CC BY-SA 3.0) and returns null for NC, ND, rights statements and anything unknown, so a connector can refuse an item in one line.
+- Ask whether the source's descriptions are written by people. Project Gutenberg's catalogue summaries are written by a language model and say so at the end (issue #55); text a model wrote is `generated` under docs/TRUST.md and must not become an atom that other models then learn from.
 - Keys go in Supabase secrets (`supabase secrets set EUROPEANA_KEY=...`), never in code.
 - Respect the source's rate limits; the ingester runs hourly with a small budget per source.
 

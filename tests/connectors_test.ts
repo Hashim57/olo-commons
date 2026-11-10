@@ -4,7 +4,7 @@
 // reconstructed from each API's documentation where the live API could not be
 // reached; tests/fixtures/ingest/README.md says which is which.
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, WIKIDATA_BATCH, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, WIKIDATA_BATCH, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 import { dataGovCandidates } from '../functions/olo-ingest/datagov.ts';
 
 const text = (name: string) => Deno.readTextFile(new URL(`./fixtures/ingest/${name}`, import.meta.url));
@@ -95,22 +95,38 @@ Deno.test('wikidata: the random walk asks for a full batch of 50 and wbgetentiti
 
 /* ---------- archive_org ---------- */
 
-Deno.test('archive_org: live advancedsearch docs; one-word stub descriptions are rejected', async () => {
-  const r = await json('archive_org.json');
-  const out = archiveCandidates(r.response.docs);
-  assertEquals(out.map(c => c.external_id), ['introducingmanag0002will', 'masonsretreat00tilgrich']);
-  const book = out[0];
-  assertEquals(book.url, 'https://archive.org/details/introducingmanag0002will');
-  assertEquals(book.title, 'Introducing management : a development guide');
-  assert(book.summary!.startsWith('1 online resource (xii, 348 pages) : This book explains'), 'description array joined');
-  assertEquals(book.summary!.length, 600);
-  assertEquals(book.authors, ['Williams, Kate']);
-  assertEquals(book.published_at, '2004-01-01');
-  assertEquals(book.licence, 'Public domain / as stated by the Archive');
-  assertEquals(out[1].content, "After many years in England an impoverished, upper-class American family return to an inherited estate on Chesapeake Bay. The novel describes their reaction to the new surroundings--country living versus city living, America versus Europe--and the resulting conflicts. The father returns to England, one son wants to follow, another wants to remain, and the mother is torn. By the author of In a Father's Place");
+Deno.test('archive_org: the search asks for texts with a description and a licence URL, four times the budget, capped at 40 rows', () => {
+  const u = new URL(archiveSearchUrl(5, 17));
+  assertEquals(u.origin + u.pathname, 'https://archive.org/advancedsearch.php');
+  assertEquals(u.searchParams.get('q'), 'mediatype:texts AND description:* AND licenseurl:*');
+  assertEquals(u.searchParams.getAll('fl[]'), ['identifier', 'title', 'description', 'creator', 'date', 'licenseurl']);
+  assertEquals(u.searchParams.get('rows'), '20');
+  assertEquals(u.searchParams.get('page'), '17');
+  assertEquals(u.searchParams.get('output'), 'json');
+  assertEquals(new URL(archiveSearchUrl(30, 1)).searchParams.get('rows'), '40', 'rows are capped');
 });
 
-Deno.test('archive_org: HTML and entities cleaned, creator arrays kept, rows without identifier or title dropped', async () => {
+Deno.test('archive_org: live advancedsearch docs without a licence URL are no longer atoms (the licence was a guess)', async () => {
+  const r = await json('archive_org.json');
+  assertEquals(archiveCandidates(r.response.docs), [], 'the 2026-10-26 page: two books under no stated licence and three one-word stubs');
+});
+
+Deno.test('archive_org: items are kept only under PDM, CC0, the old CC public domain dedication, CC BY or CC BY-SA, with the canonical licence name stored', async () => {
+  const r = await json('archive_org.licensed.json');
+  const out = archiveCandidates(r.response.docs);
+  assertEquals(out.map(c => c.external_id), ['cu31924014580066', 'osf-io-registration-5xk2q', 'frenchcountrycoo00anon', 'open-textbook-intro-stats-2e', 'zine-local-history-walks']);
+  assertEquals(out.map(c => c.licence), ['Public Domain Mark 1.0', 'CC0 1.0', 'Public domain (CC Public Domain Dedication)', 'CC BY 4.0', 'CC BY-SA 3.0']);
+  assert(!out.some(c => /^See |as stated by the Archive/.test(c.licence!)), 'no licence line is a URL or a guess any more');
+  const book = out[0];
+  assertEquals(book.url, 'https://archive.org/details/cu31924014580066');
+  assertEquals(book.title, 'The natural history of selborne');
+  assertEquals(book.authors, ['White, Gilbert, 1720-1793']);
+  assertEquals(book.published_at, '1900-01-01');
+  assert(out[1].summary!.startsWith('Preregistration of a direct replication'), 'description array joined');
+  assert(out[1].content!.endsWith('alongside the registration.'));
+});
+
+Deno.test('archive_org: HTML and entities cleaned, creator arrays kept, rows without identifier, title or licence dropped', async () => {
   const r = await json('archive_org.edge.json');
   const out = archiveCandidates(r.response.docs);
   assertEquals(out.length, 1);
@@ -120,7 +136,7 @@ Deno.test('archive_org: HTML and entities cleaned, creator arrays kept, rows wit
   assert(noHtml(c.summary));
   assertEquals(c.authors, ['Darwin, Charles, 1809-1882', 'Murray, John, 1808-1892, publisher']);
   assertEquals(c.published_at, undefined, 'a bare year is not a date');
-  assertEquals(c.licence, 'See http://creativecommons.org/publicdomain/mark/1.0/');
+  assertEquals(c.licence, 'Public Domain Mark 1.0');
   assert(!out.some(x => x.url.endsWith('/undefined')));
   assertEquals(archiveCandidates(null as unknown as any[]), []);
 });

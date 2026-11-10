@@ -2,7 +2,7 @@
 
 An open, verifiable knowledge base that an AI can think with, and that belongs to everyone.
 
-Olo Commons grows every 15 minutes from sources the world already trusts (Wikipedia, Wikidata, the Internet Archive, arXiv, Project Gutenberg, PubMed; connectors for data.gov and the Spanish Wikipedia are in review). Every unit of knowledge (an "atom") keeps its provenance: source, URL, licence, authors, publication date, a SHA-256 fingerprint of its content and the time it was retrieved. Atoms are embedded and linked to their nearest neighbours, so the Commons is a graph that thickens as it learns. Anyone can read it through one free API. Only allow-listed sources, fetched by the server, can write to it.
+Olo Commons grows every 15 minutes from sources the world already trusts: Wikipedia in English and Spanish, Wikidata, Wikinews, arXiv, PubMed, OpenAlex, Project Gutenberg, the Internet Archive (items under an open licence only) and Data.gov are live; connectors for Europeana, DOAJ, Open Library, Europe PMC and Wikimedia Commons are written and tested and start disabled until their SQL is run (docs/TRUST.md lists every source with its licence). Every unit of knowledge (an "atom") keeps its provenance: source, URL, licence, authors, publication date, a SHA-256 fingerprint of its content and the time it was retrieved. Atoms are embedded and linked to their nearest neighbours, so the Commons is a graph that thickens as it learns. Anyone can read it through one free API. Only allow-listed sources, fetched by the server, can write to it.
 
 Live: https://heliusnetwork.app/olo
 
@@ -16,7 +16,8 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 
 - `sql/001_olo_commons.sql`: the schema for Postgres with pgvector. Sources registry, atoms, links, queue, run log, daily snapshots, projects, read-only API functions, Row Level Security, scheduled jobs.
 - `sql/002_trust_time_provenance.sql`: status, credibility, validity dates, source revisions, supersession, the feedback table, retractions and the per-address cap on curiosity gaps. Run after 001.
-- `functions/olo-ingest`: the hourly ingester (Supabase Edge Function, Deno). One discovery routine per source, using that source's own public API. Embeds with `gte-small` inside Supabase; no external AI key.
+- `sql/003` to `sql/015`: the Olo brain, later connectors' registry rows, deduplication, and the cleanup files that apply the ingester's quality rules to atoms stored before each rule existed. Numbered, safe to rerun, run in order; each file's header says what it does and why.
+- `functions/olo-ingest`: the ingester (Supabase Edge Function, Deno), run every 15 minutes in small batches. One discovery routine per source, using that source's own public API; a quality gate (`text.ts`) refuses stubs, catalogue records and pointers, and a licence check (`licence.ts`) refuses anything that is not public domain, CC0, CC BY or CC BY-SA where a source licenses per item. Embeds with `gte-small` inside Supabase; no external AI key.
 - `functions/olo-query`: the read API. Meaning search merged with keyword search, provenance on every result, rate limiting by hashed address, CORS for known origins.
 - `functions/olo-answer`: the answer API. Retrieves like olo-query, drafts two to four cited sentences with a hosted open-weight model, and has every sentence checked (supported, contradicted, not covered, with quoted evidence) by Zeus when a served adapter is configured, otherwise by the drafting model under the Zeus prompt, and says which. Uncovered questions become gaps the ingester fills next.
 - `functions/olo-feedback`: sentence flags from the apps, bounded and rate limited, reviewed before they teach Zeus.
@@ -29,7 +30,7 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 1. Create a Supabase project. In the SQL editor run `sql/001_olo_commons.sql`. Store your service-role key in Vault as `service_role_key` (the schedule uses it).
 2. `supabase functions deploy olo-ingest --no-verify-jwt` and `supabase functions deploy olo-query --no-verify-jwt`. (This repository also ships `.github/workflows/deploy-functions.yml`, which deploys both after a human approves the run; see the comments at the top of that file for the two-step setup.)
 3. Optional secrets: `OLO_API_KEYS` (comma-separated partner keys for a higher rate limit), `OLO_SALT` (for address hashing). For answers: `OLO_LLM_API_KEY` (an OpenAI-compatible provider key; without it olo-answer returns 503), `OLO_LLM_BASE_URL` (default Groq), `OLO_LLM_MODEL` (default `openai/gpt-oss-120b`), and `OLO_ZEUS_URL` once a Zeus adapter is served.
-4. Trigger the first ingest by hand: `select public.run_olo_ingest();`. From then on it runs at 15 past every hour.
+4. Trigger the first ingest by hand: `select public.run_olo_ingest();`. From then on it runs every 15 minutes (3, 18, 33 and 48 minutes past the hour).
 
 ## Zeus: the verification model
 

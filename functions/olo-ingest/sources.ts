@@ -3,6 +3,7 @@
 // them without the network. index.ts does the fetching.
 
 import { clean, delatex, joinParts } from './text.ts';
+import { openLicence } from './licence.ts';
 
 export type Candidate = {
   external_id?: string; url: string; title: string; summary?: string; content?: string; authors?: string[]; published_at?: string; licence?: string; lang?: string;
@@ -88,10 +89,39 @@ export function wikidataSearchIds(r: any): string[] {
   return ((r?.search || []) as any[]).map(x => String(x.id || '')).filter(id => /^Q\d+$/.test(id));
 }
 
-/** Internet Archive advancedsearch docs -> candidates (an identifier and a description of at least 100 characters). */
+/**
+ * The search the Internet Archive connector runs: texts with a description and a
+ * licence URL. Until 2026-11-10 the query asked for any text with a description
+ * and the mapper stored "Public domain / as stated by the Archive" for the 88
+ * percent of items that carry no licence URL at all, which was a guess: the
+ * Archive also lends in-copyright library scans, and 83 percent of what the
+ * source gave the Commons was uploader junk that the quality gate in text.ts
+ * later had to learn to refuse (issue #50). The Archive's own CC and public
+ * domain marks live in `licenseurl`, so asking for it up front gives the atom
+ * its real licence and keeps most of that junk from ever reaching the gate.
+ * Four times the budget is requested because the mapper then refuses the items
+ * whose licence is not open (NC, ND, custom).
+ */
+export function archiveSearchUrl(n: number, page: number): string {
+  return `https://archive.org/advancedsearch.php?q=mediatype%3Atexts+AND+description%3A*+AND+licenseurl%3A*&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&fl%5B%5D=creator&fl%5B%5D=date&fl%5B%5D=licenseurl&rows=${Math.min(n * 4, 40)}&page=${page}&output=json`;
+}
+
+/**
+ * Internet Archive advancedsearch docs -> candidates: an identifier, a title, a
+ * description of at least 100 characters and a licence URL that is PDM, CC0,
+ * the retired CC public domain dedication, CC BY or CC BY-SA (licence.ts). An
+ * item without a licence URL, or under any other licence, is not an atom.
+ */
 export function archiveCandidates(docs: any[]): Candidate[] {
   const desc = (d: any) => joinParts(d.description);
-  return (docs || []).filter((d: any) => d && typeof d.identifier === 'string' && d.identifier && d.title && desc(d).length >= 100).map((d: any) => ({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: desc(d).slice(0, 600), content: desc(d), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence: d.licenseurl ? `See ${d.licenseurl}` : 'Public domain / as stated by the Archive' }));
+  const out: Candidate[] = [];
+  for (const d of docs || []) {
+    if (!d || typeof d.identifier !== 'string' || !d.identifier || !d.title || desc(d).length < 100) continue;
+    const licence = openLicence(d.licenseurl);
+    if (!licence) continue;
+    out.push({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: desc(d).slice(0, 600), content: desc(d), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence });
+  }
+  return out;
 }
 
 /** arXiv Atom feed -> candidates (titles and abstracts run through delatex). */
