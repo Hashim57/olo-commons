@@ -1,0 +1,72 @@
+{
+  "responseHeader": { "status": 0, "QTime": 12, "params": { "query": "mediatype:texts AND description:* AND licenseurl:*", "qin": "mediatype:texts AND description:* AND licenseurl:*", "fields": "identifier,title,description,creator,date,licenseurl", "wt": "json", "rows": "8", "start": 0 } },
+  "response": {
+    "numFound": 1203417,
+    "start": 0,
+    "docs": [
+      {
+        "identifier": "cu31924014580066",
+        "title": "The natural history of selborne",
+        "description": "The natural history and antiquities of Selborne, in the county of Southampton, first published in 1789. Gilbert White's letters to Thomas Pennant and Daines Barrington record the birds, plants, weather and village life of one Hampshire parish over twenty years, and the book has stayed in print ever since.",
+        "creator": "White, Gilbert, 1720-1793",
+        "date": "1900-01-01T00:00:00Z",
+        "licenseurl": "http://creativecommons.org/publicdomain/mark/1.0/"
+      },
+      {
+        "identifier": "osf-io-registration-5xk2q",
+        "title": "Replication of a dual-task interference effect in visual working memory",
+        "description": ["Preregistration of a direct replication of a dual-task interference experiment in visual working memory, with the planned sample size, the exclusion rules and the analysis fixed before data collection.", "Data and materials are deposited alongside the registration."],
+        "creator": ["Example, Research Group"],
+        "date": "2023-04-02T00:00:00Z",
+        "licenseurl": "https://creativecommons.org/publicdomain/zero/1.0/"
+      },
+      {
+        "identifier": "frenchcountrycoo00anon",
+        "title": "French country cooking",
+        "description": "A collection of regional recipes from Provence, Burgundy and Normandy with notes on the markets and the seasons each dish belongs to, scanned from a library copy and released under the old Creative Commons public domain dedication.",
+        "creator": "Anonymous",
+        "date": "1950-01-01T00:00:00Z",
+        "licenseurl": "http://creativecommons.org/licenses/publicdomain/"
+      },
+      {
+        "identifier": "open-textbook-intro-stats-2e",
+        "title": "Introductory statistics, second edition",
+        "description": "An open textbook for a first course in statistics: descriptive statistics, probability, sampling distributions, confidence intervals and hypothesis tests, with worked examples drawn from public data sets and exercises at the end of every chapter.",
+        "creator": ["Open Textbook Project"],
+        "date": "2021-08-15T00:00:00Z",
+        "licenseurl": "https://creativecommons.org/licenses/by/4.0/"
+      },
+      {
+        "identifier": "zine-local-history-walks",
+        "title": "Local history walks",
+        "description": "Six self-guided walks through the old town with notes on the buildings, the trades that worked in them and the people recorded in the parish registers, written by the local history society for its members.",
+        "creator": "Local History Society",
+        "date": "2019-06-01T00:00:00Z",
+        "licenseurl": "http://creativecommons.org/licenses/by-sa/3.0/"
+      },
+      {
+        "identifier": "dissertation-nc-only-2018",
+        "title": "A dissertation under a non-commercial licence",
+        "description": "A doctoral dissertation on the economics of municipal water supply, deposited by its author under a Creative Commons licence that allows sharing for non-commercial purposes only, which the Commons cannot pass on under CC BY-SA.",
+        "creator": "Example, Author",
+        "date": "2018-05-20T00:00:00Z",
+        "licenseurl": "https://creativecommons.org/licenses/by-nc-sa/4.0/"
+      },
+      {
+        "identifier": "report-nd-2020",
+        "title": "An annual report under a no-derivatives licence",
+        "description": "The annual report of a foundation, released for sharing in its original form only, with the financial statements and the list of grants made in the year, which the Commons cannot excerpt or pass on under its own licence.",
+        "creator": "Example Foundation",
+        "date": "2020-12-31T00:00:00Z",
+        "licenseurl": "http://creativecommons.org/licenses/by-nd/4.0/"
+      },
+      {
+        "identifier": "lendinglibrary00scan",
+        "title": "A library scan with no licence URL",
+        "description": "A modern management textbook scanned for the Archive's lending library. The Archive states no licence for it, and until 2026-11-10 the connector stored it as public domain, which it is not; the item carries no licenseurl field, so the live query no longer returns it.",
+        "creator": "Example, Writer",
+        "date": "2004-01-01T00:00:00Z"
+      }
+    ]
+  }
+}

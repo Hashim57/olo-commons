@@ -33,6 +33,7 @@ These APIs could not be reached from the build container on 26 October 2026 (pro
 | `wikidata.search.json` | https://www.wikidata.org/w/api.php?action=help&modules=wbsearchentities |
 | `wikidata.edge.json` | https://www.wikidata.org/w/api.php?action=help&modules=wbgetentities and https://www.wikidata.org/wiki/Help:Default_values_for_labels_and_aliases (the `mul` label) |
 | `archive_org.edge.json` | The live `archive_org.json` above and https://archive.org/advancedsearch.php |
+| `archive_org.licensed.json` | The live `archive_org.json` above, with a `licenseurl` per item in the spellings the Archive uses (PDM, CC0, the retired CC public domain dedication, CC BY, CC BY-SA, CC BY-NC-SA, CC BY-ND, none); titles and descriptions written for the test, no real item |
 | `arxiv.edge.xml` | The live `arxiv.xml` above and https://info.arxiv.org/help/api/user-manual.html |
 | `gutenberg.json` | https://github.com/garethbjohnson/gutendex (README, "API Objects") |
 | `pubmed.edge.xml` | The live `pubmed.efetch.xml` above and https://www.ncbi.nlm.nih.gov/books/NBK25499/ (efetch), https://dtd.nlm.nih.gov/ncbi/pubmed/out/pubmed_250101.dtd |

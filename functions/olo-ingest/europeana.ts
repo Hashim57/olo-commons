@@ -13,6 +13,7 @@
 // topic and a random window inside it rather than one deep offset.
 
 import { clean } from './text.ts';
+import { openLicence } from './licence.ts';
 
 export type EuropeanaCandidate = { external_id?: string; url: string; title: string; summary?: string; content?: string; authors?: string[]; published_at?: string; licence?: string; lang?: string };
 
@@ -20,26 +21,14 @@ export const EUROPEANA_API = 'https://api.europeana.eu/record/v2';
 export const EUROPEANA_SITE = 'https://www.europeana.eu';
 export const EUROPEANA_DEMO_KEY = 'api2demo';
 
-// Rights statement URLs that allow reuse with at most attribution or share-alike,
-// matched with the scheme, "www." and any trailing slash removed.
-const OPEN_RIGHTS: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
-  [/^creativecommons\.org\/publicdomain\/mark\/1\.0$/, () => 'Public Domain Mark 1.0'],
-  [/^creativecommons\.org\/publicdomain\/zero\/1\.0$/, () => 'CC0 1.0'],
-  [/^creativecommons\.org\/licenses\/by\/(\d\.\d)$/, (m) => `CC BY ${m[1]}`],
-  [/^creativecommons\.org\/licenses\/by-sa\/(\d\.\d)$/, (m) => `CC BY-SA ${m[1]}`],
-];
-
-function normaliseUrl(u: string): string {
-  return u.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
-}
-
-/** The licence to store for a Europeana rights URL, or null when the record may not be passed on. */
+/**
+ * The licence to store for a Europeana rights URL, or null when the record may
+ * not be passed on. Rights statement URLs that allow reuse with at most
+ * attribution or share-alike (PDM, CC0, CC BY, CC BY-SA), read by the shared
+ * table in licence.ts; rightsstatements.org and NC or ND licences are refused.
+ */
 export function europeanaLicence(rights: unknown): string | null {
-  const raw = Array.isArray(rights) ? rights[0] : rights;
-  if (typeof raw !== 'string' || !raw) return null;
-  const n = normaliseUrl(raw);
-  for (const [re, name] of OPEN_RIGHTS) { const m = n.match(re); if (m) return name(m); }
-  return null;
+  return openLicence(rights);
 }
 
 const first = (v: unknown): string => Array.isArray(v) ? String(v[0] ?? '') : (typeof v === 'string' ? v : '');

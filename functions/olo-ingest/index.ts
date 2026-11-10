@@ -26,7 +26,7 @@ import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl 
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
-import { archiveCandidates, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
 import { permalink, planRecheck } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
@@ -111,9 +111,10 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const ids = (r.query?.random || []).map((x: any) => x.title).filter((t: string) => /^Q\d+$/.test(t));
     return wikidataByIds(ids, n);
   },
+  // Internet Archive: texts that carry a licence URL, kept only under an open licence (sources.ts, licence.ts; issue #50).
   async archive_org(n) {
     const page = 1 + Math.floor(Math.random() * 200);
-    const r: any = await get(`https://archive.org/advancedsearch.php?q=mediatype%3Atexts+AND+description%3A*&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&fl%5B%5D=creator&fl%5B%5D=date&fl%5B%5D=licenseurl&rows=${n * 2}&page=${page}&output=json`);
+    const r: any = await get(archiveSearchUrl(n, page));
     return pick(archiveCandidates(r.response?.docs || []), n);
   },
   async arxiv(n) {

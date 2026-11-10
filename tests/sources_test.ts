@@ -61,9 +61,10 @@ Deno.test('archive and gutenberg mappers keep provenance and drop incomplete row
   assertEquals(a[0].summary, 'Part one describes the book in enough words to keep. Part two adds a second paragraph of description.');
   assertEquals(a[0].authors, ['Someone']);
   assertEquals(a[0].published_at, '1901-02-03');
-  assert(a[0].licence!.startsWith('See https://creativecommons.org'));
+  assertEquals(a[0].licence, 'CC0 1.0', 'the canonical licence name, not the URL');
   const rec = 'Title: Algemeen Handelsblad Datum: 29-07-1859 Editie: Dag Plaats van uitgave: Amsterdam Nummer: 8613';
-  const dup = archiveCandidates([{ identifier: 'ddd_1', title: 'Algemeen Handelsblad', description: [rec, rec] }]);
+  const dup = archiveCandidates([{ identifier: 'ddd_1', title: 'Algemeen Handelsblad', description: [rec, rec], licenseurl: 'http://creativecommons.org/publicdomain/mark/1.0/' }]);
+  assertEquals(archiveCandidates([{ identifier: 'ddd_2', title: 'Algemeen Handelsblad', description: [rec, rec] }]), [], 'no licence URL, no atom');
   assertEquals(dup[0].summary, rec);
   assertEquals(dup[0].content, rec);
   const g = gutenbergCandidates([{ id: 7, title: 'Tale', summaries: ['A tale of two cities.'], subjects: ['Fiction'], authors: [{ name: 'Dickens, Charles' }] }, { id: 8, title: 'Empty' }]);
