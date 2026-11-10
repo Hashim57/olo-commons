@@ -143,6 +143,7 @@ try {
     await waitFor(async () => (await tabUrl()).startsWith("polnet://warning"), "the warning page");
     assert.match(await tabUrl(), /kind=lookalike/);
     await waitFor(async () => /fake site/i.test(await tabEval("document.body.innerText")), "warning text");
+    assert.doesNotMatch(await tabEval("document.body.innerText"), /\bnull\b/, "no stray 'null' where a protected-mode part is left out");
   });
 
   await check("members-only pages ask to join first", async () => {
@@ -212,6 +213,7 @@ try {
     await waitFor(async () => (await tabUrl()).startsWith("polnet://warning"), "the warning page");
     assert.match(await tabUrl(), /kind=scam-page/);
     await waitFor(async () => /phone a support line/.test(await tabEval("document.body.innerText")), "the explanation");
+    assert.doesNotMatch(await tabEval("document.body.innerText"), /\bnull\b/);
   });
 
   await check("a site learns a real person is here, with consent, under an id only it sees", async () => {
