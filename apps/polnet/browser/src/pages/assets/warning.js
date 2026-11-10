@@ -8,6 +8,9 @@
   let host = "";
   try { host = new URL(url).hostname; } catch { /* bad url */ }
   const app = document.getElementById("app");
+  // Element.append writes null as the text "null", so the parts that are only there in protected mode
+  // (calm, helperNote) are left out here instead of being passed through.
+  const add = (...parts) => app.append(...parts.filter((x) => x != null));
   // Warnings shown after a page loaded (scam pages, the pause) sit on top of that page in history, so
   // "back" skips it too.
   const afterLoad = kind === "scam-page" || kind === "pause";
@@ -43,7 +46,7 @@
   if (kind === "lookalike") {
     const official = q.get("official");
     document.title = "Warning: possible fake site";
-    app.append(
+    add(
       el("h1", { class: "error" }, "This may be a fake site"),
       el("p", { class: "lead" }, `${host} looks like ${q.get("brand")}, but it is not ${q.get("brand")}'s real address.`),
       el("div", { class: "notice" }, "Scam sites copy banks, parcel companies, tax offices and crypto wallets to steal passwords and card numbers. If a message sent you here, go to the real site yourself instead."),
@@ -53,7 +56,7 @@
     );
   } else if (kind === "reported") {
     document.title = "Warning: reported site";
-    app.append(
+    add(
       el("h1", { class: "error" }, "Members have reported this site"),
       el("p", { class: "lead" }, `Three or more verified POL Net members have reported ${host} as a scam or as harmful.`),
       el("p", { class: "dim" }, "POL Net checked this without telling anyone which site you were opening: only a short fragment of a code made from the address was sent."),
@@ -65,7 +68,7 @@
     let reasons = [];
     try { reasons = JSON.parse(q.get("why") || "[]").filter((x) => typeof x === "string").slice(0, 8); } catch { reasons = []; }
     document.title = "Warning: this page looks like a scam";
-    app.append(
+    add(
       el("h1", { class: "error" }, "This page looks like a scam"),
       el("p", { class: "lead" }, `POL Net read ${host} on your computer, without sending it anywhere, and found the tricks scams use:`),
       el("div", { class: "card" }, el("ul", {}, ...reasons.map((r) => el("li", {}, r)))),
@@ -76,7 +79,7 @@
     );
   } else if (kind === "remote-access") {
     document.title = "Before you let anyone control your computer";
-    app.append(
+    add(
       el("h1", { class: "error" }, "Is someone asking you to install this?"),
       el("p", { class: "lead" }, `${host} makes software that lets another person see and control your computer.`),
       el("div", { class: "notice" }, "It is useful when you asked for help from someone you know. It is also the first thing scammers ask for when they phone pretending to be your bank, BT, Microsoft, Amazon or the police. Once they are in, they can empty accounts while you watch."),
@@ -88,7 +91,7 @@
   } else if (kind === "pause") {
     const card = q.get("field") === "card";
     document.title = "A moment before you type";
-    app.append(
+    add(
       el("h1", {}, card ? "Before you enter card details" : "Before you enter a password"),
       el("p", { class: "lead" }, `This is the first time you have used ${host}. Three quick questions:`),
       el("div", { class: "card" }, el("ol", {},
@@ -102,13 +105,13 @@
     );
   } else if (kind === "http") {
     document.title = "Not encrypted";
-    app.append(
+    add(
       el("h1", {}, "This site has no secure version"),
       el("p", { class: "lead" }, `${host} does not offer https, so anyone on your network could read or change what you see and send.`),
       el("p", { class: "dim" }, "Do not type passwords or card numbers on it."),
       el("div", { class: "row" }, back(), proceed("Open it without encryption")),
     );
   } else {
-    app.append(el("h1", {}, "Warning"));
+    add(el("h1", {}, "Warning"));
   }
 })();
