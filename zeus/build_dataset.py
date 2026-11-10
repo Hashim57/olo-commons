@@ -31,10 +31,16 @@ NUM_RE = re.compile(r"\b(\d{2,}(?:[.,]\d+)?)\b")
 SENT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z])")
 
 
+def enough(atoms, max_atoms):
+    """True once the rows read so far hold max_atoms usable atoms, so paging can stop. The cap is on
+    usable atoms, not on rows read (see cap_usable), so junk rows do not use up the budget."""
+    return len(quality.usable_atoms(atoms)[0]) >= max_atoms
+
+
 def fetch_atoms(url, key, max_atoms):
     atoms, after = [], "1970-01-01T00:00:00Z"
     h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    while len(atoms) < max_atoms:
+    while not enough(atoms, max_atoms):
         r = requests.post(f"{url}/rest/v1/rpc/olo_export", headers=h, json={"p_after": after, "p_limit": 500}, timeout=60)
         r.raise_for_status()
         page, nxt = export_page(r.json())
@@ -44,13 +50,13 @@ def fetch_atoms(url, key, max_atoms):
         if not nxt or nxt == after or len(page) < 500:
             break
         after = nxt
-    return atoms[:max_atoms]
+    return atoms
 
 
 def fetch_atoms_keyless(export_url, max_atoms):
     """The same pages through olo-query's keyless export (GET ?export=1), so a cloud job needs no key."""
     atoms, after = [], "1970-01-01T00:00:00Z"
-    while len(atoms) < max_atoms:
+    while not enough(atoms, max_atoms):
         r = requests.get(export_url, params={"export": 1, "after": after, "limit": 500}, timeout=60)
         r.raise_for_status()
         page, nxt = export_page(r.json())
@@ -60,7 +66,17 @@ def fetch_atoms_keyless(export_url, max_atoms):
         if not nxt or nxt == after or len(page) < 500:
             break
         after = nxt
-    return atoms[:max_atoms]
+    return atoms
+
+
+def cap_usable(atoms, max_atoms):
+    """The atoms a build sees: the quality filter (quality.usable_atoms) first, then the oldest max_atoms of
+    what it kept. Until 2026-11-10 the cap came first and the filter second, so on the 2026-11-09 snapshot
+    877 of the 7,000 slots went to atoms the filter then dropped (835 stubs, 42 Wikidata housekeeping items)
+    and the build saw 6,123 atoms; the same rows now give 7,000 usable ones. Returns (kept, dropped, read)
+    with dropped the filter's counts over every row read and read the number of rows read."""
+    kept, dropped = quality.usable_atoms(atoms)
+    return kept[:max_atoms], dropped, len(atoms)
 
 
 SNAPSHOT_URL = "https://raw.githubusercontent.com/Hashim57/olo-commons/snapshot/commons.json"
@@ -1007,14 +1023,15 @@ def main():
     # With the public anon key, read through PostgREST; without it, through the keyless export;
     # with --snapshot, from the offline file or its published copy (the workflow's fallback when the export is down).
     if args.snapshot:
-        atoms = atoms_from_snapshot(load_snapshot(args.snapshot))[: args.max_atoms]
+        atoms = atoms_from_snapshot(load_snapshot(args.snapshot))
     elif args.anon_key:
         atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
     else:
         atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", args.max_atoms)
     # The same quality rules the ingester applies (zeus/quality.py): each id once, no stubs, no Wikidata
-    # categories or templates. Applied before any split, so a junk atom is neither a claim nor a passage.
-    atoms, dropped = quality.usable_atoms(atoms)
+    # categories or templates. Applied before any split, so a junk atom is neither a claim nor a passage,
+    # and before the cap, so a junk atom does not take a slot from a real one (cap_usable).
+    atoms, dropped, atoms_read = cap_usable(atoms, args.max_atoms)
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     hard = [] if args.no_hard_negatives else add_hard_negatives(data["train"], atoms, args.eval_share)
     composed = [] if args.no_compose else add_composed_train(data["train"], atoms, args.eval_share)
@@ -1034,7 +1051,7 @@ def main():
     gold_files, n_gold = count_gold(os.path.join(args.out, "gold"))
     imported_files, n_imported = count_gold(os.path.join(args.out, "imported"), skip_eval=True)
     by_label = {l: sum(1 for ex in data["train"] if ex["label"] == l) for l in ("supported", "contradicted", "not_covered")}
-    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "atoms_dropped": dropped, "train": len(data["train"]), "eval": len(data["eval"]), "eval2": len(data["eval2"]),
+    meta = {"built_at": datetime.now(timezone.utc).isoformat(), "atoms": len(atoms), "atoms_read": atoms_read, "atoms_dropped": dropped, "train": len(data["train"]), "eval": len(data["eval"]), "eval2": len(data["eval2"]),
             "eval3": len(ev3), "eval3_version": eval3.EVAL3_VERSION,
             "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
             "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
