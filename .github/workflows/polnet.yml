@@ -94,3 +94,44 @@ jobs:
           name: POL-Net-mac
           path: apps/polnet/browser/dist/*.dmg
           retention-days: 30
+
+  release:
+    # Publishes the main branch's dmg files as the GitHub Release "polnet-browser", under fixed
+    # names, so a website can link to one address that always serves the newest build:
+    #   https://github.com/Hashim57/olo-commons/releases/download/polnet-browser/POL-Net-mac-apple-silicon.dmg
+    #   https://github.com/Hashim57/olo-commons/releases/download/polnet-browser/POL-Net-mac-intel.dmg
+    # Runs only after the tests and the Mac build pass on a push to main (never on a pull request).
+    # The only new permission is contents: write for this job, which GITHUB_TOKEN needs to create a release.
+    name: Public download (GitHub Release)
+    needs: [mac]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: POL-Net-mac
+          path: dmg
+      - name: Give the dmg files fixed names
+        run: |
+          set -euo pipefail
+          ls -la dmg
+          arm=$(ls dmg/*arm64*.dmg | head -1)
+          intel=$(ls dmg/*.dmg | grep -v arm64 | head -1)
+          mkdir out
+          cp "$arm" out/POL-Net-mac-apple-silicon.dmg
+          cp "$intel" out/POL-Net-mac-intel.dmg
+          (cd out && shasum -a 256 *.dmg > SHA256SUMS.txt && cat SHA256SUMS.txt)
+      - name: Replace the polnet-browser release with this build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh release delete polnet-browser --cleanup-tag --yes || true
+          gh release create polnet-browser out/POL-Net-mac-apple-silicon.dmg out/POL-Net-mac-intel.dmg out/SHA256SUMS.txt \
+            --target "$GITHUB_SHA" --latest=false \
+            --title "POL Net browser for Mac (latest build)" \
+            --notes "POL Net, the private browser for real people, built from ${GITHUB_SHA::7} on main. Apple Silicon (M1 and later): POL-Net-mac-apple-silicon.dmg. Intel Macs: POL-Net-mac-intel.dmg. The app is not yet notarised by Apple, so the first time you open it, Control-click the app and choose Open, or go to System Settings > Privacy & Security and press Open Anyway. Checksums in SHA256SUMS.txt. Source and design: apps/polnet and docs/POLNET.md."

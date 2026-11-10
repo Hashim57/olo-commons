@@ -33,4 +33,9 @@ After checking who they are: `curl -X POST https://polnet.heliusnetwork.app/v1/a
 
 ## 4. The Mac app
 
-The `POL Net browser` workflow builds a `.dmg` for Apple Silicon and Intel on every change (Actions > the run > Artifacts). Without a Developer ID the app is ad-hoc signed (`browser/scripts/after-pack.js`), which stops macOS calling it "damaged"; the first time, open it with right-click > Open, or System Settings > Privacy & Security > Open Anyway. To sign and notarise, add an Apple Developer ID certificate and set `mac.identity` in `browser/package.json`. POL Net is meant to ship as a direct download from heliusnetwork.app.
+The `POL Net browser` workflow builds a `.dmg` for Apple Silicon and Intel on every change (Actions > the run > Artifacts). Without a Developer ID the app is ad-hoc signed (`browser/scripts/after-pack.js`), which stops macOS calling it "damaged"; the first time, open it with right-click > Open, or System Settings > Privacy & Security > Open Anyway. To sign and notarise, add an Apple Developer ID certificate and set `mac.identity` in `browser/package.json`. POL Net is meant to ship as a direct download. On every push to main that passes, the `release` job replaces the GitHub Release `polnet-browser` with the new dmg files under fixed names, so websites (helius-olo.io, heliusnetwork.app) can link to addresses that always serve the newest build:
+
+- Apple Silicon: https://github.com/Hashim57/olo-commons/releases/download/polnet-browser/POL-Net-mac-apple-silicon.dmg
+- Intel: https://github.com/Hashim57/olo-commons/releases/download/polnet-browser/POL-Net-mac-intel.dmg
+
+Until the app is signed with a Developer ID and notarised, say on the download page that the first open needs Control-click > Open, or System Settings > Privacy & Security > Open Anyway.
