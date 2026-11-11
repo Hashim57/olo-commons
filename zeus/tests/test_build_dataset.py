@@ -232,6 +232,36 @@ def test_cap_usable_filters_before_it_caps_so_junk_takes_no_slot():
     assert bd.enough(atoms, 5) is True and bd.enough(atoms, 6) is False, "paging stops once the rows read hold the cap in usable atoms"
 
 
+def test_cap_modes_choose_different_atoms_and_keep_export_order():
+    real = [atom(i, f"Sentence number {i} says something true about topic {i} in enough words.") for i in range(20)]
+    ids = [a["id"] for a in real]
+    oldest, _, read = bd.cap_usable(real, 5)
+    assert [a["id"] for a in oldest] == ids[:5] and read == 20, "the default is the oldest five, as before"
+    assert [a["id"] for a in bd.cap_usable(real, 5, "oldest")[0]] == ids[:5]
+    newest = [a["id"] for a in bd.cap_usable(real, 5, "newest")[0]]
+    assert newest == ids[-5:], "newest keeps the last five in export order"
+    hashed = [a["id"] for a in bd.cap_usable(real, 5, "hash")[0]]
+    assert len(hashed) == 5 and hashed == [i for i in ids if i in set(hashed)], "hash keeps five atoms in export order"
+    assert hashed == sorted(hashed, key=ids.index)
+    assert set(hashed) == set(sorted(ids, key=bd.cap_rank)[:5]), "the five with the lowest cap_rank"
+    # a stable sample: adding atoms changes the kept set only at the edge of the cut, never the order
+    more = real + [atom(i, f"Sentence number {i} says something true about topic {i} in enough words.") for i in range(20, 30)]
+    hashed_more = {a["id"] for a in bd.cap_usable(more, 5, "hash")[0]}
+    assert hashed_more == set(sorted([a["id"] for a in more], key=bd.cap_rank)[:5])
+    assert all(a["id"] in hashed_more or bd.cap_rank(a["id"]) >= max(bd.cap_rank(i) for i in hashed_more) for a in real if a["id"] in hashed)
+    # every mode keeps everything when the cap is above the pool, and refuses an unknown mode
+    for mode in bd.CAP_MODES:
+        assert bd.cap_usable(real, 50, mode)[0] == real, mode
+    try:
+        bd.cap_usable(real, 5, "random")
+        assert False, "an unknown cap mode must be refused"
+    except ValueError:
+        pass
+    # cap_rank and stable_split read different digits of the hash, so the eval share does not move with the cap
+    assert all(0 <= bd.cap_rank(i) < 1 for i in ids)
+    assert bd.cap_rank(ids[0]) != int(__import__("hashlib").sha256(ids[0].encode()).hexdigest()[:8], 16) / 0xFFFFFFFF
+
+
 def test_near_misses_index_matches_a_full_scan_and_follows_the_pool():
     pool = ATOMS + [atom(7, "Queensland has many beaches and a warm climate. Tourism is a major industry in the northern parts of the state."),
                     atom(8, "The Great Barrier Reef lies off the northern coast of Queensland, and it is the largest coral reef system on Earth today.")]

@@ -69,14 +69,41 @@ def fetch_atoms_keyless(export_url, max_atoms):
     return atoms
 
 
-def cap_usable(atoms, max_atoms):
-    """The atoms a build sees: the quality filter (quality.usable_atoms) first, then the oldest max_atoms of
-    what it kept. Until 2026-11-10 the cap came first and the filter second, so on the 2026-11-09 snapshot
-    877 of the 7,000 slots went to atoms the filter then dropped (835 stubs, 42 Wikidata housekeeping items)
-    and the build saw 6,123 atoms; the same rows now give 7,000 usable ones. Returns (kept, dropped, read)
-    with dropped the filter's counts over every row read and read the number of rows read."""
+CAP_MODES = ("oldest", "newest", "hash")
+
+
+def cap_rank(atom_id):
+    """Where an atom falls in the stable order the "hash" cap mode uses: a number in [0, 1) from the SHA-256 of
+    its id, independent of when the atom was added, so an atom keeps its place as the Commons grows and the
+    kept set changes only at the edge of the cut. Uses different hex digits from stable_split, so the two are
+    independent: the eval share of the kept atoms stays about eval_share whichever cap mode is used."""
+    return int(hashlib.sha256(atom_id.encode()).hexdigest()[8:16], 16) / 0xFFFFFFFF
+
+
+def cap_usable(atoms, max_atoms, mode="oldest"):
+    """The atoms a build sees: the quality filter (quality.usable_atoms) first, then max_atoms of what it kept,
+    chosen by mode. "oldest" (the default, and what every measured version so far was built on) keeps the
+    first max_atoms in export order, so once the Commons is larger than the cap the training set stops
+    following it: on the 2026-11-11 snapshot 8,229 atoms were usable and the 1,229 newest never entered a
+    build. "newest" keeps the last max_atoms, so every build follows the Commons and the whole set turns over.
+    "hash" keeps the max_atoms with the lowest cap_rank, a sample spread over the Commons' whole history that
+    changes only at the edge of the cut as atoms are added. Order within the kept set is export order in every
+    mode, so the splits that follow see the atoms as they always did.
+    Until 2026-11-10 the cap came first and the filter second, so on the 2026-11-09 snapshot 877 of the 7,000
+    slots went to atoms the filter then dropped (835 stubs, 42 Wikidata housekeeping items) and the build saw
+    6,123 atoms; the same rows now give 7,000 usable ones. Returns (kept, dropped, read) with dropped the
+    filter's counts over every row read and read the number of rows read."""
+    if mode not in CAP_MODES:
+        raise ValueError(f"cap mode must be one of {CAP_MODES}, not {mode!r}")
     kept, dropped = quality.usable_atoms(atoms)
-    return kept[:max_atoms], dropped, len(atoms)
+    if mode == "oldest":
+        kept = kept[:max_atoms]
+    elif mode == "newest":
+        kept = kept[max(0, len(kept) - max_atoms):]
+    else:
+        chosen = {a["id"] for a in sorted(kept, key=lambda a: (cap_rank(a["id"]), a["id"]))[:max_atoms]}
+        kept = [a for a in kept if a["id"] in chosen]
+    return kept, dropped, len(atoms)
 
 
 SNAPSHOT_URL = "https://raw.githubusercontent.com/Hashim57/olo-commons/snapshot/commons.json"
@@ -1013,6 +1040,8 @@ def main():
     ap.add_argument("--anon-key", default=os.environ.get("SUPABASE_ANON_KEY"))
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "data"))
     ap.add_argument("--max-atoms", type=int, default=7000)
+    ap.add_argument("--cap-mode", choices=CAP_MODES, default="oldest",
+                    help="which usable atoms the cap keeps once the Commons is larger than --max-atoms: the oldest (default; what every measured version was built on), the newest, or a stable hash sample of the whole Commons (see cap_usable)")
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
@@ -1022,16 +1051,19 @@ def main():
     args = ap.parse_args()
     # With the public anon key, read through PostgREST; without it, through the keyless export;
     # with --snapshot, from the offline file or its published copy (the workflow's fallback when the export is down).
+    # The live reads stop paging once they hold the cap in usable atoms, which is right for the oldest-first cap
+    # only; the other modes need the whole Commons before they can choose.
+    fetch_cap = args.max_atoms if args.cap_mode == "oldest" else sys.maxsize
     if args.snapshot:
         atoms = atoms_from_snapshot(load_snapshot(args.snapshot))
     elif args.anon_key:
-        atoms = fetch_atoms(args.supabase_url, args.anon_key, args.max_atoms)
+        atoms = fetch_atoms(args.supabase_url, args.anon_key, fetch_cap)
     else:
-        atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", args.max_atoms)
+        atoms = fetch_atoms_keyless(f"{args.supabase_url}/functions/v1/olo-query", fetch_cap)
     # The same quality rules the ingester applies (zeus/quality.py): each id once, no stubs, no Wikidata
     # categories or templates. Applied before any split, so a junk atom is neither a claim nor a passage,
     # and before the cap, so a junk atom does not take a slot from a real one (cap_usable).
-    atoms, dropped, atoms_read = cap_usable(atoms, args.max_atoms)
+    atoms, dropped, atoms_read = cap_usable(atoms, args.max_atoms, args.cap_mode)
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     hard = [] if args.no_hard_negatives else add_hard_negatives(data["train"], atoms, args.eval_share)
     composed = [] if args.no_compose else add_composed_train(data["train"], atoms, args.eval_share)
@@ -1056,7 +1088,7 @@ def main():
             "gold_files": gold_files, "gold": n_gold, "imported_files": imported_files, "imported": n_imported,
             "train_total": len(data["train"]) + n_gold + n_imported, "train_by_label": by_label,
             "train_near_miss": sum(1 for ex in data["train"] if ex.get("kind") == "near_miss"),
-            "from": "snapshot" if args.snapshot else "live"}
+            "from": "snapshot" if args.snapshot else "live", "cap_mode": args.cap_mode, "max_atoms": args.max_atoms}
     # which generators made the train split, so a training run can say what it trained on
     meta["train_generators"] = ["rules-v1"] + ([] if args.no_hard_negatives else [HARD_NEGATIVES_VERSION])
     import compose
