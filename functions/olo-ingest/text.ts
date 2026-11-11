@@ -73,6 +73,32 @@ export function isLinkNotice(body: unknown): boolean {
   return rest.length < STUB_LINK_REST;
 }
 
+export const RIGHTS_MAX_WORDS = 60; // a body with more words than this says something beyond its legal standing
+
+/** The words of a sentence about an item's legal standing or the origin of its record, not about the item. */
+export const RIGHTS_RE = /\b(?:public domain|copyright(?:ed)?|all rights reserved|no known (?:copyright )?restrictions|metadata|crossref|source url|full record)\b/i;
+
+/**
+ * True when a body is a rights notice, not a description: every sentence says
+ * where the item stands legally or where its record came from, and there are
+ * at most RIGHTS_MAX_WORDS words in all. The Internet Archive's journal scans
+ * uploaded from CrossRef records carry one fixed description ("This paper is
+ * in the public domain in USA. Metadata comes from the CrossRef API, see full
+ * record in the source URL below."), which passes every other rule (19
+ * distinct words, no link, no label) and says nothing about the paper. On the
+ * 2026-11-11 snapshot 2 archive_org atoms were of that kind, both from the two
+ * days since the connector started asking for licensed items only, and no
+ * atom of any other source matched: a description that mentions copyright or
+ * the public domain in passing has at least one other sentence, and a Wikidata
+ * item ends with "Described in N Wikimedia projects".
+ */
+export function isRightsNotice(body: unknown): boolean {
+  const b = oncely(clean(body));
+  if (!b || words(b).length > RIGHTS_MAX_WORDS) return false;
+  const sentences = b.split(/[.!?]\s+/).map(s => s.trim()).filter(Boolean);
+  return sentences.length > 0 && sentences.every(s => RIGHTS_RE.test(s));
+}
+
 export const CATALOGUE_MIN_LABELS = 3;    // a body with fewer "Label: value" fields than this is read as prose
 export const CATALOGUE_MAX_WORDS_PER_LABEL = 5; // ...and one with more words than this per field is prose with headings (a structured abstract)
 
@@ -164,7 +190,8 @@ export function withoutPhysicalDescription(body: string): string {
 /**
  * True when an atom would carry no knowledge: its body is a label, one word
  * or one line repeated, a notice that points elsewhere (isLinkNotice), a
- * catalogue record (isCatalogueRecord), a shelf mark (isShelfMark), or says
+ * catalogue record (isCatalogueRecord), a shelf mark (isShelfMark), a rights
+ * notice (isRightsNotice), or says
  * nothing beyond the title, the authors and a physical description
  * (withoutPhysicalDescription).
  * The Internet Archive search returns many uploads whose description is the
@@ -188,6 +215,7 @@ export function isStub(title: unknown, summary: unknown, content: unknown, autho
   if (isLinkNotice(body)) return true;
   if (isCatalogueRecord(body)) return true;
   if (isShelfMark(body)) return true;
+  if (isRightsNotice(body)) return true;
   // What the body says once the physical description, the title and the authors are taken out of it.
   let rest = ' ' + withoutPhysicalDescription(body).toLowerCase() + ' ';
   const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);

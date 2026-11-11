@@ -1,7 +1,7 @@
 """Atom quality rules shared with the ingester, so Zeus trains on the same Commons the ingester would keep.
 
-Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice, isCatalogueRecord, isShelfMark
-and withoutPhysicalDescription) and
+Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice, isRightsNotice,
+isCatalogueRecord, isShelfMark and withoutPhysicalDescription) and
 functions/olo-ingest/sources.ts (wikidataHousekeeping); tests/text_test.ts and
 zeus/tests/test_quality.py hold the same examples so the two stay in step.
 
@@ -27,6 +27,11 @@ STUB_LINK_REST = 160        # characters a body holding a link, an email address
 
 # Links, email addresses and bare domains, the parts of a body that point elsewhere (LINK_RE in text.ts).
 LINK_RE = re.compile(r"https?://\S+|www\.\S+|[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|\b[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:com|org|net|info|ir|io|co|edu|gov|me|tk|ru|de|uk)\b(?:/\S*)?")
+
+RIGHTS_MAX_WORDS = 60   # a body with more words than this says something beyond its legal standing
+
+# The words of a sentence about an item's legal standing or the origin of its record, not about the item (RIGHTS_RE in text.ts).
+RIGHTS_RE = re.compile(r"\b(?:public domain|copyright(?:ed)?|all rights reserved|no known (?:copyright )?restrictions|metadata|crossref|source url|full record)\b", re.I)
 
 CATALOGUE_MIN_LABELS = 3            # a body with fewer "Label: value" fields than this is read as prose
 CATALOGUE_MAX_WORDS_PER_LABEL = 5   # ...and one with more words than this per field is prose with headings (a structured abstract)
@@ -76,6 +81,19 @@ def oncely(s):
     return s[:h] if len(s) > 40 and s[h] == " " and s[:h] == s[h + 1:] else s
 
 
+def is_rights_notice(body):
+    """True when a body is a rights notice, not a description: every sentence says where the item stands legally or
+    where its record came from, at most RIGHTS_MAX_WORDS words in all ("This paper is in the public domain in USA.
+    Metadata comes from the CrossRef API, see full record in the source URL below.", the fixed description of the
+    Internet Archive's journal scans uploaded from CrossRef records; 2 archive_org atoms on the 2026-11-11 snapshot,
+    no atom of any other source)."""
+    b = oncely(clean(body))
+    if not b or len(words(b)) > RIGHTS_MAX_WORDS:
+        return False
+    sentences = [x.strip() for x in re.split(r"[.!?]\s+", b) if x.strip()]
+    return bool(sentences) and all(RIGHTS_RE.search(x) for x in sentences)
+
+
 def is_catalogue_record(body):
     """True when a body is a catalogue record, not a description: at least CATALOGUE_MIN_LABELS "Label: value"
     fields with at most CATALOGUE_MAX_WORDS_PER_LABEL words per field. Delpher newspaper issues ("Title: Algemeen
@@ -108,14 +126,14 @@ def without_physical_description(body):
     return clean(CATALOGUE_NOTES_RE.sub(" ", body[m.end():]))
 
 
-STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "no_rest")
+STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "no_rest")
 
 
 def stub_reason(title, summary, content, authors=None):
     """The name of the rule that makes an atom a stub, or None when it carries knowledge. The rules run in the
     ingester's order (isStub in text.ts), so the first that fires is named: "empty" (no body), "label" (fewer than
     STUB_MIN_DISTINCT different words), "repeat" (one line written over and over), "link_notice", "catalogue_record",
-    "shelf_mark", and "no_rest" (nothing beyond the title, the authors and a physical description)."""
+    "shelf_mark", "rights_notice", and "no_rest" (nothing beyond the title, the authors and a physical description)."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
@@ -132,6 +150,8 @@ def stub_reason(title, summary, content, authors=None):
         return "catalogue_record"
     if is_shelf_mark(body):
         return "shelf_mark"
+    if is_rights_notice(body):
+        return "rights_notice"
     rest = " " + without_physical_description(body).lower() + " "
     for name in [title] + list(authors or []):
         n = clean(name).lower()
@@ -142,7 +162,7 @@ def stub_reason(title, summary, content, authors=None):
 
 def is_stub(title, summary, content, authors=None):
     """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
-    record, a shelf mark, or nothing beyond its title, authors and physical description (stub_reason names which)."""
+    record, a shelf mark, a rights notice, or nothing beyond its title, authors and physical description (stub_reason names which)."""
     return stub_reason(title, summary, content, authors) is not None
 
 

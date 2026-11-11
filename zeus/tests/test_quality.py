@@ -206,6 +206,31 @@ def test_records_with_a_summary_after_the_measurements_are_kept():
     assert quality.without_physical_description("") == ""
 
 
+CROSSREF = "This paper is in the public domain in USA. Metadata comes from the CrossRef API, see full record in the source URL below."
+
+
+def test_rights_notices_are_stubs():
+    # the same examples as tests/text_test.ts, so the ingester and the training filter stay in step
+    assert quality.is_rights_notice(CROSSREF)
+    assert quality.is_rights_notice(CROSSREF + " " + CROSSREF)
+    assert quality.is_stub("Notes", CROSSREF, CROSSREF)
+    assert quality.is_rights_notice("No known copyright restrictions.")
+    assert quality.is_rights_notice("Public Domain Mark 1.0. Metadata from the publisher.")
+
+
+def test_descriptions_that_mention_rights_in_passing_pass_the_rights_rule():
+    assert not quality.is_rights_notice("Attente de Dieu by XXe century french philosopher and mystic Simone Weil. It's public domain.")
+    assert not quality.is_rights_notice('Bank Note Reporter by Krause Publications Inc. This is an in-copyright publication. "Snippet" results will appear in the Newman Portal search results.')
+    abstract = ("With the rapid adoption of large language models in text generation, it has become difficult to trace generated content and assert copyright. "
+                "We study watermarking schemes that survive paraphrase, measuring detection rates on three model families across news, fiction and code, "
+                "and we show that metadata alone cannot establish provenance once the text has been edited. Our results suggest that copyright holders "
+                "need a combination of watermarks and public registries, and we release the evaluation suite under a public domain dedication so that others can extend it.")
+    assert not quality.is_rights_notice(abstract)
+    assert not quality.is_rights_notice("Public Domain Day. annual observance on 1 January. Described in 8 Wikimedia projects.")
+    assert not quality.is_rights_notice("")
+    assert not quality.is_stub("Public Domain Day", "Public Domain Day. annual observance on 1 January.", "Public Domain Day. annual observance on 1 January. Described in 8 Wikimedia projects.")
+
+
 def test_stub_reason_names_the_first_rule_that_fires_in_the_ingester_order():
     shelf = " - ".join(["Karnataka State Archives", "Mysore", "Gazettes", "Gazette-6", "HRS-Historical Record Section", "R", "369 (ID 102517)"])
     cases = [
@@ -216,6 +241,7 @@ def test_stub_reason_names_the_first_rule_that_fires_in_the_ingester_order():
         ("ktp2019-item", NOTICES[0], NOTICES[0], "link_notice"),
         ("Algemeen Handelsblad", DELPHER, DELPHER, "catalogue_record"),
         ("76_PART_2_4_OCT_DEC_1903_118.pdf", shelf, shelf, "shelf_mark"),
+        ("Our Astronomical Column", CROSSREF, CROSSREF, "rights_notice"),
         ("Some scanned book", "ix, 203 pages : 24 cm Includes bibliographical references and index", "ix, 203 pages : 24 cm Includes bibliographical references and index", "no_rest"),
         ("Hydropower Engineering Module Five Lecture Notes", "Hydropower Engineering Module Five Lecture Notes by IIT Kharagpur", "Hydropower Engineering Module Five Lecture Notes by IIT Kharagpur", "no_rest"),
     ]
