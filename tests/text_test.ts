@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, isCatalogueRecord, isLinkNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, isCatalogueRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -123,6 +123,32 @@ Deno.test('isLinkNotice: a real description that cites a link is kept, and so is
   assertEquals(isLinkNotice(''), false);
   // numbers with a dot are not domains
   assertEquals(isLinkNotice('Dose 2.5 mg, version 1.2.3, p. 4.'), false);
+});
+
+/* ---------- isRightsNotice: a description that only says where the item stands legally ---------- */
+
+Deno.test('isRightsNotice: the CrossRef upload notice from the 2026-11-11 snapshot is a stub', () => {
+  const notice = 'This paper is in the public domain in USA. Metadata comes from the CrossRef API, see full record in the source URL below.';
+  assert(isRightsNotice(notice));
+  assert(isRightsNotice(notice + ' ' + notice), 'written twice');
+  assert(isStub('Our Astronomical Column', notice, notice));
+  assert(isStub('Notes', notice, notice));
+  // other wordings of the same kind
+  assert(isRightsNotice('No known copyright restrictions.'));
+  assert(isRightsNotice('Public Domain Mark 1.0. Metadata from the publisher.'));
+});
+
+Deno.test('isRightsNotice: a description that mentions rights in passing is kept', () => {
+  // the item is described and its standing is one sentence of several
+  assertEquals(isRightsNotice('Attente de Dieu by XXe century french philosopher and mystic Simone Weil. It\'s public domain.'), false);
+  assertEquals(isRightsNotice('Bank Note Reporter by Krause Publications Inc. This is an in-copyright publication. "Snippet" results will appear in the Newman Portal search results.'), false);
+  // an abstract about copyright is about its subject, and longer than a notice
+  const abstract = 'With the rapid adoption of large language models in text generation, it has become difficult to trace generated content and assert copyright. We study watermarking schemes that survive paraphrase, measuring detection rates on three model families across news, fiction and code, and we show that metadata alone cannot establish provenance once the text has been edited. ' +
+    'Our results suggest that copyright holders need a combination of watermarks and public registries, and we release the evaluation suite under a public domain dedication so that others can extend it.';
+  assertEquals(isRightsNotice(abstract), false);
+  // a Wikidata item ends with the project count, which is not a rights sentence
+  assertEquals(isRightsNotice('Public Domain Day. annual observance on 1 January. Described in 8 Wikimedia projects.'), false);
+  assertEquals(isRightsNotice(''), false);
 });
 
 /* ---------- isCatalogueRecord: a description that is a metadata record ---------- */
