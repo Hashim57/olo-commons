@@ -152,6 +152,8 @@ Call the API first, pass the `results` to the model as context, and ask it to ci
 
 `https://cdn.jsdelivr.net/gh/Hashim57/olo-commons@snapshot/commons.json` (second source: `https://raw.githubusercontent.com/Hashim57/olo-commons/snapshot/commons.json`), rebuilt every six hours: `{"v":1,"built_at","count","licence_note","fields":["id","title","text","url","source","licence","published_at"],"atoms":[[...]]}`. Each atom keeps its own licence; the compilation is CC BY-SA 4.0.
 
+Beside it, `status.json` on the same branch is the answer of `?status=1` at build time (`olo_stats` and the last twelve ingest runs), so a monitor or an offline check can read the Commons' health up to six hours old without reaching Supabase. It is left out of a build when the status call fails, so read it as optional.
+
 ## When no model can be reached
 
 olo-answer then returns `mode: "extractive"`, `verifier: "extractive"` and a `notice`: the passages' own sentences that best match the question, each with its passage as evidence. A written answer carries `mode: "written"` (main provider) or `"written-fallback"` (the Cloudflare writer).

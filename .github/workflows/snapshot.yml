@@ -1,7 +1,9 @@
 # Offline snapshot of Olo Commons, every six hours (and on demand).
-# Builds snapshot/commons.json from the keyless export and force-pushes it as the only file on the
-# "snapshot" branch (no history kept, so the repository does not grow), then asks jsDelivr to refresh.
-# Pages and apps keep this file on the device and search it when the network or the database is down.
+# Builds snapshot/commons.json from the keyless export and force-pushes it, with status.json (the
+# Commons' health from olo-query ?status=1: olo_stats and the last twelve ingest runs), as the only
+# files on the "snapshot" branch (no history kept, so the repository does not grow), then asks jsDelivr
+# to refresh. Pages and apps keep commons.json on the device and search it when the network or the
+# database is down; status.json lets a monitor or a daily check read the health without reaching Supabase.
 name: Commons snapshot
 on:
   schedule:
@@ -23,14 +25,25 @@ jobs:
           python-version: '3.12'
       - name: Build the snapshot
         run: python3 scripts/build_snapshot.py --out "$RUNNER_TEMP/snap/commons.json"
+      - name: Read the Commons' health (no key; the snapshot is published without it when the call fails)
+        run: |
+          OUT="$RUNNER_TEMP/snap/status.json"
+          if curl -fsS --max-time 60 "${OLO_STATUS_URL:-https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-query?status=1}" -o "$OUT" \
+             && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get('ok') else 1)" "$OUT"; then
+            python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print('stats:', json.dumps(d.get('stats'))[:300]); print('runs:', len(d.get('runs') or []), 'unfinished:', d.get('runs_unfinished'), 'with failures:', d.get('runs_with_failures'))" "$OUT"
+          else
+            echo "olo-query ?status=1 did not answer with ok; publishing the snapshot without status.json"
+            rm -f "$OUT"
+          fi
       - name: Publish on the snapshot branch
         run: |
           cd "$RUNNER_TEMP/snap"
-          printf '# Olo Commons offline snapshot\n\nBuilt by .github/workflows/snapshot.yml on main. Each atom carries its own licence; the compilation is CC BY-SA 4.0.\n' > README.md
+          printf '# Olo Commons offline snapshot\n\nBuilt by .github/workflows/snapshot.yml on main. Each atom carries its own licence; the compilation is CC BY-SA 4.0.\n\nstatus.json, when present, is the answer of olo-query ?status=1 at build time: olo_stats and the last twelve ingest runs.\n' > README.md
           git init -q -b snapshot
           git config user.name "olo-snapshot"
           git config user.email "olo-snapshot@heliusnetwork.app"
           git add commons.json README.md
+          if [ -f status.json ]; then git add status.json; fi
           git commit -q -m "snapshot $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" snapshot:snapshot
       - name: Refresh the jsDelivr copy
