@@ -5,9 +5,10 @@
  * community safety list checked by hash prefix. `fetch` is passed in so this is tested without Electron.
  */
 
-/** What the browser's own pages (polnet://tasks, wallet, names, square, services) may ask the API for. Nothing else gets through. */
+/** What the browser's own pages (polnet://tasks, wallet, names, square, services, teach) may ask the API for. Nothing else gets through. */
 const ALLOWED = [
-  ["GET", /^\/v1\/(me|config|tasks|claims|wallet|names|org\/tasks|payouts\/status|helpers|helpers\/alerts|services|square)$/],
+  ["GET", /^\/v1\/(me|config|tasks|claims|wallet|names|org\/tasks|payouts\/status|helpers|helpers\/alerts|services|square|checks\/next|checks\/stats)$/],
+  ["POST", /^\/v1\/checks\/[0-9a-f-]{36}\/label$/],
   ["GET", /^\/v1\/square\/[0-9a-f-]{36}$/],
   ["POST", /^\/v1\/square$/],
   ["POST", /^\/v1\/square\/[0-9a-f-]{36}\/(vote|comments)$/],

@@ -4,7 +4,7 @@ About an hour, once. Nothing here deploys itself.
 
 ## 1. The API
 
-1. Use the Proof-of-Life Supabase project (`helius-pol`) or a new one. SQL editor: run `server/supabase/migrations/001_polnet.sql`, then `002_polnet_helpers.sql` (family help) and `003_polnet_square.sql` (the Square; all three safe to run again). Optional: `select cron.schedule('polnet-hits', '23 * * * *', 'select polnet.purge_hits()');`
+1. Use the Proof-of-Life Supabase project (`helius-pol`) or a new one. SQL editor: run `server/supabase/migrations/001_polnet.sql`, then `002_polnet_helpers.sql` (family help) `003_polnet_square.sql` (the Square) and `004_polnet_checks.sql` (Teach Zeus; all four safe to run again). Optional: `select cron.schedule('polnet-hits', '23 * * * *', 'select polnet.purge_hits()');`
 2. In the Proof-of-Life console, create a site "POL Net" with hostname `polnet.heliusnetwork.app`. Keep its `pk_` and `sk_` keys.
 3. From `apps/polnet/server`: `deno task keys` prints `POLNET_SIGNING_JWK` and `POLNET_ADMIN_SECRET`. Keep them in a password manager; never commit them.
 4. Secrets and deploy (from `server/`; `server/supabase/config.toml` lets the CLI find the function, and `--use-api` deploys without Docker):
@@ -43,3 +43,14 @@ The `POL Net browser` workflow builds a `.dmg` for Apple Silicon and Intel on ev
 - Intel: https://github.com/Hashim57/olo-commons/releases/download/polnet-browser/POL-Net-mac-intel.dmg
 
 Until the app is signed with a Developer ID and notarised, say on the download page that the first open needs Control-click > Open, or System Settings > Privacy & Security > Open Anyway.
+
+## 5. Teach Zeus
+
+Members check claims against passages at `polnet://teach/`; three members who give the same answer make a lesson for Zeus (docs/FEEDBACK.md, "Checks by POL Net members"). It needs migration 004 and a redeploy of the function, then claims to check. From the repository root:
+
+```
+python3 zeus/member_checks_to_gold.py items --out items.json        # 200 rule-made claims and 20 controls
+curl -sS -X POST https://polnet.heliusnetwork.app/v1/admin/checks -H "authorization: Bearer $POLNET_ADMIN_SECRET" -H "content-type: application/json" --data @items.json
+```
+
+To bring back what members agreed on: `curl -sS https://polnet.heliusnetwork.app/v1/admin/checks/export -H "authorization: Bearer $POLNET_ADMIN_SECRET" > export.json`, then `python3 zeus/member_checks_to_gold.py gold export.json`, read the file it writes in `zeus/data/gold/`, and commit it through a pull request. `GET /v1/checks/stats` is public: counts of checks, people and lessons, and the share of control answers that were right. Do not commit `items.json` or `export.json`.

@@ -712,6 +712,7 @@ function buildMenu() {
       submenu: [
         { label: "The Square", click: () => { const w = focused(); if (w) createTab(w, "polnet://square/"); } },
         { label: "HeliusTV", click: () => { const w = focused(); if (w) createTab(w, "polnet://square/?topic=tv"); } },
+        { label: "Teach Zeus", click: () => { const w = focused(); if (w) createTab(w, "polnet://teach/"); } },
         { label: "Free and paid services", click: () => { const w = focused(); if (w) createTab(w, "polnet://services/"); } },
         { type: "separator" },
         { label: "Tasks that pay", click: () => { const w = focused(); if (w) createTab(w, "polnet://tasks/"); } },

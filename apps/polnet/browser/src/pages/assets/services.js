@@ -14,7 +14,7 @@
     return;
   }
   const STATUS = { live: null, soon: "Opening soon", planned: "Planned, not on sale yet" };
-  const internal = { square: "polnet://square/", heliustv: "polnet://square/?topic=tv", tasks: "polnet://tasks/", "task-posting": "polnet://tasks/", members: "polnet://names/", family: "polnet://family/" };
+  const internal = { square: "polnet://square/", heliustv: "polnet://square/?topic=tv", teach: "polnet://teach/", tasks: "polnet://tasks/", "task-posting": "polnet://tasks/", members: "polnet://names/", family: "polnet://family/" };
   const counts = { free: r.services.filter((s) => s.kind === "free").length, paid: r.services.filter((s) => s.kind === "paid" && s.status !== "planned").length, planned: r.services.filter((s) => s.status === "planned").length };
   body.append(el("div", { class: "row" },
     el("span", { class: "tag" }, `${counts.free} free`), el("span", { class: "tag" }, `${counts.paid} paid`), el("span", { class: "tag" }, `${counts.planned} planned`)));

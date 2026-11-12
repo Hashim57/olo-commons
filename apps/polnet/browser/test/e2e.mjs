@@ -294,6 +294,38 @@ try {
     await waitFor(async () => (await api("GET", `/v1/square/${video.post.id}`, undefined, org.pass)).post.votes === 0, "the vote taken back");
   });
 
+  await check("Teach Zeus: a member selects the deciding words on the page, and the third matching check makes a lesson", async () => {
+    const text = "The River Aire rises at Malham Tarn in North Yorkshire and flows through Leeds before joining the Ouse.";
+    const up = await api("POST", "/v1/admin/checks", { items: [{ claim: "The River Aire flows through Leeds.", passages: [
+      { id: "p1", source: "wikipedia", url: "https://en.wikipedia.org/wiki/River_Aire", text },
+      { id: "p2", source: "wikipedia", url: "https://en.wikipedia.org/wiki/Leeds", text: "Leeds is a city in West Yorkshire, England. It stands on the River Aire." }] }] }, "dev-admin");
+    assert.equal(up.added, 1, JSON.stringify(up));
+    const quote = "flows through Leeds";
+    const other = await api("POST", "/v1/join", { pol_token: "dev-teacher-two", handle: "e2e_teacher" });
+    for (const pass of [org.pass, other.pass]) {
+      const n = await api("GET", "/v1/checks/next", undefined, pass);
+      assert.equal((await api("POST", `/v1/checks/${n.item.id}/label`, { label: "supported", passage: "p1", quote }, pass)).status, 201);
+    }
+    await go("polnet://teach/");
+    await waitFor(async () => (await tabEval("document.getElementById('claim') && document.getElementById('claim').textContent")) === "The River Aire flows through Leeds.", "the claim on the page");
+    // Choosing "supported" without selecting words is refused on the page.
+    await tabEval("document.querySelector('button[data-label=supported]').click()");
+    await waitFor(async () => /First select the words/.test(await tabEval("document.body.innerText")), "asked for the words");
+    await tabEval(`(() => {
+      const node = document.querySelector('[data-passage=p1]').firstChild;
+      const at = node.textContent.indexOf(${JSON.stringify(quote)});
+      const r = document.createRange();
+      r.setStart(node, at); r.setEnd(node, at + ${quote.length});
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    })()`);
+    await waitFor(async () => (await tabEval("document.getElementById('picked').textContent")) === `Selected: "${quote}"`, "the selected words shown");
+    await tabEval("document.querySelector('button[data-label=supported]').click()");
+    await waitFor(async () => /now a lesson for Zeus/.test(await tabEval("document.body.innerText")), "told it became a lesson");
+    assert.match(await tabEval("document.body.innerText"), /Nothing to check just now/);
+    const out = await api("GET", "/v1/admin/checks/export", undefined, "dev-admin");
+    assert.deepEqual(out.examples.map((x) => [x.claim, x.label, x.evidence[0].quote, x.agree]), [["The River Aire flows through Leeds.", "supported", quote, 3]]);
+  });
+
   await check("the services page lists free before paid and never prices what is not built", async () => {
     await go("polnet://services/");
     await waitFor(async () => /POL Net browser/.test(await tabEval("document.body.innerText")), "the catalogue");
