@@ -290,6 +290,9 @@ try {
     assert.doesNotMatch(await tabEval("document.body.innerText"), /step-free shops/, "only videos under HeliusTV");
     await tabEval("document.querySelector('button[aria-pressed]').click()");
     await waitFor(async () => (await api("GET", `/v1/square/${video.post.id}`, undefined, org.pass)).post.votes === 1, "one vote");
+    // The server counts the vote before the page hears back, and the page decides on or off from what
+    // it last heard. So wait for the button to show the vote before pressing it again.
+    await waitFor(async () => (await tabEval("document.querySelector('button[aria-pressed]').getAttribute('aria-pressed')")) === "true", "the button showing the vote");
     await tabEval("document.querySelector('button[aria-pressed]').click()");
     await waitFor(async () => (await api("GET", `/v1/square/${video.post.id}`, undefined, org.pass)).post.votes === 0, "the vote taken back");
   });
