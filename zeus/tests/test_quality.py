@@ -82,7 +82,7 @@ def test_usable_atoms_drops_duplicates_stubs_and_housekeeping_once_each_and_keep
     town = {"id": "t1", "title": "Ehnen", "summary": "Ehnen: town.", "content": "Ehnen. town. Described in 10 Wikimedia projects.", "source": "wikidata"}
     kept, counts = quality.usable_atoms([good, stub, dict(good), cat, town, dict(stub)])
     assert [a["id"] for a in kept] == ["g1", "t1"]
-    assert counts == {"duplicate": 2, "stub": 1, "housekeeping": 1, "stub_by_rule": {"label": 1}}
+    assert counts == {"duplicate": 2, "stub": 1, "email": 0, "housekeeping": 1, "stub_by_rule": {"label": 1}}
     # a non-wikidata atom is never judged by the wikidata rule
     wiki_cat = dict(cat, id="w1", source="wikipedia", summary="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont.",
                     content="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont. It has existed since 2006.")
@@ -92,8 +92,8 @@ def test_usable_atoms_drops_duplicates_stubs_and_housekeeping_once_each_and_keep
 
 # Same examples as tests/text_test.ts (isLinkNotice); contact addresses replaced by example.org.
 NOTICES = [
-    "لمزيد من التفاصيل يرجى زيارة ketabpedia.com لمزيد من التفاصيل يرجى زيارة ketabpedia.com",
-    "للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org",
+    "لمزيد من التفاصيل يرجى زيارة example.org لمزيد من التفاصيل يرجى زيارة example.org",
+    "للاطلاع علی بیانات الکتاب يرجى زيارة example.org للمراسلة: contact@example.org للاطلاع علی بیانات الکتاب يرجى زيارة example.org للمراسلة: contact@example.org",
     "Raw Scan images of a Canister of the Sim Collection: https://archive.org/details/SerialsOnMicrofilmCollection Archival backup. See Sim collection: https://archive.org/details/sim_microfilm All the issues from this canister",
     "Archived blog snapshot from Wedzat (https://www.wedzat.com). Archived blog snapshot from Wedzat (https://www.wedzat.com).",
     "Backup of http://www.islc.net/~ccronan/ from 4 March 2019 Backup of http://www.islc.net/~ccronan/ from 4 March 2019",
@@ -265,3 +265,22 @@ def test_usable_atoms_counts_stubs_by_rule():
     assert [x["id"] for x in kept] == ["a"]
     assert counts["stub"] == 3
     assert counts["stub_by_rule"] == {"shelf_mark": 2, "catalogue_record": 1}
+
+
+def test_atoms_with_an_email_address_are_refused_and_counted_apart():
+    postcard = ("This photograph Post Card is of an unknown subject, Paris Number 531/32; 01 January 1907; French Postcard. "
+                "Anyone who can identify the subject in this photograph is encouraged to contact me at someone@example.com, or comment below.")
+    court = "Criminal Appeal No.36530 of 2008 RAM KUMAR @ RAMU @ R. KUMAR, Son of Late Shyam Kumar, Versus The State."
+    assert quality.has_email_address("photograph_unknown_post_card_205", postcard, postcard)
+    assert quality.has_email_address("uploader2002@example.net", "A scanned book with a long enough description to pass every other rule.", "")
+    assert not quality.has_email_address("Patna High Court", court, court)
+    assert not quality.has_email_address("Pass@1", "it raises pass@1 while the base model overtakes it at pass@256", None)
+    assert not quality.has_email_address("Project Gutenberg", ABS, ABS)
+    atoms = [
+        {"id": "a", "title": "Project Gutenberg", "summary": ABS[:120], "content": ABS, "source": "wikipedia"},
+        {"id": "b", "title": "photograph_unknown_post_card_205", "summary": postcard[:600], "content": postcard, "source": "archive_org"},
+        {"id": "c", "title": "Patna High Court", "summary": court, "content": court, "source": "archive_org"},
+    ]
+    kept, counts = quality.usable_atoms(atoms)
+    assert [x["id"] for x in kept] == ["a", "c"]
+    assert counts["email"] == 1 and counts["stub"] == 0

@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, isCatalogueRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -103,8 +103,8 @@ Deno.test('words and distinctWords count letters in any script and ignore digits
 Deno.test('isLinkNotice: uploader notices from the 2026-11-05 snapshot are stubs', () => {
   // archive_org descriptions stored under many different items (contact addresses replaced by example.org)
   const notices = [
-    'لمزيد من التفاصيل يرجى زيارة ketabpedia.com لمزيد من التفاصيل يرجى زيارة ketabpedia.com',
-    'للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org للاطلاع علی بیانات الکتاب يرجى زيارة ketabpedia.com للمراسلة: contact@example.org',
+    'لمزيد من التفاصيل يرجى زيارة example.org لمزيد من التفاصيل يرجى زيارة example.org',
+    'للاطلاع علی بیانات الکتاب يرجى زيارة example.org للمراسلة: contact@example.org للاطلاع علی بیانات الکتاب يرجى زيارة example.org للمراسلة: contact@example.org',
     'Raw Scan images of a Canister of the Sim Collection: https://archive.org/details/SerialsOnMicrofilmCollection Archival backup. See Sim collection: https://archive.org/details/sim_microfilm All the issues from this canister',
     'Archived blog snapshot from Wedzat (https://www.wedzat.com). Archived blog snapshot from Wedzat (https://www.wedzat.com).',
     'Backup of http://www.islc.net/~ccronan/ from 4 March 2019 Backup of http://www.islc.net/~ccronan/ from 4 March 2019',
@@ -260,4 +260,22 @@ Deno.test('withoutPhysicalDescription: a record with a real summary after the me
   // a sentence that happens to start with a number is not a physical description
   assertEquals(withoutPhysicalDescription('12 people were injured when a bus left the road near Tromso on Tuesday.'), '12 people were injured when a bus left the road near Tromso on Tuesday.');
   assertEquals(withoutPhysicalDescription(''), '');
+});
+
+Deno.test('hasEmailAddress: descriptions from the 2026-11-12 snapshot that carry an address are refused', () => {
+  const postcard = 'This photograph Post Card is of an unknown subject, Paris Number 531/32; 01 January 1907; French Postcard. Anyone who can identify the subject in this photograph is encouraged to contact me at someone@example.com, or comment below.';
+  assert(hasEmailAddress('photograph_unknown_post_card_205', postcard.slice(0, 600), postcard));
+  const takedown = 'While the the University exercises care and attention in making items available there are rare occasions when an item has been uploaded in error or has been deemed to be commercially or otherwise sensitive.If you believe that this is the case for this document, please contact repository@lists.example.ac.uk providing details and we will remove access to the work immediately and investigate.';
+  assert(hasEmailAddress("Martial's Poetics of Plagiarism", takedown, takedown));
+  assert(hasEmailAddress('uploader2002@example.net', 'A scanned book with a long enough description to pass every other rule in the gate.', ''), 'an address as the title');
+  assert(hasEmailAddress('Scan', 'For details please visit example.org or write to scanner@example.org for the rest of the series of this author.', undefined));
+});
+
+Deno.test('hasEmailAddress: an @ that is not an address, and real atoms of every source, pass', () => {
+  assert(!hasEmailAddress('Patna High Court - BRHC010098522005', 'Criminal Appeal No.36530 of 2008 RAM KUMAR @ RAMU @ R. KUMAR, Son of Late Shyam Kumar, Versus The State.', ''), 'the alias mark in Indian court records');
+  assert(!hasEmailAddress('Pass@1 on code', 'Reinforcement learning with verifiable rewards given many tries: it raises pass@1 while the base model overtakes it at pass@256.', ''));
+  assert(!hasEmailAddress('Heise', 'When the news was reported @ heise online, FTP requests to the mirror rose tenfold.', ''));
+  assert(!hasEmailAddress('Project Gutenberg', 'Project Gutenberg is a volunteer effort to digitize and archive cultural works. It was founded in 1971 by American writer Michael S. Hart.', ''));
+  assert(!hasEmailAddress('Ehnen', 'Ehnen: town.', 'Ehnen. town. Described in 10 Wikimedia projects.'));
+  assert(!hasEmailAddress(undefined, null, ''));
 });

@@ -49,7 +49,7 @@ export const STUB_REPEAT_RATIO = 0.4;   // ...when fewer than this share of its 
 export const STUB_MIN_REST = 40;        // characters the body must still have once the title and the authors are taken out
 export const STUB_LINK_REST = 160;      // characters a body holding a link, an email address or a domain must have once those are taken out
 
-/** Links, email addresses and bare domains (ketabpedia.com, www.example.org), the parts of a body that point elsewhere. */
+/** Links, email addresses and bare domains (example.org, www.example.org), the parts of a body that point elsewhere. */
 export const LINK_RE = /https?:\/\/\S+|www\.\S+|[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|\b[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:com|org|net|info|ir|io|co|edu|gov|me|tk|ru|de|uk)\b(?:\/\S*)?/g;
 
 /**
@@ -57,7 +57,7 @@ export const LINK_RE = /https?:\/\/\S+|www\.\S+|[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?
  * address or a domain, and once those are taken out (and a text written twice
  * is read once) fewer than STUB_LINK_REST characters are left. Uploaders to
  * the Internet Archive often put a notice in the description field instead of
- * describing the item ("for details please visit ketabpedia.com", the same
+ * describing the item ("for details please visit example.org", the same
  * line with a contact email, "Raw Scan images of a Canister of the Sim
  * Collection: https://..."). On the 2026-11-05 snapshot 55 archive_org atoms
  * were of that kind (one notice was stored 21 times under different items),
@@ -97,6 +97,26 @@ export function isRightsNotice(body: unknown): boolean {
   if (!b || words(b).length > RIGHTS_MAX_WORDS) return false;
   const sentences = b.split(/[.!?]\s+/).map(s => s.trim()).filter(Boolean);
   return sentences.length > 0 && sentences.every(s => RIGHTS_RE.test(s));
+}
+
+/** An email address anywhere in a text (EMAIL_RE in zeus/quality.py). */
+export const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/;
+
+/**
+ * True when a title, summary or content carries an email address. The Commons
+ * stores no personal data (README, "Adding a source"), and an address in a
+ * description is almost always a person's: the uploader's ("Anyone who can
+ * identify the subject in this photograph is encouraged to contact me at
+ * ...@example.com"), a book scanner's contact line, or a repository's take-down
+ * notice stored in place of an abstract. On the 2026-11-12 snapshot 35 atoms
+ * carried one (34 archive_org, 1 openalex), none of them a fact about the
+ * item, and the "@" used as an alias mark in Indian court records ("RAM KUMAR @
+ * RAMU") does not match. A short notice around a link or an
+ * address is already a stub (isLinkNotice); this rule refuses the longer ones
+ * too, whatever else they say, so no address is ever stored or served.
+ */
+export function hasEmailAddress(...parts: unknown[]): boolean {
+  return parts.some(p => EMAIL_RE.test(clean(p)));
 }
 
 export const CATALOGUE_MIN_LABELS = 3;    // a body with fewer "Label: value" fields than this is read as prose

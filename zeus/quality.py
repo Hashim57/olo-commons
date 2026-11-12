@@ -1,6 +1,6 @@
 """Atom quality rules shared with the ingester, so Zeus trains on the same Commons the ingester would keep.
 
-Two rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice, isRightsNotice,
+Three rules, ported line for line from functions/olo-ingest/text.ts (isStub, with isLinkNotice, isRightsNotice,
 isCatalogueRecord, isShelfMark and withoutPhysicalDescription) and
 functions/olo-ingest/sources.ts (wikidataHousekeeping); tests/text_test.ts and
 zeus/tests/test_quality.py hold the same examples so the two stay in step.
@@ -27,6 +27,9 @@ STUB_LINK_REST = 160        # characters a body holding a link, an email address
 
 # Links, email addresses and bare domains, the parts of a body that point elsewhere (LINK_RE in text.ts).
 LINK_RE = re.compile(r"https?://\S+|www\.\S+|[A-Za-z0-9_.+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+|\b[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.(?:com|org|net|info|ir|io|co|edu|gov|me|tk|ru|de|uk)\b(?:/\S*)?")
+
+# An email address anywhere in a text (EMAIL_RE in text.ts).
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
 
 RIGHTS_MAX_WORDS = 60   # a body with more words than this says something beyond its legal standing
 
@@ -160,6 +163,14 @@ def stub_reason(title, summary, content, authors=None):
     return "no_rest" if len(clean(rest)) < STUB_MIN_REST else None
 
 
+def has_email_address(*parts):
+    """True when a title, summary or content carries an email address (hasEmailAddress in text.ts). The Commons stores
+    no personal data, and an address in a description is an uploader's contact line or a take-down notice, never a fact
+    about the item (35 atoms on the 2026-11-12 snapshot, 34 archive_org and 1 openalex). The "@" used as an alias mark
+    in Indian court records does not match."""
+    return any(EMAIL_RE.search(clean(p)) for p in parts)
+
+
 def is_stub(title, summary, content, authors=None):
     """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
     record, a shelf mark, a rights notice, or nothing beyond its title, authors and physical description (stub_reason names which)."""
@@ -193,11 +204,11 @@ def wikidata_description(a):
 
 
 def usable_atoms(atoms):
-    """The atoms a build should see: each id once, no stubs, no Wikidata housekeeping items.
-    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "housekeeping": n, "stub_by_rule": {rule: n}},
+    """The atoms a build should see: each id once, no stubs, no atom carrying an email address, no Wikidata housekeeping items.
+    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "email": n, "housekeeping": n, "stub_by_rule": {rule: n}},
     where stub_by_rule names the rule that refused each stub (STUB_RULES), so a build can say which rule did the work."""
     seen, kept = set(), []
-    counts = {"duplicate": 0, "stub": 0, "housekeeping": 0, "stub_by_rule": {}}
+    counts = {"duplicate": 0, "stub": 0, "email": 0, "housekeeping": 0, "stub_by_rule": {}}
     for a in atoms:
         aid = a.get("id")
         if aid in seen:
@@ -208,6 +219,9 @@ def usable_atoms(atoms):
         if reason:
             counts["stub"] += 1
             counts["stub_by_rule"][reason] = counts["stub_by_rule"].get(reason, 0) + 1
+            continue
+        if has_email_address(a.get("title"), a.get("summary"), a.get("content")):
+            counts["email"] += 1
             continue
         if (a.get("source") or a.get("source_slug")) == "wikidata" and wikidata_housekeeping(a.get("title"), wikidata_description(a)):
             counts["housekeeping"] += 1
