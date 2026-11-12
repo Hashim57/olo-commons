@@ -21,7 +21,7 @@
 // source that is not enabled there is never fetched, whatever the code says.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { clean, isStub } from './text.ts';
+import { clean, hasEmailAddress, isStub } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
@@ -313,7 +313,7 @@ Deno.serve(async (req) => {
   }
   // Record a duplicate as a sighting of the stored atom (sql/009). False when that is not possible (sql/009 not run),
   // in which case the caller stores the atom as before rather than lose the second source.
-  let sightings = 0, stubs = 0;
+  let sightings = 0, stubs = 0, withEmail = 0;
   async function sight(atomId: string, src: Source, c: Candidate, reason: string, score: number): Promise<boolean> {
     const { error } = await sb.rpc('olo_record_sighting', { p_atom: atomId, p_source: src.id, p_url: c.url, p_external_id: c.external_id || null, p_doi: normDoi(c.doi), p_pmid: normPmid(c.pmid), p_title: clean(c.title).slice(0, 300), p_licence: c.licence || src.licence || null, p_reason: reason, p_similarity: score });
     if (error) return false;
@@ -333,6 +333,8 @@ Deno.serve(async (req) => {
         if (!title || !/^https:\/\//.test(c.url)) { stats.skipped++; continue; }
         // A body that says nothing beyond the title (a file name, one word repeated, a tag list) is not knowledge: skip it before it costs an embedding.
         if (isStub(title, summary, content, c.authors)) { stats.skipped++; stubs++; continue; }
+        // No personal data: a description that carries an email address is a contact line or a notice, never a fact about the item.
+        if (hasEmailAddress(title, summary, content)) { stats.skipped++; withEmail++; continue; }
         const hash = await sha256(title + '\n' + summary + '\n' + content);
         const { data: dup } = await sb.from('olo_atoms').select('id, source_id, url').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
         if (dup && dup.length) {
@@ -478,7 +480,7 @@ Deno.serve(async (req) => {
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (sightings ? ` (${sightings} duplicates recorded as sightings)` : '') + (stubs ? ` (${stubs} stubs skipped)` : '') + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (sightings ? ` (${sightings} duplicates recorded as sightings)` : '') + (stubs ? ` (${stubs} stubs skipped)` : '') + (withEmail ? ` (${withEmail} with an email address skipped)` : '') + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });
