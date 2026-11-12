@@ -42,7 +42,7 @@ jobs:
         run: |
           psql -h localhost -U postgres -c "create role anon; create role authenticated;"
           for i in 1 2; do
-            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f supabase/migrations/001_polnet.sql -f supabase/migrations/002_polnet_helpers.sql
+            psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f supabase/migrations/001_polnet.sql -f supabase/migrations/002_polnet_helpers.sql -f supabase/migrations/003_polnet_square.sql
           done
       - run: deno lint
       - run: deno check supabase/functions/polnet-api/index.ts scripts/*.ts

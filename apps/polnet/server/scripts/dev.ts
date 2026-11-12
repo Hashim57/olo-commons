@@ -18,7 +18,7 @@ const fakePol: typeof fetch = async (input, init) => {
 };
 const handle = createApi({
   store, fetch: fakePol, signer: await loadSigner(await newSigningJwk()),
-  config: { issuer: "http://localhost:8787", publicUrl: "http://localhost:8787", polApi: "https://pol.invalid", polSitekey: "pk_dev", polSecret: "sk_dev", adminSecret: "dev-admin", feeBps: 1000, minPayoutPence: 1000, allowLocalTargets: true, minUniqueness: "device" },
+  config: { issuer: "http://localhost:8787", publicUrl: "http://localhost:8787", polApi: "https://pol.invalid", polSitekey: "pk_dev", polSecret: "sk_dev", adminSecret: "dev-admin", feeBps: 1000, minPayoutPence: 1000, allowLocalTargets: true, squareOpen: true, minUniqueness: "device" },
 });
 console.log("POL Net dev API on http://localhost:8787 (admin secret: dev-admin; join with pol_token \"dev-<anything>\")");
 Deno.serve({ port: Number(Deno.env.get("PORT") ?? 8787), onListen: ({ port }) => console.log(`listening ${port}`) }, handle);

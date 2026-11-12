@@ -4,7 +4,7 @@
 // to anon or authenticated. Racy operations run in one transaction with row locks.
 
 import postgres from "npm:postgres@3.4.5";
-import type { Claim, ClaimError, HelperAlert, HelperLink, LedgerEntry, Member, PolName, ReportKind, Store, Task, TaskStatus } from "./store.ts";
+import type { Claim, ClaimError, Comment, HelperAlert, HelperLink, LedgerEntry, Member, PolName, Post, PostRow, ReportKind, Store, Task, TaskStatus } from "./store.ts";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -35,6 +35,11 @@ const entry = (r: Record<string, unknown>): LedgerEntry => ({
 
 const link = (r: Record<string, unknown>): HelperLink => ({ id: String(r.id), protected_id: String(r.protected_id), helper_id: String(r.helper_id), created_at: ts(r.created_at) });
 const alert = (r: Record<string, unknown>): HelperAlert => ({ id: String(r.id), protected_id: String(r.protected_id), host: String(r.host), kind: r.kind as HelperAlert["kind"], created_at: ts(r.created_at) });
+const post = (r: Record<string, unknown>): PostRow => ({
+  id: String(r.id), author: String(r.author), topic: String(r.topic), title: String(r.title), body: String(r.body), link: (r.link as string | null) ?? null,
+  removed: Boolean(r.removed), created_at: ts(r.created_at), votes: Number(r.votes ?? 0), comments: Number(r.comments ?? 0),
+});
+const comment = (r: Record<string, unknown>): Comment => ({ id: String(r.id), post_id: String(r.post_id), author: String(r.author), body: String(r.body), created_at: ts(r.created_at) });
 const isId = (v: string) => /^[0-9a-f-]{36}$/i.test(v);
 
 export class PgStore implements Store {
@@ -211,6 +216,63 @@ export class PgStore implements Store {
   async helperAlertsFor(helperId: string, since: string, limit: number) {
     return (await this.sql`select a.* from polnet.helper_alerts a join polnet.helpers h on h.protected_id = a.protected_id
       where h.helper_id = ${helperId} and a.created_at >= ${since} order by a.created_at desc limit ${limit}`).map(alert);
+  }
+
+  async postCreate(p: Omit<Post, "created_at" | "removed">, now: string) {
+    const [r] = await this.sql`insert into polnet.posts (id, author, topic, title, body, link, created_at)
+      values (${p.id}, ${p.author}, ${p.topic}, ${p.title}, ${p.body}, ${p.link}, ${now}) returning *`;
+    return post(r);
+  }
+  async postGet(id: string) {
+    if (!isId(id)) return null;
+    const [r] = await this.sql`select p.*, (select count(*)::int from polnet.post_votes v where v.post_id = p.id) as votes,
+      (select count(*)::int from polnet.post_comments c where c.post_id = p.id) as comments from polnet.posts p where p.id = ${id}`;
+    return r ? post(r) : null;
+  }
+  async posts(f: { topic?: string; sort: "new" | "top"; limit: number }) {
+    const rows = await this.sql`select p.*, (select count(*)::int from polnet.post_votes v where v.post_id = p.id) as votes,
+      (select count(*)::int from polnet.post_comments c where c.post_id = p.id) as comments
+      from polnet.posts p where not p.removed and (${f.topic ?? null}::text is null or p.topic = ${f.topic ?? null})
+      order by ${f.sort === "top" ? this.sql`votes desc,` : this.sql``} p.created_at desc, p.id desc limit ${f.limit}`;
+    return rows.map(post);
+  }
+  async postSetRemoved(id: string, removed: boolean) {
+    if (!isId(id)) return false;
+    return (await this.sql`update polnet.posts set removed = ${removed} where id = ${id} returning id`).length === 1;
+  }
+  async postDelete(id: string, author: string) {
+    if (!isId(id)) return false;
+    return (await this.sql`delete from polnet.posts where id = ${id} and author = ${author} returning id`).length === 1;
+  }
+  async voteSet(postId: string, memberId: string, on: boolean) {
+    if (!isId(postId)) return 0;
+    if (on) {
+      await this.sql`insert into polnet.post_votes (post_id, member_id) select ${postId}, ${memberId}
+        where exists (select 1 from polnet.posts where id = ${postId} and not removed) on conflict do nothing`;
+    } else {
+      await this.sql`delete from polnet.post_votes where post_id = ${postId} and member_id = ${memberId}`;
+    }
+    const [c] = await this.sql`select count(*)::int as n from polnet.post_votes where post_id = ${postId}`;
+    return Number(c.n);
+  }
+  async voted(memberId: string, postIds: string[]) {
+    const ids = postIds.filter(isId);
+    if (ids.length === 0) return [];
+    return (await this.sql`select post_id from polnet.post_votes where member_id = ${memberId} and post_id in ${this.sql(ids)}`).map((r) => String(r.post_id));
+  }
+  async commentCreate(c: Omit<Comment, "created_at">, now: string) {
+    if (!isId(c.post_id)) return null;
+    const [r] = await this.sql`insert into polnet.post_comments (id, post_id, author, body, created_at)
+      select ${c.id}, ${c.post_id}, ${c.author}, ${c.body}, ${now} where exists (select 1 from polnet.posts where id = ${c.post_id} and not removed) returning *`;
+    return r ? comment(r) : null;
+  }
+  async comments(postId: string, limit: number) {
+    if (!isId(postId)) return [];
+    return (await this.sql`select * from polnet.post_comments where post_id = ${postId} order by created_at, id limit ${limit}`).map(comment);
+  }
+  async commentDelete(id: string, author: string) {
+    if (!isId(id)) return false;
+    return (await this.sql`delete from polnet.post_comments where id = ${id} and author = ${author} returning id`).length === 1;
   }
 
   async hit(key: string, windowMs: number, limit: number, nowMs: number) {

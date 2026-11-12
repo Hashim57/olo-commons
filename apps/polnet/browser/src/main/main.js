@@ -710,6 +710,10 @@ function buildMenu() {
     {
       label: "POL Net",
       submenu: [
+        { label: "The Square", click: () => { const w = focused(); if (w) createTab(w, "polnet://square/"); } },
+        { label: "HeliusTV", click: () => { const w = focused(); if (w) createTab(w, "polnet://square/?topic=tv"); } },
+        { label: "Free and paid services", click: () => { const w = focused(); if (w) createTab(w, "polnet://services/"); } },
+        { type: "separator" },
         { label: "Tasks that pay", click: () => { const w = focused(); if (w) createTab(w, "polnet://tasks/"); } },
         { label: "Wallet", click: () => { const w = focused(); if (w) createTab(w, "polnet://wallet/"); } },
         { label: "Family help and protected mode", click: () => { const w = focused(); if (w) createTab(w, "polnet://family/"); } },

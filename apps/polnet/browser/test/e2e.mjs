@@ -268,6 +268,42 @@ try {
     assert.ok(!after.some((h) => h.url.includes("private-page")));
   });
 
+  await check("the Square: a member posts from the page, another member's video shows under HeliusTV, and a vote counts once", async () => {
+    const video = await api("POST", "/v1/square", { topic: "tv", title: "How we cleaned the beck", link: "https://video.example/watch/beck" }, org.pass);
+    assert.equal(video.status, 201, JSON.stringify(video));
+    await go("polnet://square/");
+    await waitFor(async () => /How we cleaned the beck/.test(await tabEval("document.body.innerText")), "the video post in the list");
+    await tabEval(`(() => {
+      document.querySelector("details.card").open = true;
+      const f = document.querySelector("details.card");
+      f.querySelector("select").value = "projects";
+      f.querySelector("input").value = "A map of step-free shops";
+      f.querySelector("textarea").value = "We are mapping which shops have a step-free entrance. Who wants to help?";
+      [...f.querySelectorAll("button")].find((b) => b.textContent === "Post").click();
+    })()`);
+    await waitFor(async () => /A map of step-free shops/.test(await tabEval("document.getElementById('app').lastElementChild.innerText")), "the new post in the list");
+    const listed = await api("GET", "/v1/square?topic=projects", undefined, org.pass);
+    assert.deepEqual(listed.posts.map((x) => [x.title, x.author]), [["A map of step-free shops", "e2e_member"]]);
+    // Vote for the video twice from the page: on, then off again.
+    await go("polnet://square/?topic=tv");
+    await waitFor(async () => (await tabEval("document.querySelector('h1').textContent")) === "HeliusTV" && /Watch/.test(await tabEval("document.body.innerText")), "the HeliusTV view");
+    assert.doesNotMatch(await tabEval("document.body.innerText"), /step-free shops/, "only videos under HeliusTV");
+    await tabEval("document.querySelector('button[aria-pressed]').click()");
+    await waitFor(async () => (await api("GET", `/v1/square/${video.post.id}`, undefined, org.pass)).post.votes === 1, "one vote");
+    await tabEval("document.querySelector('button[aria-pressed]').click()");
+    await waitFor(async () => (await api("GET", `/v1/square/${video.post.id}`, undefined, org.pass)).post.votes === 0, "the vote taken back");
+  });
+
+  await check("the services page lists free before paid and never prices what is not built", async () => {
+    await go("polnet://services/");
+    await waitFor(async () => /POL Net browser/.test(await tabEval("document.body.innerText")), "the catalogue");
+    const text = await tabEval("document.body.innerText");
+    assert.match(text, /Travel and data eSIMs[\s\S]*Not on sale yet/);
+    assert.match(text, /AI-Built App Security Check[\s\S]*US\$595/);
+    const kinds = await tabEval("[...document.querySelectorAll('.grid')].map((g) => [...g.querySelectorAll('.card .row span:last-child')].map((x) => x.textContent))");
+    for (const group of kinds) assert.deepEqual(group, [...group].sort((x, y) => (x === y ? 0 : x === "Free" ? -1 : 1)), "free first in every group");
+  });
+
   await check("the toolbar renders with the member badge", async () => {
     const win = await app.firstWindow();
     await waitFor(async () => (await win.textContent("#member")) === "@e2e_member", "toolbar member badge");
