@@ -44,12 +44,12 @@ The `POL Net browser` workflow builds a `.dmg` for Apple Silicon and Intel on ev
 
 Until the app is signed with a Developer ID and notarised, say on the download page that the first open needs Control-click > Open, or System Settings > Privacy & Security > Open Anyway.
 
-## 5. Teach Zeus
+## 6. Teach Zeus
 
 Members check claims against passages at `polnet://teach/`; three members who give the same answer make a lesson for Zeus (docs/FEEDBACK.md, "Checks by POL Net members"). It needs migration 004 and a redeploy of the function, then claims to check. From the repository root:
 
 ```
-python3 zeus/member_checks_to_gold.py items --out items.json        # 200 rule-made claims and 20 controls
+python3 zeus/member_checks_to_gold.py items --out items.json        # 200 rule-made claims and 20 controls, open sources only
 curl -sS -X POST https://polnet.heliusnetwork.app/v1/admin/checks -H "authorization: Bearer $POLNET_ADMIN_SECRET" -H "content-type: application/json" --data @items.json
 ```
 
