@@ -16,7 +16,7 @@ const enc = new TextEncoder();
 
 type Stripe = { calls: Array<{ path: string; body: string }>; failTransfer: boolean; payoutsEnabled: boolean };
 
-async function harness(store: Store, opts: { stripe?: boolean; nowMs?: number } = {}) {
+async function harness(store: Store, opts: { stripe?: boolean; nowMs?: number; square?: boolean; esim?: string } = {}) {
   const signer = await loadSigner(await newSigningJwk());
   let clock = opts.nowMs ?? Date.parse("2026-11-08T12:00:00Z");
   const stripe: Stripe = { calls: [], failTransfer: false, payoutsEnabled: true };
@@ -48,7 +48,7 @@ async function harness(store: Store, opts: { stripe?: boolean; nowMs?: number } 
     store, signer, fetch: fake, now: () => clock, id: () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`,
     config: {
       issuer: ISS, publicUrl: ISS, polApi: "https://pol.test", polSitekey: "pk_pol", polSecret: "sk_pol", adminSecret: "admin-secret",
-      feeBps: 1000, minPayoutPence: 1000, minUniqueness: "device",
+      feeBps: 1000, minPayoutPence: 1000, minUniqueness: "device", squareOpen: opts.square, esimStoreUrl: opts.esim,
       stripeSecret: opts.stripe ? "sk_test_x" : undefined, stripeWebhookSecret: opts.stripe ? "whsec_x" : undefined,
     },
   });
@@ -348,6 +348,108 @@ async function suite(name: string, makeStore: () => Promise<Store>) {
     eq(Number(c1.exp) - Number(c1.iat), 300);
     eq((await h.call("GET", "/v1/me", undefined, one.j.human)).status, 401, "a human pass is useless against the API");
     assert(!(await verify(one.j.human, [h.signer.publicJwk], ISS, h.now() + 301_000)), "expired after five minutes");
+  });
+
+  Deno.test(`${name}: the services catalogue is public and says what is free, paid and not built`, async () => {
+    const h = await harness(await makeStore());
+    const r = await h.call("GET", "/v1/services");
+    eq(r.status, 200);
+    const by = new Map<string, any>(r.j.services.map((x: any) => [x.key, x]));
+    eq(by.get("polnet").kind, "free");
+    eq(by.get("square").status, "soon", "the Square is not announced as live while it is closed");
+    eq(by.get("task-posting").price.includes("10%"), true, "the fee shown is the fee charged");
+    eq([by.get("esim").status, by.get("esim").url], ["planned", null]);
+    for (const x of r.j.services) {
+      assert(x.kind === "free" || x.kind === "paid");
+      assert(x.group in r.j.groups, x.group);
+      if (x.status === "planned") assert(!/[£$€]\s?\d/.test(x.price), `${x.key}: no price for something that is not built`);
+      if (x.url !== null) assert(String(x.url).startsWith("https://"), x.key);
+    }
+    const open = await harness(await makeStore(), { square: true, esim: "https://store.example/helius" });
+    const o = new Map<string, any>((await open.call("GET", "/v1/services")).j.services.map((x: any) => [x.key, x]));
+    eq([o.get("square").status, o.get("heliustv").status, o.get("esim").status, o.get("esim").url], ["live", "live", "live", "https://store.example/helius"]);
+    const bad = await harness(await makeStore(), { esim: "http://store.example" });
+    eq(new Map<string, any>((await bad.call("GET", "/v1/services")).j.services.map((x: any) => [x.key, x])).get("esim").status, "planned", "only an https store address is shown");
+  });
+
+  Deno.test(`${name}: the Square is closed unless it is switched on`, async () => {
+    const h = await harness(await makeStore());
+    const a = await h.join("sq0", "closed_sq");
+    eq((await h.call("GET", "/v1/square", undefined, a.pass)).j.error, "square_not_open");
+    eq((await h.call("POST", "/v1/square", { topic: "ideas", title: "An idea worth sharing", body: "Twenty characters of text at least." }, a.pass)).status, 503);
+    eq((await h.call("GET", "/v1/config")).j.square, false);
+  });
+
+  Deno.test(`${name}: the Square: members post, comment and vote once each; three reports take a post down`, async () => {
+    const h = await harness(await makeStore(), { square: true });
+    eq((await h.call("GET", "/v1/square")).status, 401, "members only");
+    const [a, b, c, d] = [await h.join("sqa", "sq_alice"), await h.join("sqb", "sq_bob"), await h.join("sqc", "sq_cara"), await h.join("sqd", "sq_dev")];
+    eq((await h.call("GET", "/v1/config")).j.topics.includes("tv"), true);
+
+    eq((await h.call("POST", "/v1/square", { topic: "gossip", title: "A fine title", body: "Twenty characters of text at least." }, a.pass)).j.error, "post_invalid");
+    eq((await h.call("POST", "/v1/square", { topic: "ideas", title: "Hey", body: "Twenty characters of text at least." }, a.pass)).j.error, "post_invalid");
+    eq((await h.call("POST", "/v1/square", { topic: "ideas", title: "A fine title", body: "too short" }, a.pass)).j.error, "post_invalid");
+    eq((await h.call("POST", "/v1/square", { topic: "ideas", title: "A fine title", body: "Twenty characters of text at least.", link: "http://plain.example" }, a.pass)).j.error, "link_invalid");
+    eq((await h.call("POST", "/v1/square", { topic: "ideas", title: "A fine title", body: "Twenty characters of text at least.", link: "https://10.0.0.1/x" }, a.pass)).j.error, "link_invalid");
+    eq((await h.call("POST", "/v1/square", { topic: "tv", title: "A film about a river" }, a.pass)).j.error, "link_required");
+
+    const p1 = await h.call("POST", "/v1/square", { topic: "projects", title: "A map of step-free shops", body: "We are mapping which shops have a step-free entrance. Who wants to help?" }, a.pass);
+    eq(p1.status, 201);
+    eq([p1.j.post.author, p1.j.post.mine, p1.j.post.votes, p1.j.post.voted], ["sq_alice", true, 0, false]);
+    h.tick(1000);
+    const tv = await h.call("POST", "/v1/square", { topic: "tv", title: "How we cleaned the beck", link: "https://video.example/watch/beck" }, b.pass);
+    eq([tv.status, tv.j.post.link, tv.j.post.body], [201, "https://video.example/watch/beck", ""]);
+    assert(!("author_id" in tv.j.post) && !JSON.stringify(tv.j).includes(b.id), "member ids never leave the server");
+
+    // One person, one vote: voting twice counts once, and a vote can be taken back.
+    eq((await h.call("POST", `/v1/square/${p1.j.post.id}/vote`, {}, b.pass)).j.votes, 1);
+    eq((await h.call("POST", `/v1/square/${p1.j.post.id}/vote`, { on: true }, b.pass)).j.votes, 1);
+    eq((await h.call("POST", `/v1/square/${p1.j.post.id}/vote`, {}, c.pass)).j.votes, 2);
+    eq((await h.call("POST", `/v1/square/${p1.j.post.id}/vote`, { on: false }, c.pass)).j, { votes: 1, voted: false });
+    eq((await h.call("POST", "/v1/square/00000000-0000-4000-8000-999999999999/vote", {}, c.pass)).j.error, "post_not_found");
+    eq((await h.call("POST", "/v1/square/not-an-id/vote", {}, c.pass)).j.error, "post_not_found");
+
+    const newest = await h.call("GET", "/v1/square", undefined, b.pass);
+    eq(newest.j.posts.map((x: any) => x.title), ["How we cleaned the beck", "A map of step-free shops"]);
+    eq(newest.j.posts.map((x: any) => [x.voted, x.mine]), [[false, true], [true, false]]);
+    eq((await h.call("GET", "/v1/square?sort=top", undefined, c.pass)).j.posts.map((x: any) => x.votes), [1, 0]);
+    eq((await h.call("GET", "/v1/square?topic=tv", undefined, c.pass)).j.posts.length, 1);
+    eq((await h.call("GET", "/v1/square?topic=nope", undefined, c.pass)).j.error, "topic_invalid");
+
+    eq((await h.call("POST", `/v1/square/${p1.j.post.id}/comments`, { body: "" }, b.pass)).j.error, "comment_invalid");
+    const c1 = await h.call("POST", `/v1/square/${p1.j.post.id}/comments`, { body: "I can do the top of Briggate on Saturday." }, b.pass);
+    eq([c1.status, c1.j.comment.author, c1.j.comment.mine], [201, "sq_bob", true]);
+    h.tick(1000);
+    await h.call("POST", `/v1/square/${p1.j.post.id}/comments`, { body: "Count me in." }, c.pass);
+    const one = await h.call("GET", `/v1/square/${p1.j.post.id}`, undefined, a.pass);
+    eq([one.j.post.comments, one.j.comments.map((x: any) => x.author)], [2, ["sq_bob", "sq_cara"]]);
+    eq((await h.call("DELETE", `/v1/square/comments/${c1.j.comment.id}`, undefined, c.pass)).j.deleted, false, "only the author deletes a comment");
+    eq((await h.call("DELETE", `/v1/square/comments/${c1.j.comment.id}`, undefined, b.pass)).j.deleted, true);
+    eq((await h.call("DELETE", `/v1/square/${p1.j.post.id}`, undefined, b.pass)).j.deleted, false, "only the author deletes a post");
+
+    // Three different verified people take a post down; the same person reporting twice counts once.
+    const report = (who: { pass: string }) => h.call("POST", "/v1/reports", { kind: "post", target: tv.j.post.id, reason: "This is an advert, not a video." }, who.pass);
+    eq((await report(a)).j.action, null);
+    eq((await report(a)).j.reports, 1);
+    eq((await report(c)).j.action, null);
+    eq((await report(d)).j.action, "post_removed");
+    eq((await h.call("GET", `/v1/square/${tv.j.post.id}`, undefined, a.pass)).status, 451);
+    eq((await h.call("POST", `/v1/square/${tv.j.post.id}/comments`, { body: "Still here?" }, a.pass)).status, 451);
+    eq((await h.call("GET", "/v1/square", undefined, a.pass)).j.posts.map((x: any) => x.title), ["A map of step-free shops"]);
+    eq((await h.call("POST", `/v1/admin/posts/${tv.j.post.id}/restore`, {}, a.pass)).status, 401, "a member pass is not the admin secret");
+    eq((await h.call("POST", `/v1/admin/posts/${tv.j.post.id}/restore`, {}, "admin-secret")).j.removed, false);
+    eq((await h.call("GET", "/v1/square", undefined, a.pass)).j.posts.length, 2);
+
+    // The author deletes their own post; its comments and votes go with it.
+    eq((await h.call("DELETE", `/v1/square/${p1.j.post.id}`, undefined, a.pass)).j.deleted, true);
+    eq((await h.call("GET", `/v1/square/${p1.j.post.id}`, undefined, a.pass)).status, 404);
+
+    // A suspended member cannot post, and a post rate limit holds.
+    await h.call("POST", `/v1/admin/members/${d.id}/suspend`, {}, "admin-secret");
+    eq((await h.call("GET", "/v1/square", undefined, d.pass)).status, 403);
+    let last = 0;
+    for (let i = 0; i < 11; i++) last = (await h.call("POST", "/v1/square", { topic: "questions", title: `Question number ${i} for the Square`, body: "Twenty characters of text at least." }, c.pass)).status;
+    eq(last, 429, "ten posts an hour");
   });
 }
 

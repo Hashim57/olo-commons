@@ -16,6 +16,8 @@ A knowledge system in which every statement carries its source, its licence, its
 | Zeus | The verifier: an open 7B model (Apache 2.0 base, open adapter) that labels every sentence supported, contradicted or not covered, with the exact words from the source. Trained in the cloud every day from reviewed feedback. | zeus/, Cloudflare Workers AI |
 | Olo Commons | The open knowledge base: atoms with provenance, licence, validity dates, credibility and status, grown daily from open and authoritative sources and re-checked at those sources. | heliusnetwork.app/olo, Supabase |
 | POL Net | The browser and members' network: private by default, warnings before harm (including scam-page checks, protected mode and family help), a pol:// network only verified people (Proof of Life) can open, Olo built in, paid tasks from organisations for work with a public benefit, and trust tools any website can use. | apps/polnet, docs/POLNET.md, docs/TRUST_TOOLS.md |
+| The Square and HeliusTV | The members' community for innovation and impact, and its video topic: real people, one vote each, no advertising. Built, opening after its safety review. | apps/polnet, docs/WEBOCTA_SERVICES.md |
+| Services | One list of what is free and what is paid, and the connection services planned (eSIMs, VPN, cloud desktop, numbers). | docs/WEBOCTA_SERVICES.md, `GET /v1/services` |
 | The charter | What Helius Network commits to and will never do: technology aligned with life. | docs/CHARTER.md |
 | The loop | Flags from the apps, reviewed by a person, become Zeus training data; questions the Commons cannot answer become the ingester's reading list; retractions and source edits flow back in. | docs/FEEDBACK.md, docs/TRUST.md |
 

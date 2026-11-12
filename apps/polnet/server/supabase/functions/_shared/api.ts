@@ -4,7 +4,8 @@
 // Pure request handling over a Store, so the same code runs in the Edge Function, in tests and locally.
 
 import { safeEqual, sign, type Signer, stripeSignatureOk, verify } from "./jwt.ts";
-import type { AlertKind, Claim, Member, ReportKind, Store, Task } from "./store.ts";
+import { GROUPS, services } from "./services.ts";
+import type { AlertKind, Claim, Comment, Member, PostRow, ReportKind, Store, Task } from "./store.ts";
 
 export type Config = {
   /** This API's own address, the `iss` of member passes. */
@@ -23,6 +24,14 @@ export type Config = {
   publicUrl: string;
   /** Lowest Proof-of-Life uniqueness accepted at join. */
   minUniqueness?: "none" | "device" | "history" | "vouched";
+  /**
+   * Opens the Square (posts, comments and votes by members). Off unless set: a place where people post to
+   * each other is a user-to-user service under the UK Online Safety Act, and the risk assessments in
+   * docs/WEBOCTA_SERVICES.md come before it opens.
+   */
+  squareOpen?: boolean;
+  /** The eSIM store's address, once a supplier account exists. Until then the catalogue says "planned". */
+  esimStoreUrl?: string;
   /** Local development only (scripts/dev.ts): lets pol:// names point at http://localhost. Never set in production. */
   allowLocalTargets?: boolean;
 };
@@ -44,6 +53,8 @@ const MAX_HELPERS = 3;
 const INVITE_MS = 24 * 3600_000;
 const ALERT_DAYS = 30;
 const HUMAN_PASS_SECONDS = 300;
+/** The Square's topics. "tv" is HeliusTV: a post that links to a video hosted elsewhere. */
+export const TOPICS = ["ideas", "projects", "questions", "research", "impact", "tv"] as const;
 export const ALERT_KINDS: readonly AlertKind[] = ["lookalike", "reported", "scam-page", "remote-access", "pause", "download"];
 const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const UNIQUENESS_ORDER = ["none", "device", "history", "vouched"];
@@ -203,7 +214,11 @@ export function createApi(deps: Deps) {
     if (m === "GET" && (p === "/" || p === "/v1/health")) return json({ ok: true, service: "polnet", time: iso() });
     if (m === "GET" && p === "/.well-known/jwks.json") return json({ keys: [signer.publicJwk] }, 200, { "cache-control": "public, max-age=300" });
     if (m === "GET" && p === "/v1/config") {
-      return json({ pol_api: config.polApi, pol_sitekey: config.polSitekey, payouts: Boolean(config.stripeSecret), min_payout_pence: config.minPayoutPence, fee_bps: config.feeBps, categories: CATEGORIES, alert_kinds: ALERT_KINDS, max_helpers: MAX_HELPERS, join_url: `${config.publicUrl}/join` });
+      return json({ pol_api: config.polApi, pol_sitekey: config.polSitekey, square: Boolean(config.squareOpen), topics: TOPICS, payouts: Boolean(config.stripeSecret), min_payout_pence: config.minPayoutPence, fee_bps: config.feeBps, categories: CATEGORIES, alert_kinds: ALERT_KINDS, max_helpers: MAX_HELPERS, join_url: `${config.publicUrl}/join` });
+    }
+    if (m === "GET" && p === "/v1/services") {
+      const list = services({ feeBps: config.feeBps, esimStoreUrl: config.esimStoreUrl && validTarget(config.esimStoreUrl) ? config.esimStoreUrl : undefined, squareOpen: Boolean(config.squareOpen) });
+      return json({ groups: GROUPS, services: list }, 200, { "cache-control": "public, max-age=300" });
     }
     if (m === "GET" && p === "/join") return new Response(joinPage(config), { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": joinCsp(config) } });
 
@@ -243,6 +258,9 @@ export function createApi(deps: Deps) {
       if (m === "POST" && seg[2] === "names" && seg[3] && (seg[4] === "suspend" || seg[4] === "restore")) {
         await store.nameSetSuspended(seg[3], seg[4] === "suspend");
         return json({ name: await store.nameGet(seg[3]) });
+      }
+      if (m === "POST" && seg[2] === "posts" && seg[3] && (seg[4] === "remove" || seg[4] === "restore")) {
+        return (await store.postSetRemoved(seg[3], seg[4] === "remove")) ? json({ post: seg[3], removed: seg[4] === "remove" }) : json({ error: "not_found" }, 404);
       }
       if (m === "POST" && seg[2] === "tasks" && seg[3] && seg[4] === "fund") {
         // Funding received another way (a bank transfer, a grant): the task opens.
@@ -498,6 +516,66 @@ export function createApi(deps: Deps) {
       }
     }
 
+    // --- The Square: the members' community (and HeliusTV, its "tv" topic) -------------------------------
+    if (seg[0] === "v1" && seg[1] === "square") {
+      if (!config.squareOpen) throw new HttpError(503, "square_not_open", "The Square is not open yet.");
+      const handles = new Map<string, string>();
+      const handleOf = async (id: string) => {
+        if (!handles.has(id)) handles.set(id, (await store.memberById(id))?.handle ?? "former member");
+        return handles.get(id)!;
+      };
+      const showPost = async (r: PostRow, voted: boolean) => ({ id: r.id, topic: r.topic, title: r.title, body: r.body, link: r.link, author: await handleOf(r.author), mine: r.author === me.id, votes: r.votes, comments: r.comments, voted, created_at: r.created_at });
+      const showComment = async (c: Comment) => ({ id: c.id, body: c.body, author: await handleOf(c.author), mine: c.author === me.id, created_at: c.created_at });
+
+      if (m === "GET" && !seg[2]) {
+        const topic = url.searchParams.get("topic") ?? "";
+        if (topic && !(TOPICS as readonly string[]).includes(topic)) throw new HttpError(400, "topic_invalid");
+        const rows = await store.posts({ topic: topic || undefined, sort: url.searchParams.get("sort") === "top" ? "top" : "new", limit: 50 });
+        const mine = new Set(await store.voted(me.id, rows.map((r) => r.id)));
+        return json({ topics: TOPICS, posts: await Promise.all(rows.map((r) => showPost(r, mine.has(r.id)))) });
+      }
+      if (m === "POST" && !seg[2]) {
+        await limit(`post-square:${me.id}`, 10);
+        const b = await body(req);
+        const topic = (TOPICS as readonly string[]).includes(String(b.topic)) ? String(b.topic) : null;
+        const title = str(b.title, 140, 5);
+        const text = str(b.body ?? "", 6000);
+        const link = b.link === undefined || b.link === null || b.link === "" ? null : str(b.link, 2000, 9);
+        if (!topic || !title || text === null) throw new HttpError(400, "post_invalid", "A post needs a topic, a title of 5 to 140 characters and up to 6,000 characters of text.");
+        if (link !== null && !validTarget(link)) throw new HttpError(400, "link_invalid", "Links must be public https:// addresses.");
+        if (topic === "tv" && !link) throw new HttpError(400, "link_required", "A HeliusTV post needs the https:// address of the video.");
+        if (topic !== "tv" && text.length < 20) throw new HttpError(400, "post_invalid", "Say a little more: at least 20 characters.");
+        const created = await store.postCreate({ id: newId(), author: me.id, topic, title, body: text, link }, iso());
+        return json({ post: await showPost({ ...created, votes: 0, comments: 0 }, false) }, 201);
+      }
+      if (m === "DELETE" && seg[2] === "comments" && seg[3] && !seg[4]) return json({ deleted: await store.commentDelete(seg[3], me.id) });
+      const row = seg[2] && seg[2] !== "comments" ? await store.postGet(seg[2]) : null;
+      if (seg[2] && seg[2] !== "comments") {
+        if (!row) throw new HttpError(404, "post_not_found");
+        if (row.removed && m !== "DELETE") throw new HttpError(451, "post_removed", "This post was taken down after reports from members, pending review.");
+        if (m === "GET" && !seg[3]) {
+          const [list, mine] = await Promise.all([store.comments(row.id, 200), store.voted(me.id, [row.id])]);
+          return json({ post: await showPost(row, mine.length === 1), comments: await Promise.all(list.map(showComment)) });
+        }
+        if (m === "DELETE" && !seg[3]) return json({ deleted: await store.postDelete(row.id, me.id) });
+        if (m === "POST" && seg[3] === "vote") {
+          await limit(`vote:${me.id}`, 300);
+          const b = await body(req).catch(() => ({} as Record<string, unknown>));
+          const on = b.on !== false;
+          return json({ votes: await store.voteSet(row.id, me.id, on), voted: on });
+        }
+        if (m === "POST" && seg[3] === "comments") {
+          await limit(`comment:${me.id}`, 60);
+          const b = await body(req);
+          const text = str(b.body, 3000, 1);
+          if (!text) throw new HttpError(400, "comment_invalid", "A comment is 1 to 3,000 characters.");
+          const c = await store.commentCreate({ id: newId(), post_id: row.id, author: me.id, body: text }, iso());
+          if (!c) throw new HttpError(404, "post_not_found");
+          return json({ comment: await showComment(c) }, 201);
+        }
+      }
+    }
+
     // --- Trust tools: "a real person" for any https site, with consent, unlinkable across sites ----------
     if (m === "POST" && p === "/v1/human") {
       await limit(`human:${me.id}`, 120);
@@ -516,7 +594,7 @@ export function createApi(deps: Deps) {
     if (m === "POST" && p === "/v1/reports") {
       await limit(`report:${me.id}`, 30);
       const b = await body(req);
-      const kind = (["name", "task", "member", "site"] as const).find((k) => k === b.kind) as ReportKind | undefined;
+      const kind = (["name", "task", "member", "site", "post"] as const).find((k) => k === b.kind) as ReportKind | undefined;
       const target = str(b.target, 2000, 1);
       const reason = str(b.reason, 1000, 3);
       if (!kind || !target || !reason) throw new HttpError(400, "report_invalid");
@@ -546,6 +624,7 @@ export function createApi(deps: Deps) {
           action = "task_closed";
         }
       }
+      if (count >= REPORTS_TO_SUSPEND && kind === "post" && (await store.postSetRemoved(target, true))) action = "post_removed";
       return json({ received: true, reports: count, action }, 201);
     }
 

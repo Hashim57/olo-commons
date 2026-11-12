@@ -33,6 +33,22 @@ test("the browser's own pages may call only the listed API routes", () => {
   assert.ok(!allowedApi("DELETE", "/v1/tasks"));
 });
 
+test("the Square and the services catalogue are reachable from the browser's pages, moderation is not", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  assert.ok(allowedApi("GET", "/v1/services"));
+  assert.ok(allowedApi("GET", "/v1/square"));
+  assert.ok(allowedApi("GET", "/v1/square?topic=tv&sort=top"));
+  assert.ok(allowedApi("GET", `/v1/square/${id}`));
+  assert.ok(allowedApi("POST", "/v1/square"));
+  assert.ok(allowedApi("POST", `/v1/square/${id}/vote`));
+  assert.ok(allowedApi("POST", `/v1/square/${id}/comments`));
+  assert.ok(allowedApi("DELETE", `/v1/square/${id}`));
+  assert.ok(allowedApi("DELETE", `/v1/square/comments/${id}`));
+  assert.ok(!allowedApi("POST", `/v1/admin/posts/${id}/remove`), "never admin routes");
+  assert.ok(!allowedApi("POST", `/v1/square/${id}/anything`));
+  assert.ok(!allowedApi("GET", "/v1/square/../admin"));
+});
+
 test("pol:// addresses", () => {
   assert.deepEqual(parsePolUrl("pol://community-garden"), { name: "community-garden", path: "/" });
   assert.deepEqual(parsePolUrl("pol://Garden/events?x=1#top"), { name: "garden", path: "/events?x=1" });

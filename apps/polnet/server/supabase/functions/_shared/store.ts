@@ -75,7 +75,14 @@ export type LedgerEntry = {
   created_at: string;
 };
 
-export type ReportKind = "name" | "task" | "member" | "site";
+export type ReportKind = "name" | "task" | "member" | "site" | "post";
+
+/** A post in the Square, the members' community. `link` is an https address (required for HeliusTV posts). */
+export type Post = { id: string; author: string; topic: string; title: string; body: string; link: string | null; removed: boolean; created_at: string };
+
+export type PostRow = Post & { votes: number; comments: number };
+
+export type Comment = { id: string; post_id: string; author: string; body: string; created_at: string };
 
 export type HelperLink = { id: string; protected_id: string; helper_id: string; created_at: string };
 
@@ -145,6 +152,22 @@ export interface Store {
   /** Alerts from everyone this helper helps, newest first, since `since`. */
   helperAlertsFor(helperId: string, since: string, limit: number): Promise<HelperAlert[]>;
 
+  postCreate(p: Omit<Post, "created_at" | "removed">, now: string): Promise<Post>;
+  postGet(id: string): Promise<PostRow | null>;
+  /** Posts that have not been removed: newest first, or most voted first (ties broken by newest). */
+  posts(filter: { topic?: string; sort: "new" | "top"; limit: number }): Promise<PostRow[]>;
+  postSetRemoved(id: string, removed: boolean): Promise<boolean>;
+  /** The author deletes their own post; comments and votes go with it. */
+  postDelete(id: string, author: string): Promise<boolean>;
+  /** One vote per member per post (one real person, one vote). Returns the post's vote count. */
+  voteSet(postId: string, memberId: string, on: boolean): Promise<number>;
+  /** Which of these posts the member has voted for. */
+  voted(memberId: string, postIds: string[]): Promise<string[]>;
+  /** Null when the post does not exist or has been removed. */
+  commentCreate(c: Omit<Comment, "created_at">, now: string): Promise<Comment | null>;
+  comments(postId: string, limit: number): Promise<Comment[]>;
+  commentDelete(id: string, author: string): Promise<boolean>;
+
   /** Counts a hit; true while under the limit for the window. */
   hit(key: string, windowMs: number, limit: number, nowMs: number): Promise<boolean>;
 }
@@ -160,6 +183,9 @@ export class MemoryStore implements Store {
   invites = new Map<string, { member_id: string; expires_at: string }>();
   links: HelperLink[] = [];
   alerts: HelperAlert[] = [];
+  postRows = new Map<string, Post>();
+  commentRows = new Map<string, Comment>();
+  votes = new Set<string>();
   private now = () => new Date().toISOString();
 
   async memberBySubject(subject: string) { return [...this.members.values()].find((m) => m.subject === subject) ?? null; }
@@ -299,6 +325,60 @@ export class MemoryStore implements Store {
   async helperAlertsFor(helperId: string, since: string, limit: number) {
     const who = new Set(this.links.filter((x) => x.helper_id === helperId).map((x) => x.protected_id));
     return this.alerts.filter((a) => who.has(a.protected_id) && a.created_at >= since).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit);
+  }
+
+  private row(p: Post): PostRow {
+    return { ...p, votes: [...this.votes].filter((v) => v.startsWith(`${p.id}:`)).length, comments: [...this.commentRows.values()].filter((c) => c.post_id === p.id).length };
+  }
+  async postCreate(p: Omit<Post, "created_at" | "removed">, now: string) {
+    const row = { ...p, removed: false, created_at: now };
+    this.postRows.set(p.id, row);
+    return row;
+  }
+  async postGet(id: string) { const p = this.postRows.get(id); return p ? this.row(p) : null; }
+  async posts(f: { topic?: string; sort: "new" | "top"; limit: number }) {
+    const rows = [...this.postRows.values()].filter((p) => !p.removed && (!f.topic || p.topic === f.topic)).map((p) => this.row(p));
+    rows.sort((a, b) => (f.sort === "top" ? b.votes - a.votes : 0) || b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id));
+    return rows.slice(0, f.limit);
+  }
+  async postSetRemoved(id: string, removed: boolean) {
+    const p = this.postRows.get(id);
+    if (!p) return false;
+    p.removed = removed;
+    return true;
+  }
+  async postDelete(id: string, author: string) {
+    const p = this.postRows.get(id);
+    if (!p || p.author !== author) return false;
+    this.postRows.delete(id);
+    for (const [cid, c] of this.commentRows) if (c.post_id === id) this.commentRows.delete(cid);
+    for (const v of this.votes) if (v.startsWith(`${id}:`)) this.votes.delete(v);
+    return true;
+  }
+  async voteSet(postId: string, memberId: string, on: boolean) {
+    const p = this.postRows.get(postId);
+    if (p && !p.removed) {
+      if (on) this.votes.add(`${postId}:${memberId}`);
+      else this.votes.delete(`${postId}:${memberId}`);
+    }
+    return [...this.votes].filter((v) => v.startsWith(`${postId}:`)).length;
+  }
+  async voted(memberId: string, postIds: string[]) { return postIds.filter((id) => this.votes.has(`${id}:${memberId}`)); }
+  async commentCreate(c: Omit<Comment, "created_at">, now: string) {
+    const p = this.postRows.get(c.post_id);
+    if (!p || p.removed) return null;
+    const row = { ...c, created_at: now };
+    this.commentRows.set(c.id, row);
+    return row;
+  }
+  async comments(postId: string, limit: number) {
+    return [...this.commentRows.values()].filter((c) => c.post_id === postId).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).slice(0, limit);
+  }
+  async commentDelete(id: string, author: string) {
+    const c = this.commentRows.get(id);
+    if (!c || c.author !== author) return false;
+    this.commentRows.delete(id);
+    return true;
   }
 
   async hit(key: string, windowMs: number, limit: number, nowMs: number) {

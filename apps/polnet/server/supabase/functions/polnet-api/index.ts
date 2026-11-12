@@ -2,7 +2,8 @@
 //   supabase functions deploy polnet-api --no-verify-jwt --project-ref <POL Net project>
 // Secrets (supabase secrets set ...): POLNET_SIGNING_JWK, POLNET_ADMIN_SECRET, POLNET_ISSUER, POLNET_PUBLIC_URL,
 // POL_SITEKEY, POL_SECRET, optional POL_API, POLNET_FEE_BPS, POLNET_MIN_PAYOUT_PENCE, STRIPE_SECRET_KEY,
-// STRIPE_WEBHOOK_SECRET. SUPABASE_DB_URL is provided by Supabase.
+// STRIPE_WEBHOOK_SECRET, POLNET_SQUARE (set to "on" to open the Square; see docs/WEBOCTA_SERVICES.md first),
+// POLNET_ESIM_STORE_URL. SUPABASE_DB_URL is provided by Supabase.
 import { createApi } from "../_shared/api.ts";
 import { loadSigner } from "../_shared/jwt.ts";
 import { PgStore } from "../_shared/store_pg.ts";
@@ -27,6 +28,8 @@ const handle = createApi({
     minPayoutPence: Number(env("POLNET_MIN_PAYOUT_PENCE", "1000")),
     stripeSecret: Deno.env.get("STRIPE_SECRET_KEY") || undefined,
     stripeWebhookSecret: Deno.env.get("STRIPE_WEBHOOK_SECRET") || undefined,
+    squareOpen: Deno.env.get("POLNET_SQUARE") === "on",
+    esimStoreUrl: Deno.env.get("POLNET_ESIM_STORE_URL") || undefined,
     minUniqueness: (Deno.env.get("POLNET_MIN_UNIQUENESS") as "none" | "device" | "history" | "vouched" | undefined) ?? "device",
   },
 });
