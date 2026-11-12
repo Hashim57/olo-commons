@@ -4,7 +4,8 @@
 // to anon or authenticated. Racy operations run in one transaction with row locks.
 
 import postgres from "npm:postgres@3.4.5";
-import type { Claim, ClaimError, Comment, HelperAlert, HelperLink, LedgerEntry, Member, PolName, Post, PostRow, ReportKind, Store, Task, TaskStatus } from "./store.ts";
+import { settle } from "./store.ts";
+import type { CheckItem, CheckLabel, CheckRules, CheckStats, CheckVote, Claim, ClaimError, Comment, HelperAlert, HelperLink, LedgerEntry, Member, PolName, Post, PostRow, ReportKind, Store, Task, TaskStatus } from "./store.ts";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -40,6 +41,13 @@ const post = (r: Record<string, unknown>): PostRow => ({
   removed: Boolean(r.removed), created_at: ts(r.created_at), votes: Number(r.votes ?? 0), comments: Number(r.comments ?? 0),
 });
 const comment = (r: Record<string, unknown>): Comment => ({ id: String(r.id), post_id: String(r.post_id), author: String(r.author), body: String(r.body), created_at: ts(r.created_at) });
+const checkItem = (r: Record<string, unknown>): CheckItem => ({
+  id: String(r.id), claim: String(r.claim), passages: (typeof r.passages === "string" ? JSON.parse(r.passages) : r.passages) as CheckItem["passages"],
+  known: (r.known as CheckLabel | null) ?? null, status: r.status as CheckItem["status"], label: (r.label as CheckLabel | null) ?? null, created_at: ts(r.created_at),
+});
+const checkVote = (r: Record<string, unknown>): CheckVote => ({
+  item_id: String(r.item_id), member_id: String(r.member_id), label: r.label as CheckLabel, passage: (r.passage as string | null) ?? null, quote: (r.quote as string | null) ?? null, created_at: ts(r.created_at),
+});
 const isId = (v: string) => /^[0-9a-f-]{36}$/i.test(v);
 
 export class PgStore implements Store {
@@ -273,6 +281,61 @@ export class PgStore implements Store {
   async commentDelete(id: string, author: string) {
     if (!isId(id)) return false;
     return (await this.sql`delete from polnet.post_comments where id = ${id} and author = ${author} returning id`).length === 1;
+  }
+
+  async checkAdd(items: Array<Omit<CheckItem, "created_at" | "status" | "label">>, now: string) {
+    let n = 0;
+    for (const i of items) {
+      const rows = await this.sql`insert into polnet.check_items (id, claim, passages, known, created_at)
+        values (${i.id}, ${i.claim}, ${JSON.stringify(i.passages)}::jsonb, ${i.known}, ${now}) on conflict (id) do nothing returning id`;
+      n += rows.length;
+    }
+    return n;
+  }
+  async checkGet(id: string) {
+    if (!isId(id)) return null;
+    const [r] = await this.sql`select * from polnet.check_items where id = ${id}`;
+    return r ? checkItem(r) : null;
+  }
+  async checkNext(memberId: string) {
+    const [r] = await this.sql`select i.* from polnet.check_items i
+      where i.status = 'open' and not exists (select 1 from polnet.check_labels l where l.item_id = i.id and l.member_id = ${memberId})
+      order by (select count(*) from polnet.check_labels l where l.item_id = i.id) desc, i.created_at, i.id limit 1`;
+    return r ? checkItem(r) : null;
+  }
+  async checkLabel(v: Omit<CheckVote, "created_at">, rules: CheckRules, now: string) {
+    if (!isId(v.item_id)) return null;
+    return await this.sql.begin(async (tx) => {
+      // The item's row is locked, so two members labelling at once are counted one after the other.
+      const [item] = await tx`select status from polnet.check_items where id = ${v.item_id} for update`;
+      if (!item || item.status !== "open") return null;
+      const added = await tx`insert into polnet.check_labels (item_id, member_id, label, passage, quote, created_at)
+        values (${v.item_id}, ${v.member_id}, ${v.label}, ${v.passage}, ${v.quote}, ${now}) on conflict do nothing returning item_id`;
+      if (added.length === 0) return null;
+      const labels = (await tx`select label from polnet.check_labels where item_id = ${v.item_id}`).map((r) => r.label as CheckLabel);
+      const settled = settle(labels, rules);
+      await tx`update polnet.check_items set status = ${settled.status}, label = ${settled.label} where id = ${v.item_id}`;
+      return { ...settled, labels: labels.length };
+    }) as { status: CheckItem["status"]; label: CheckLabel | null; labels: number } | null;
+  }
+  async checkStats(): Promise<CheckStats> {
+    const [i] = await this.sql`select count(*)::int as items, count(*) filter (where status = 'open')::int as open,
+      count(*) filter (where status = 'agreed')::int as agreed, count(*) filter (where status = 'disputed')::int as disputed from polnet.check_items`;
+    const [l] = await this.sql`select count(*)::int as labels, count(distinct l.member_id)::int as people,
+      count(*) filter (where i.known is not null)::int as control_labels, count(*) filter (where i.known is not null and i.known = l.label)::int as control_correct
+      from polnet.check_labels l join polnet.check_items i on i.id = l.item_id`;
+    return { items: Number(i.items), open: Number(i.open), agreed: Number(i.agreed), disputed: Number(i.disputed), labels: Number(l.labels), people: Number(l.people), control_labels: Number(l.control_labels), control_correct: Number(l.control_correct) };
+  }
+  async checkMine(memberId: string) {
+    const [r] = await this.sql`select count(*)::int as labels, count(*) filter (where i.status = 'agreed' and i.label = l.label)::int as agreed_with
+      from polnet.check_labels l join polnet.check_items i on i.id = l.item_id where l.member_id = ${memberId}`;
+    return { labels: Number(r.labels), agreed_with: Number(r.agreed_with) };
+  }
+  async checkAgreed(limit: number) {
+    const items = (await this.sql`select * from polnet.check_items where status = 'agreed' and known is null order by created_at, id limit ${limit}`).map(checkItem);
+    if (items.length === 0) return [];
+    const votes = (await this.sql`select * from polnet.check_labels where item_id in ${this.sql(items.map((i) => i.id))} order by created_at`).map(checkVote);
+    return items.map((item) => ({ item, votes: votes.filter((v) => v.item_id === item.id) }));
   }
 
   async hit(key: string, windowMs: number, limit: number, nowMs: number) {

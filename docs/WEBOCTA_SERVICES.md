@@ -16,6 +16,7 @@ The catalogue lives in one file, `apps/polnet/server/supabase/functions/_shared/
 | Olo Commons and Zeus | Free | Live | Free, open data and open source |
 | The Square (community) | Free | Soon | Free for members |
 | HeliusTV | Free | Soon | Free to watch and to share |
+| Teach Zeus (checking claims) | Free | Live once migration 004 is run and claims are uploaded | Free |
 | Tasks that pay | Free | Live | Free for members; nothing taken from earnings |
 | Posting tasks (organisations) | Paid | Live | Rewards plus the platform fee (10% by default) |
 | Travel and data eSIMs | Paid | Planned | None until a supplier account exists |
@@ -37,6 +38,12 @@ The catalogue lives in one file, `apps/polnet/server/supabase/functions/_shared/
 **The services page** (`polnet://services/`) with free shown before paid in every group, and the new-tab page cards that point to it and to the Square.
 
 Tests: 35 API tests pass against the in-memory store and Postgres 16 with all three migrations applied twice (three new: the catalogue, the closed Square, and the Square's whole life from post to takedown and restore); 26 browser unit tests; and the 16-step end-to-end test drives the real browser through posting, the HeliusTV view, voting on and off, and the services page.
+
+## Built next: Teach Zeus
+
+**Teach Zeus** (`polnet://teach/`, API under `/v1/checks`, migration `004_polnet_checks.sql`). This is the part of "a neural network built by the people" that people can now do with their own hands. A member reads one claim and the passages it is checked against, selects the words that decide it, and answers supported, contradicted or not covered. Three members who agree make one lesson; five who cannot agree set the claim aside; hidden control items with a known answer measure how careful the answers are, and that number is public. Agreed lessons are exported, read by a person, and committed as gold for Zeus's next training run (docs/FEEDBACK.md). Members never see each other's answers or any text another member wrote, so this part does not wait for the Square's assessments. It is unpaid; no score is claimed for it until a training run that includes member checks has been measured.
+
+Tests: 37 API tests against the in-memory store and Postgres 16 with all four migrations applied twice, 26 browser unit tests, a 17-step end-to-end test (the new step selects words in the real page and makes the third matching check), and 6 tests of the Zeus script.
 
 ## Why the Square is shipped closed
 

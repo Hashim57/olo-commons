@@ -451,6 +451,91 @@ async function suite(name: string, makeStore: () => Promise<Store>) {
     for (let i = 0; i < 11; i++) last = (await h.call("POST", "/v1/square", { topic: "questions", title: `Question number ${i} for the Square`, body: "Twenty characters of text at least." }, c.pass)).status;
     eq(last, 429, "ten posts an hour");
   });
+  Deno.test(`${name}: Teach Zeus turns three matching checks from real people into one lesson`, async () => {
+    const h = await harness(await makeStore());
+    const text1 = "The River Aire rises at Malham Tarn in North Yorkshire and flows through Leeds before joining the Ouse.";
+    const text2 = "Leeds is a city in West Yorkshire, England. It stands on the River Aire.";
+    const item = (claim: string, extra: Record<string, unknown> = {}) => ({ claim, passages: [{ id: "p1", source: "wikipedia", url: "https://en.wikipedia.org/wiki/River_Aire", text: text1 }, { id: "p2", source: "wikipedia", url: "https://en.wikipedia.org/wiki/Leeds", text: text2 }], ...extra });
+    eq((await h.call("POST", "/v1/admin/checks", { items: [] }, "wrong")).status, 401);
+    const up = await h.call("POST", "/v1/admin/checks", { items: [
+      item("The River Aire flows through Leeds."),
+      item("The River Aire rises in Scotland.", { known: "contradicted" }),
+      item("Leeds has a population of two million."),
+      item("short"),
+      { claim: "One passage is not enough to choose between.", passages: [{ id: "p1", source: "wikipedia", url: "https://en.wikipedia.org/wiki/Leeds", text: text2 }] },
+      item("A passage must come from an https address.", { passages: [{ id: "p1", source: "x", url: "http://plain.example/a", text: text1 }, { id: "p2", source: "x", url: "https://a.example/b", text: text2 }] }),
+      item("The answer key must be a real label.", { known: "maybe" }),
+    ] }, "admin-secret");
+    eq(up.status, 201);
+    eq([up.j.added, up.j.refused.map((x: any) => x.index)], [3, [3, 4, 5, 6]]);
+
+    eq((await h.call("GET", "/v1/checks/next")).status, 401, "members only");
+    const pub = await h.call("GET", "/v1/checks/stats");
+    eq([pub.status, pub.j.items, pub.j.open, pub.j.labels, pub.j.people, pub.j.control_accuracy], [200, 3, 3, 0, 0, null]);
+
+    const people = [];
+    for (const who of ["a", "b", "c", "d", "e"]) people.push(await h.join(`teach_${who}`, `teacher_${who}`));
+    const [a, b, c, d, e] = people;
+    const first = await h.call("GET", "/v1/checks/next", undefined, a.pass);
+    eq(first.status, 200);
+    assert(!("known" in first.j.item) && !("status" in first.j.item), "the answer key never reaches a member");
+    eq(first.j.labels, ["supported", "contradicted", "not_covered"]);
+    eq(first.j.item.passages.length, 2);
+
+    // Find each item by its claim: the order a member is offered them is the server's business.
+    const ids = new Map<string, string>();
+    for (let i = 0; i < 3; i++) {
+      const n = await h.call("GET", "/v1/checks/next", undefined, e.pass);
+      ids.set(n.j.item.claim, n.j.item.id);
+      eq((await h.call("POST", `/v1/checks/${n.j.item.id}/label`, { label: "not_covered" }, e.pass)).status, 201);
+    }
+    eq((await h.call("GET", "/v1/checks/next", undefined, e.pass)).j.item, null, "nothing is offered twice");
+    const flows = ids.get("The River Aire flows through Leeds.")!, rises = ids.get("The River Aire rises in Scotland.")!, pop = ids.get("Leeds has a population of two million.")!;
+    assert(flows && rises && pop);
+
+    const quote = "flows through Leeds";
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "perhaps" }, a.pass)).j.error, "label_invalid");
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported" }, a.pass)).j.error, "quote_invalid");
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p1", quote: "flows through Bradford" }, a.pass)).j.error, "quote_invalid", "the words must be in the passage");
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p2", quote }, a.pass)).j.error, "quote_invalid", "and in the passage named");
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p1", quote: "flows" }, a.pass)).j.error, "quote_invalid", "long enough to mean something");
+    eq((await h.call("POST", "/v1/checks/00000000-0000-4000-8000-999999999999/label", { label: "not_covered" }, a.pass)).j.error, "check_not_found");
+    eq((await h.call("POST", "/v1/checks/not-an-id/label", { label: "not_covered" }, a.pass)).j.error, "check_not_found");
+
+    const l1 = await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p1", quote }, a.pass);
+    eq([l1.status, l1.j.recorded, l1.j.settled, l1.j.agreed], [201, true, false, null], "nothing about other answers before it settles");
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "contradicted", passage: "p1", quote }, a.pass)).status, 409, "one answer per person");
+    await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p1", quote }, b.pass);
+    const l3 = await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p1", quote: "flows through Leeds before joining the Ouse" }, c.pass);
+    eq([l3.j.settled, l3.j.agreed, l3.j.mine], [true, true, { labels: 1, agreed_with: 1 }]);
+    eq((await h.call("POST", `/v1/checks/${flows}/label`, { label: "supported", passage: "p1", quote }, d.pass)).status, 409, "settled items are closed");
+
+    // The control item: four people answer it, three correctly; it settles and is never exported.
+    for (const m of [a, b, c]) await h.call("POST", `/v1/checks/${rises}/label`, { label: "contradicted", passage: "p1", quote: "rises at Malham Tarn in North Yorkshire" }, m.pass);
+    // A claim people cannot agree on is set aside at five answers.
+    await h.call("POST", `/v1/checks/${pop}/label`, { label: "not_covered" }, a.pass);
+    await h.call("POST", `/v1/checks/${pop}/label`, { label: "contradicted", passage: "p2", quote: "Leeds is a city in West Yorkshire" }, b.pass);
+    await h.call("POST", `/v1/checks/${pop}/label`, { label: "contradicted", passage: "p2", quote: "Leeds is a city in West Yorkshire" }, c.pass);
+    const last = await h.call("POST", `/v1/checks/${pop}/label`, { label: "supported", passage: "p2", quote: "It stands on the River Aire" }, d.pass);
+    eq([last.j.settled, last.j.agreed], [true, null], "disputed: nobody is told they were right");
+
+    const stats = await h.call("GET", "/v1/checks/stats");
+    eq([stats.j.items, stats.j.open, stats.j.agreed, stats.j.disputed, stats.j.labels, stats.j.people], [3, 0, 2, 1, 13, 5]);
+    eq([stats.j.control_labels, stats.j.control_correct, stats.j.control_accuracy], [4, 3, 0.75]);
+    assert(!JSON.stringify(stats.j).includes(a.id), "counts only, never who");
+
+    eq((await h.call("GET", "/v1/admin/checks/export", undefined, a.pass)).status, 401);
+    const out = await h.call("GET", "/v1/admin/checks/export", undefined, "admin-secret");
+    eq(out.j.examples.length, 1, "the control and the disputed item stay out");
+    const g = out.j.examples[0];
+    eq([g.claim, g.label, g.kind, g.votes, g.agree], ["The River Aire flows through Leeds.", "supported", "member_check", 4, 3]);
+    eq(g.evidence, [{ passage: "p1", quote }], "the words most people chose");
+    eq(g.rationale, "Checked by 4 verified members of POL Net; 3 agreed.");
+    assert(!JSON.stringify(g).includes(a.id) && !JSON.stringify(g).includes("teacher_"), "no member in a lesson");
+
+    const svc = new Map<string, any>((await h.call("GET", "/v1/services")).j.services.map((x: any) => [x.key, x]));
+    eq([svc.get("teach").kind, svc.get("teach").status], ["free", "live"]);
+  });
 }
 
 Deno.test("names and targets: rules", () => {
@@ -484,7 +569,7 @@ if (pgUrl) {
     const s = PgStore.connect(pgUrl);
     stores.push(s);
     // A clean slate for each test.
-    await (s as any).sql`truncate polnet.reports, polnet.hits, polnet.claims, polnet.tasks, polnet.names, polnet.members cascade`.catch(() => undefined);
+    await (s as any).sql`truncate polnet.check_items, polnet.reports, polnet.hits, polnet.claims, polnet.tasks, polnet.names, polnet.members cascade`.catch(() => undefined);
     return s;
   });
   Deno.test({ name: "postgres: close", sanitizeResources: false, fn: async () => { for (const s of stores) await s.close(); } });

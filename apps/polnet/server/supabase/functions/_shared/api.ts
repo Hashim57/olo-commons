@@ -5,7 +5,7 @@
 
 import { safeEqual, sign, type Signer, stripeSignatureOk, verify } from "./jwt.ts";
 import { GROUPS, services } from "./services.ts";
-import type { AlertKind, Claim, Comment, Member, PostRow, ReportKind, Store, Task } from "./store.ts";
+import type { AlertKind, CheckItem, CheckLabel, CheckPassage, Claim, Comment, Member, PostRow, ReportKind, Store, Task } from "./store.ts";
 
 export type Config = {
   /** This API's own address, the `iss` of member passes. */
@@ -53,6 +53,9 @@ const MAX_HELPERS = 3;
 const INVITE_MS = 24 * 3600_000;
 const ALERT_DAYS = 30;
 const HUMAN_PASS_SECONDS = 300;
+/** Teach Zeus: an item is agreed when three members give the same label, and set aside as disputed at five labels without that. */
+export const CHECK_RULES = { needed: 3, max: 5 } as const;
+export const CHECK_LABELS: readonly CheckLabel[] = ["supported", "contradicted", "not_covered"];
 /** The Square's topics. "tv" is HeliusTV: a post that links to a video hosted elsewhere. */
 export const TOPICS = ["ideas", "projects", "questions", "research", "impact", "tv"] as const;
 export const ALERT_KINDS: readonly AlertKind[] = ["lookalike", "reported", "scam-page", "remote-access", "pause", "download"];
@@ -220,6 +223,11 @@ export function createApi(deps: Deps) {
       const list = services({ feeBps: config.feeBps, esimStoreUrl: config.esimStoreUrl && validTarget(config.esimStoreUrl) ? config.esimStoreUrl : undefined, squareOpen: Boolean(config.squareOpen) });
       return json({ groups: GROUPS, services: list }, 200, { "cache-control": "public, max-age=300" });
     }
+    if (m === "GET" && p === "/v1/checks/stats") {
+      // The public pulse of the network: how much people have taught, never who.
+      const s = await store.checkStats();
+      return json({ ...s, control_accuracy: s.control_labels ? Math.round((s.control_correct / s.control_labels) * 1000) / 1000 : null, rules: CHECK_RULES }, 200, { "cache-control": "public, max-age=60" });
+    }
     if (m === "GET" && p === "/join") return new Response(joinPage(config), { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": joinCsp(config) } });
 
     // --- Join: one real person, one account -------------------------------------------------------
@@ -261,6 +269,24 @@ export function createApi(deps: Deps) {
       }
       if (m === "POST" && seg[2] === "posts" && seg[3] && (seg[4] === "remove" || seg[4] === "restore")) {
         return (await store.postSetRemoved(seg[3], seg[4] === "remove")) ? json({ post: seg[3], removed: seg[4] === "remove" }) : json({ error: "not_found" }, 404);
+      }
+      if (m === "POST" && seg[2] === "checks" && !seg[3]) {
+        const b = await body(req);
+        const raw = Array.isArray(b.items) ? b.items.slice(0, 500) : [];
+        const items: Array<Omit<CheckItem, "created_at" | "status" | "label">> = [];
+        const refused: Array<{ index: number; reason: string }> = [];
+        raw.forEach((x: unknown, index: number) => {
+          const r = checkItemFrom(x, newId);
+          if (typeof r === "string") refused.push({ index, reason: r });
+          else items.push(r);
+        });
+        return json({ added: await store.checkAdd(items, iso()), refused }, 201);
+      }
+      if (m === "GET" && seg[2] === "checks" && seg[3] === "export") {
+        // Agreed items in the shape of a Zeus gold line, for zeus/member_checks_to_gold.py. A person still
+        // reads them before they are committed: agreement between members is evidence, not the last word.
+        const rows = await store.checkAgreed(Math.min(Number(url.searchParams.get("limit")) || 500, 1000));
+        return json({ rules: CHECK_RULES, examples: rows.map(({ item, votes }) => goldLine(item, votes)) });
       }
       if (m === "POST" && seg[2] === "tasks" && seg[3] && seg[4] === "fund") {
         // Funding received another way (a bank transfer, a grant): the task opens.
@@ -516,6 +542,36 @@ export function createApi(deps: Deps) {
       }
     }
 
+    // --- Teach Zeus: members check claims against passages; agreement between real people becomes a lesson
+    if (seg[0] === "v1" && seg[1] === "checks") {
+      if (m === "GET" && seg[2] === "next") {
+        const [item, mine, stats] = await Promise.all([store.checkNext(me.id), store.checkMine(me.id), store.checkStats()]);
+        return json({ item: item ? { id: item.id, claim: item.claim, passages: item.passages.map((x) => ({ id: x.id, source: x.source, url: x.url, text: x.text })) } : null, mine, open: stats.open, labels: CHECK_LABELS });
+      }
+      if (m === "POST" && seg[2] && seg[3] === "label") {
+        await limit(`check:${me.id}`, 120);
+        const b = await body(req);
+        const label = CHECK_LABELS.find((l) => l === b.label);
+        const item = await store.checkGet(seg[2]);
+        if (!item) throw new HttpError(404, "check_not_found");
+        if (!label) throw new HttpError(400, "label_invalid", "Choose supported, contradicted or not covered.");
+        let passage: string | null = null, quote: string | null = null;
+        if (label !== "not_covered") {
+          // The words that decide it must be in the passage, exactly: that is what Zeus learns to point at.
+          passage = str(b.passage, 64, 1);
+          quote = typeof b.quote === "string" ? b.quote : null;
+          const src = item.passages.find((x) => x.id === passage);
+          if (!src || !quote || quote.trim().length < 8 || quote.length > 600 || !src.text.includes(quote)) {
+            throw new HttpError(400, "quote_invalid", "Select the words in one passage that decide it (at least 8 characters, exactly as written).");
+          }
+        }
+        const r = await store.checkLabel({ item_id: item.id, member_id: me.id, label, passage, quote }, CHECK_RULES, iso());
+        if (!r) throw new HttpError(409, "check_closed", "You have already checked this one, or it has been settled.");
+        // Nothing about other members' answers comes back until the item is settled, so nobody can copy.
+        return json({ recorded: true, settled: r.status !== "open", agreed: r.status === "agreed" ? r.label === label : null, mine: await store.checkMine(me.id) }, 201);
+      }
+    }
+
     // --- The Square: the members' community (and HeliusTV, its "tv" topic) -------------------------------
     if (seg[0] === "v1" && seg[1] === "square") {
       if (!config.squareOpen) throw new HttpError(503, "square_not_open", "The Square is not open yet.");
@@ -690,4 +746,43 @@ function done(token){
 }
 window.addEventListener('load',()=>{ if(window.PoL&&window.PoL.render) window.PoL.render(document.getElementById('pol'),{callback:done}); else msg.textContent='The Proof-of-Life check could not load.'; });
 </script></body></html>`;
+}
+
+/** A checked item from an admin upload, or the reason it is refused. Passages keep their provenance. */
+function checkItemFrom(x: unknown, newId: () => string): Omit<CheckItem, "created_at" | "status" | "label"> | string {
+  if (!x || typeof x !== "object") return "not an object";
+  const o = x as Record<string, unknown>;
+  const claim = str(o.claim, 600, 10);
+  if (!claim) return "claim must be 10 to 600 characters";
+  if (!Array.isArray(o.passages) || o.passages.length < 2 || o.passages.length > 4) return "2 to 4 passages";
+  const passages: CheckPassage[] = [];
+  for (const raw of o.passages) {
+    const q = (raw ?? {}) as Record<string, unknown>;
+    const id = str(q.id, 64, 1), source = str(q.source, 60, 1), link = str(q.url, 2000, 9), text = typeof q.text === "string" && q.text.length >= 40 && q.text.length <= 4000 ? q.text : null;
+    if (!id || !source || !link || !text || !link.startsWith("https://")) return "each passage needs id, source, an https url and 40 to 4,000 characters of text";
+    if (passages.some((y) => y.id === id)) return "passage ids must differ";
+    passages.push({ id, source, url: link, text, ...(typeof q.atom_id === "string" ? { atom_id: q.atom_id.slice(0, 64) } : {}) });
+  }
+  const known = o.known === undefined || o.known === null ? null : CHECK_LABELS.find((l) => l === o.known);
+  if (known === undefined) return "known must be a label or absent";
+  const id = typeof o.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(o.id) ? o.id.toLowerCase() : newId();
+  return { id, claim, passages, known };
+}
+
+/** One agreed item as a Zeus gold line. The evidence is the quote most members chose (ties: the shortest). */
+function goldLine(item: CheckItem, votes: Array<{ label: CheckLabel; passage: string | null; quote: string | null }>) {
+  const same = votes.filter((v) => v.label === item.label);
+  const tally = new Map<string, { passage: string; quote: string; n: number }>();
+  for (const v of same) {
+    if (!v.passage || !v.quote) continue;
+    const k = `${v.passage}\u0000${v.quote}`;
+    tally.set(k, { passage: v.passage, quote: v.quote, n: (tally.get(k)?.n ?? 0) + 1 });
+  }
+  const best = [...tally.values()].sort((a, b) => b.n - a.n || a.quote.length - b.quote.length)[0];
+  return {
+    claim: item.claim, passages: item.passages, label: item.label,
+    evidence: item.label === "not_covered" || !best ? [] : [{ passage: best.passage, quote: best.quote }],
+    rationale: `Checked by ${votes.length} verified members of POL Net; ${same.length} agreed.`,
+    kind: "member_check", check_id: item.id, votes: votes.length, agree: same.length,
+  };
 }

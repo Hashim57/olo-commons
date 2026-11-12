@@ -10,6 +10,19 @@ Every Olo app (helius-olo.io, iPhone, Mac, the Commons page) lets a person flag 
 4. **Train.** New gold lines make training due (`zeus/cloud/due.py`), so a reviewed flag reaches Zeus the next morning. Training also runs when the set has grown a tenth or a week has passed.
 5. **Measure and publish.** The new version is measured on the frozen split, on held-out VitaminC and on an LLM-AggreFact sample, written to `docs/ZEUS_SCORECARD.md`, promoted only if not worse, and published to the Worker. The public counts (`GET /functions/v1/olo-feedback?stats=1`: total, new, accepted, taught, disagreement rate) go on the Commons page.
 
+## Checks by POL Net members (Teach Zeus)
+
+The second way people teach Zeus, built in November 2026 (`polnet://teach/`, API under `/v1/checks`, migration `apps/polnet/server/supabase/migrations/004_polnet_checks.sql`). A flag starts from a sentence Olo wrote; a check starts from a claim nobody has confirmed.
+
+1. **Items.** `python3 zeus/member_checks_to_gold.py items` picks rule-made examples from the train side of the eval hash, removes the label, the evidence and the rationale, and adds a few hand-written gold examples as controls. A person uploads them with the admin secret (apps/polnet/DEPLOY.md, section 5).
+2. **Check.** A member of POL Net (one Proof-of-Life check, one account) sees one claim and its two to four passages with their sources, and answers supported, contradicted or not covered. For the first two the member selects the exact words in one passage that decide it, and the server refuses a quote that is not in that passage. One answer per member per item, 120 an hour. Nobody sees anyone else's answer before the item is settled.
+3. **Agree.** Three members with the same label settle an item as agreed. Five answers without that settle it as disputed, and it is set aside. A member is told only whether an item settled with their answer, and their own totals.
+4. **Gold.** `python3 zeus/member_checks_to_gold.py gold export.json` turns agreed items into lines of `zeus/data/gold/checks-<date>.jsonl` (kind `member_check`), validated exactly like hand-written gold and left out if any passage is an eval atom. A person reads the file before it is committed. From there the loop above carries on at step 4.
+
+Controls measure care: `GET /v1/checks/stats` on the POL Net API publishes how many checks, people and lessons there are, and what share of answers on control items matched the hand-written label. Control items are never exported. No member id, handle or address is in an exported line.
+
+What this is and is not: it is real people's judgement reaching a real neural network through a measured, reviewed path. It is not a model that updates itself while people use it; training still runs in the daily job and a version is promoted only if it is not worse. Checks are unpaid for now; paying for them through Tasks needs a funder and is not built.
+
 ## Rules
 
 - Zeus never trains on its own labels. A flag is a person's judgement, and a reviewer confirms it before it becomes a label. Model output is never re-ingested as a fact either (docs/TRUST.md).

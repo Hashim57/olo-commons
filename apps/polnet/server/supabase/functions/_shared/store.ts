@@ -90,6 +90,23 @@ export type AlertKind = "lookalike" | "reported" | "scam-page" | "remote-access"
 
 export type HelperAlert = { id: string; protected_id: string; host: string; kind: AlertKind; created_at: string };
 
+export type CheckLabel = "supported" | "contradicted" | "not_covered";
+
+export type CheckPassage = { id: string; source: string; url: string; text: string; atom_id?: string };
+
+/**
+ * One claim for members to check against passages from the Commons ("Teach Zeus"). `known` is the answer
+ * for a control item (used to measure how careful labelling is; never shown, never exported as a lesson).
+ * An item is agreed when enough different members gave the same label; only agreed items teach Zeus.
+ */
+export type CheckItem = { id: string; claim: string; passages: CheckPassage[]; known: CheckLabel | null; status: "open" | "agreed" | "disputed"; label: CheckLabel | null; created_at: string };
+
+export type CheckVote = { item_id: string; member_id: string; label: CheckLabel; passage: string | null; quote: string | null; created_at: string };
+
+export type CheckRules = { needed: number; max: number };
+
+export type CheckStats = { items: number; open: number; agreed: number; disputed: number; labels: number; people: number; control_labels: number; control_correct: number };
+
 export type ClaimError = "task_not_found" | "task_not_open" | "already_claimed" | "no_slots" | "own_task" | "past_deadline";
 
 export interface Store {
@@ -168,6 +185,22 @@ export interface Store {
   comments(postId: string, limit: number): Promise<Comment[]>;
   commentDelete(id: string, author: string): Promise<boolean>;
 
+  /** Adds items for members to check; returns how many were new (an id already present is left alone). */
+  checkAdd(items: Array<Omit<CheckItem, "created_at" | "status" | "label">>, now: string): Promise<number>;
+  checkGet(id: string): Promise<CheckItem | null>;
+  /** An open item this member has not labelled, the one closest to agreement first. */
+  checkNext(memberId: string): Promise<CheckItem | null>;
+  /**
+   * Records one member's label (one per member per item) and settles the item: agreed when `needed`
+   * members gave the same label, disputed when `max` labels came in without that. Null when the item is
+   * not open or the member already labelled it.
+   */
+  checkLabel(v: Omit<CheckVote, "created_at">, rules: CheckRules, now: string): Promise<{ status: CheckItem["status"]; label: CheckLabel | null; labels: number } | null>;
+  checkStats(): Promise<CheckStats>;
+  checkMine(memberId: string): Promise<{ labels: number; agreed_with: number }>;
+  /** Agreed items that are not controls, with the votes behind them, oldest first. */
+  checkAgreed(limit: number): Promise<Array<{ item: CheckItem; votes: CheckVote[] }>>;
+
   /** Counts a hit; true while under the limit for the window. */
   hit(key: string, windowMs: number, limit: number, nowMs: number): Promise<boolean>;
 }
@@ -186,6 +219,8 @@ export class MemoryStore implements Store {
   postRows = new Map<string, Post>();
   commentRows = new Map<string, Comment>();
   votes = new Set<string>();
+  checkItems = new Map<string, CheckItem>();
+  checkVotes: CheckVote[] = [];
   private now = () => new Date().toISOString();
 
   async memberBySubject(subject: string) { return [...this.members.values()].find((m) => m.subject === subject) ?? null; }
@@ -381,6 +416,49 @@ export class MemoryStore implements Store {
     return true;
   }
 
+  async checkAdd(items: Array<Omit<CheckItem, "created_at" | "status" | "label">>, now: string) {
+    let n = 0;
+    for (const i of items) {
+      if (this.checkItems.has(i.id)) continue;
+      this.checkItems.set(i.id, { ...i, status: "open", label: null, created_at: now });
+      n++;
+    }
+    return n;
+  }
+  async checkGet(id: string) { return this.checkItems.get(id) ?? null; }
+  async checkNext(memberId: string) {
+    const count = (id: string) => this.checkVotes.filter((v) => v.item_id === id).length;
+    const open = [...this.checkItems.values()].filter((i) => i.status === "open" && !this.checkVotes.some((v) => v.item_id === i.id && v.member_id === memberId));
+    open.sort((a, b) => count(b.id) - count(a.id) || a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+    return open[0] ?? null;
+  }
+  async checkLabel(v: Omit<CheckVote, "created_at">, rules: CheckRules, now: string) {
+    const item = this.checkItems.get(v.item_id);
+    if (!item || item.status !== "open" || this.checkVotes.some((x) => x.item_id === v.item_id && x.member_id === v.member_id)) return null;
+    this.checkVotes.push({ ...v, created_at: now });
+    const votes = this.checkVotes.filter((x) => x.item_id === v.item_id);
+    const settled = settle(votes.map((x) => x.label), rules);
+    Object.assign(item, settled);
+    return { ...settled, labels: votes.length };
+  }
+  async checkStats() {
+    const items = [...this.checkItems.values()];
+    const control = this.checkVotes.filter((v) => this.checkItems.get(v.item_id)?.known);
+    return {
+      items: items.length, open: items.filter((i) => i.status === "open").length, agreed: items.filter((i) => i.status === "agreed").length, disputed: items.filter((i) => i.status === "disputed").length,
+      labels: this.checkVotes.length, people: new Set(this.checkVotes.map((v) => v.member_id)).size,
+      control_labels: control.length, control_correct: control.filter((v) => this.checkItems.get(v.item_id)!.known === v.label).length,
+    };
+  }
+  async checkMine(memberId: string) {
+    const mine = this.checkVotes.filter((v) => v.member_id === memberId);
+    return { labels: mine.length, agreed_with: mine.filter((v) => { const i = this.checkItems.get(v.item_id); return i?.status === "agreed" && i.label === v.label; }).length };
+  }
+  async checkAgreed(limit: number) {
+    return [...this.checkItems.values()].filter((i) => i.status === "agreed" && !i.known).sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)).slice(0, limit)
+      .map((item) => ({ item, votes: this.checkVotes.filter((v) => v.item_id === item.id) }));
+  }
+
   async hit(key: string, windowMs: number, limit: number, nowMs: number) {
     const list = (this.hits.get(key) ?? []).filter((t) => nowMs - t < windowMs);
     if (list.length >= limit) {
@@ -391,4 +469,14 @@ export class MemoryStore implements Store {
     this.hits.set(key, list);
     return true;
   }
+}
+
+/** How an item stands after these labels: agreed once `needed` are the same, disputed at `max` labels without that. */
+export function settle(labels: CheckLabel[], rules: CheckRules): { status: CheckItem["status"]; label: CheckLabel | null } {
+  const counts = new Map<CheckLabel, number>();
+  for (const l of labels) counts.set(l, (counts.get(l) ?? 0) + 1);
+  const top = [...counts].sort((a, b) => b[1] - a[1])[0];
+  if (top && top[1] >= rules.needed) return { status: "agreed", label: top[0] };
+  if (labels.length >= rules.max) return { status: "disputed", label: null };
+  return { status: "open", label: null };
 }

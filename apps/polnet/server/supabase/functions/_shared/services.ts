@@ -54,6 +54,7 @@ export function services(o: ServiceOptions): Service[] {
 
     { key: "square", name: "The Square", group: "community", kind: "free", status: o.squareOpen ? "live" : "soon", summary: "The members' community for innovation and impact: ideas, projects, questions and research from real people, one vote each.", price: "Free for members.", url: null },
     { key: "heliustv", name: "HeliusTV", group: "community", kind: "free", status: o.squareOpen ? "live" : "soon", summary: "Videos from creators, innovators and people doing impact work, shared and voted on by members. No advertising, no autoplay feed.", price: "Free to watch and to share.", url: null },
+    { key: "teach", name: "Teach Zeus", group: "community", kind: "free", status: "live", summary: "Check a claim against its sources. When three real people agree, it becomes a lesson for Zeus, the open verifier behind Olo.", price: "Free. Your checks are counted in public; who you are is not.", url: null },
     { key: "tasks", name: "Tasks that pay", group: "community", kind: "free", status: "live", summary: "Real work for organisations that help people and places. Members are paid in pounds or euros.", price: "Free for members; nothing is taken from what you earn.", url: null },
     { key: "task-posting", name: "Post tasks to verified people", group: "community", kind: "paid", status: "live", summary: "Organisations fund work with a public benefit and review the evidence members send.", price: `The rewards you set, plus a ${fee} platform fee shown before you pay.`, url: null },
 

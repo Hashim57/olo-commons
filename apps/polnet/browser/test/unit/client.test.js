@@ -47,6 +47,12 @@ test("the Square and the services catalogue are reachable from the browser's pag
   assert.ok(!allowedApi("POST", `/v1/admin/posts/${id}/remove`), "never admin routes");
   assert.ok(!allowedApi("POST", `/v1/square/${id}/anything`));
   assert.ok(!allowedApi("GET", "/v1/square/../admin"));
+  assert.ok(allowedApi("GET", "/v1/checks/next"));
+  assert.ok(allowedApi("GET", "/v1/checks/stats"));
+  assert.ok(allowedApi("POST", `/v1/checks/${id}/label`));
+  assert.ok(!allowedApi("POST", "/v1/admin/checks"));
+  assert.ok(!allowedApi("GET", "/v1/admin/checks/export"));
+  assert.ok(!allowedApi("GET", `/v1/checks/${id}`));
 });
 
 test("pol:// addresses", () => {
