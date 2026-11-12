@@ -56,7 +56,7 @@ def test_agreed_export_becomes_a_valid_gold_line():
 def test_what_is_left_out_and_why():
     assert "three" in to_gold(exported(agree=2))[1]
     assert "exact substring" in to_gold(exported(evidence=[{"passage": "aaaaaaaa", "quote": "flows through Bradford"}]))[1]
-    assert "dash" in to_gold(exported(claim="The River Aire — a river — flows through Leeds."))[1]
+    assert "dash" in to_gold(exported(claim="The River Aire \u2014 a river \u2014 flows through Leeds."))[1]
     held = next(f"{i:08x}-0000-4000-8000-000000000000" for i in range(10000) if stable_split(f"{i:08x}-0000-4000-8000-000000000000", 0.1) == "eval")
     e = exported()
     e["passages"][1]["atom_id"] = held

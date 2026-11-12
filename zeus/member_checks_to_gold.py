@@ -29,7 +29,7 @@ sys.path.insert(0, HERE)
 from build_dataset import stable_split  # noqa: E402
 from validate_gold import check_example  # noqa: E402
 
-DASHES = ("–", "—")
+DASHES = ("\u2013", "\u2014")
 
 
 def read_jsonl(path):
