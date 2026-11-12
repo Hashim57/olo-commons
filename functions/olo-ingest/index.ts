@@ -27,7 +27,7 @@ import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts'
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
 import { archiveCandidates, archiveSearchUrl, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
-import { permalink, planRecheck } from './recheck.ts';
+import { isNotFound, permalink, planRecheck, retireUpdate, wikidataEntityState, wikiPageState, wikiPageStateUrl, wikiSummaryUrl } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
 import { europePmcCandidates, europePmcSearchUrl, europePmcWalkUrl, EUROPEPMC_TOPICS } from './europepmc.ts';
@@ -369,32 +369,60 @@ Deno.serve(async (req) => {
 
   // Re-check: read the oldest-observed Wikipedia and Wikidata atoms at their source again. Unchanged: observed_at moves
   // forward. Changed text: the old atom becomes history (status superseded, its url the permalink of its revision,
-  // valid_to today) and the new text is stored as a new atom that points back. Nothing is ever overwritten or deleted.
+  // valid_to today) and the new text is stored as a new atom that points back. Page gone, or no longer an article: the
+  // old atom becomes history the same way, with no successor (recheck.ts, retireUpdate). Nothing is ever overwritten or
+  // deleted. Every atom in the batch leaves the queue one way or another; one that could not be read is the only kind
+  // that stays, and it is counted as a failure in the run note so a source outage shows.
   let recheckNote = '';
   async function recheck(src: Source) {
     const { data: batch } = await sb.rpc('olo_recheck_batch', { p_slug: src.slug, p_n: RECHECK_N });
     if (!Array.isArray(batch) || !batch.length) return;
-    let same = 0, changed = 0;
+    let same = 0, changed = 0, withdrawn = 0;
+    async function keep(old: any, revision?: string | null) {
+      same++;
+      await sb.from('olo_atoms').update({ observed_at: new Date().toISOString(), source_revision: revision || old.source_revision || null }).eq('id', old.id);
+    }
+    async function retire(old: any) {
+      const r = await sb.from('olo_atoms').update(retireUpdate(src.slug, old)).eq('id', old.id);
+      if (r.error) { fail(src.slug + ' (recheck)', r.error.message); return; }
+      await sb.rpc('olo_rescore_atom', { p_id: old.id });  // credibility takes the superseded penalty (sql/002)
+      withdrawn++;
+    }
     for (const old of batch) {
       if (outOfTime()) { cutShort = true; break; }
       try {
-        let c: Candidate | null = null;
+        let c: Candidate | null = null, revision: string | undefined;
         if (src.slug === 'wikipedia' || src.slug === 'wikipedia_es') {
           const lang = src.slug === 'wikipedia_es' ? 'es' : 'en';
           const title = decodeURIComponent(String(old.url).split('/wiki/')[1] || old.title).replace(/_/g, ' ');
-          c = wikiCandidate(await get(`https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`), lang);
+          let page: any;
+          try { page = await get(wikiSummaryUrl(lang, title)); } catch (e) {
+            if (!isNotFound(e)) throw e;
+            const state = wikiPageState(await get(wikiPageStateUrl(lang, title)));
+            if (state.state === 'gone') { await retire(old); continue; }
+            if (state.state !== 'at' || state.title === title) throw e;
+            page = await get(wikiSummaryUrl(lang, state.title));  // the title moved: read it where it is now
+          }
+          revision = page?.revision ? String(page.revision) : undefined;
+          c = wikiCandidate(page, lang);
         } else if (src.slug === 'wikidata') {
-          c = (await wikidataByIds([String(old.external_id)], 1))[0] || null;
+          const id = String(old.external_id);
+          const e: any = await get(wikidataEntitiesUrl([id]));
+          const state = wikidataEntityState(e, id);
+          if (state.state === 'gone') { await retire(old); continue; }
+          revision = state.revision;
+          c = wikidataCandidates(e, [id], 1)[0] || null;
         }
-        if (!c) continue;  // gone or no longer an article: left as is, re-tried in a week
+        if (!c) {
+          // The page is there but is not an article to quote any more (a redirect, a disambiguation page, a stub, an item
+          // without a description). At the revision we stored it from, nothing changed; otherwise the text we hold is history.
+          if (revision && old.source_revision && revision === String(old.source_revision)) await keep(old, revision); else await retire(old);
+          continue;
+        }
         const title = clean(c.title).slice(0, 300), summary = clean(c.summary || '').slice(0, 1000), content = clean(c.content || '').slice(0, MAX_CONTENT);
         const hash = await sha256(title + '\n' + summary + '\n' + content);
         const plan = planRecheck(old, { hash, revision: c.source_revision });
-        if (plan.action === 'same') {
-          same++;
-          await sb.from('olo_atoms').update({ observed_at: new Date().toISOString(), source_revision: c.source_revision || old.source_revision || null }).eq('id', old.id);
-          continue;
-        }
+        if (plan.action === 'same') { await keep(old, c.source_revision); continue; }
         // changed: the old row keeps its text under a permalink; the new text takes the live url
         const oldUrl = permalink(src.slug, String(old.url), old.source_revision ? String(old.source_revision) : null);
         const moved = await sb.from('olo_atoms').update({ url: oldUrl }).eq('id', old.id);
@@ -406,7 +434,7 @@ Deno.serve(async (req) => {
         changed++; stats.added++;
       } catch (e) { fail(src.slug + ' (recheck)', e); }
     }
-    if (same || changed) recheckNote += ` (${src.slug} re-check: ${same} unchanged, ${changed} updated)`;
+    if (same || changed || withdrawn) recheckNote += ` (${src.slug} re-check: ${same} unchanged, ${changed} updated${withdrawn ? `, ${withdrawn} withdrawn` : ''})`;
   }
 
   // 1. Gap filling: the most-asked open topic, searched across the sources that can search.
