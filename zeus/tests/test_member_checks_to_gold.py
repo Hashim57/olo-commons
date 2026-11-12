@@ -1,6 +1,6 @@
 import json, os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from member_checks_to_gold import as_item, main, pick_items, to_gold
+from member_checks_to_gold import as_item, main, pick_items, tidy, to_gold
 from build_dataset import stable_split
 
 T1 = "The River Aire rises at Malham Tarn in North Yorkshire and flows through Leeds before joining the Ouse."
@@ -82,3 +82,23 @@ def test_both_commands_end_to_end(tmp_path, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["kept"] == 1 and report["left_out"][0]["check_id"] == "c2"
     assert [json.loads(l)["check_id"] for l in dest.read_text().splitlines()] == ["c1"]
+
+
+def test_only_open_sources_go_out_or_come_back():
+    closed = ex()
+    closed["passages"][1]["source"] = "pubmed"
+    assert as_item(closed) is None and as_item(closed, sources=None) is not None
+    e = exported()
+    e["passages"][1]["source"] = "arxiv"
+    assert "not in the open sources" in to_gold(e)[1]
+
+
+def test_tidy_drops_a_cut_off_ending_and_a_doubled_full_stop_but_not_meaning():
+    assert tidy("A debut album 667.. The Neighbour of the Beast. It was reissued. In Tok") == "A debut album 667. The Neighbour of the Beast. It was reissued."
+    assert tidy("Wait... what? Yes.") == "Wait... what? Yes."
+    short = "One sentence only that was cut off before its e"
+    assert tidy(short) == short, "nothing is dropped when too little would remain"
+    rule_made = ex()
+    rule_made["passages"][0]["text"] = T1 + " It later joins the Humber and then the"
+    assert as_item(rule_made)["passages"][0]["text"] == T1
+    assert as_item(rule_made, known="supported")["passages"][0]["text"].endswith("and then the"), "a control keeps its text"
