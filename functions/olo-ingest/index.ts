@@ -26,7 +26,7 @@ import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl 
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { errorNote, type RunError } from './runlog.ts';
-import { archiveCandidates, archiveSearchUrl, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, waitBefore, type Candidate } from './sources.ts';
 import { isNotFound, permalink, planRecheck, retireUpdate, wikidataEntityState, wikiPageState, wikiPageStateUrl, wikiSummaryUrl } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
@@ -47,7 +47,7 @@ type Source = { id: string; slug: string; kind?: string | null; api_base?: strin
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
-async function get(url: string, accept = 'application/json', timeoutMs = 8000) { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
+async function get(url: string, accept = 'application/json', timeoutMs = fetchTimeoutMs('')) { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
 /* ---------- discovery per source: each returns a few random candidates from the source's own API ---------- */
@@ -82,6 +82,19 @@ async function getOpenAlex(url: string) {
 // Europeana takes its key in the query string; keep it out of error messages, which end up in the run note.
 async function getEuropeana(url: string) {
   try { return await get(url); } catch (e) { throw new Error(redactKey(e instanceof Error ? e.message : String(e))); }
+}
+// arXiv: its API asks for one call every three seconds and answers slowly (sources.ts). A run can call it twice, in the
+// gap search and then the random walk, so the second call waits out the gap; a 429 is named for what it is in the run note.
+let arxivLastCallAt: number | undefined;
+async function getArxiv(url: string): Promise<string> {
+  const wait = waitBefore(arxivLastCallAt, Date.now());
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+  arxivLastCallAt = Date.now();
+  try { return await get(url, 'application/atom+xml', fetchTimeoutMs('arxiv')); } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    // The hint comes first because the run note keeps 90 characters of a message and the URL alone is longer.
+    throw new Error(/^429 /.test(m) ? `arXiv rate limit (429 with the 3 s pacing on, so another caller shares the IP): ${m}` : m);
+  }
 }
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
   if (!ids.length) return [];
@@ -120,13 +133,13 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
   async arxiv(n) {
     const cats = ['cs.AI', 'cs.LG', 'cs.CR', 'q-bio', 'physics.soc-ph', 'econ', 'stat.ML', 'cs.CY', 'eess.SP', 'math.OC'];
     const cat = cats[Math.floor(Math.random() * cats.length)];
-    const xml: string = await get(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`, 'application/atom+xml');
+    const xml: string = await getArxiv(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`);
     return arxivCandidates(xml);
   },
   // gutendex is a volunteer-run service and slow on deep pages: every call timed out at 8 s on 26 October 2026
-  // (issue #17). Canonical URL (no /books -> /books/ redirect), shallower pages, and 20 s for this source only.
+  // (issue #17). Canonical URL (no /books -> /books/ redirect), shallower pages, and 20 s for this source (sources.ts).
   async gutenberg(n) {
-    const r: any = await get(`https://gutendex.com/books/?page=${1 + Math.floor(Math.random() * 30)}`, 'application/json', 20000);
+    const r: any = await get(`https://gutendex.com/books/?page=${1 + Math.floor(Math.random() * 30)}`, 'application/json', fetchTimeoutMs('gutenberg'));
     return pick(gutenbergCandidates(r.results || []), n);
   },
   // Wikinews: random articles in the main namespace, with the intro and the page's latest revision id.
@@ -187,7 +200,7 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async wikipedia(topic, n) { const r: any = await get(searchUrl('wikipedia', topic, n * 2)!); return wikiByTitles('en', wikiSearchTitles(r), n); },
   async wikipedia_es(topic, n) { const r: any = await get(searchUrl('wikipedia_es', topic, n * 2)!); return wikiByTitles('es', wikiSearchTitles(r), n); },
   async wikidata(topic, n) { const r: any = await get(searchUrl('wikidata', topic, n * 2)!); return wikidataByIds(wikidataSearchIds(r), n); },
-  async arxiv(topic, n) { const xml: string = await get(searchUrl('arxiv', topic, n)!, 'application/atom+xml'); return arxivCandidates(xml); },
+  async arxiv(topic, n) { const xml: string = await getArxiv(searchUrl('arxiv', topic, n)!); return arxivCandidates(xml); },
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
   async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
   async openalex(topic, n) { const r: any = await getOpenAlex(searchUrl('openalex', topic, n, Deno.env.get('OPENALEX_KEY') || '')!); return openalexCandidates(r?.results || [], n); },

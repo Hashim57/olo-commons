@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, arxivCandidates, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataHousekeeping, wikidataSearchIds, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { ARXIV_GAP_MS, DEFAULT_TIMEOUT_MS, SLOW_TIMEOUT_MS, archiveCandidates, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataHousekeeping, wikidataSearchIds, wikiSearchTitles, waitBefore } from '../functions/olo-ingest/sources.ts';
 
 const EXTRACT = 'Project Gutenberg is a volunteer effort to digitize and archive cultural works, as well as to encourage the creation and distribution of eBooks. It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library.';
 
@@ -107,4 +107,21 @@ Deno.test('searchUrl builds one URL per searchable source and none for the rest'
   assert(searchUrl('pubmed', 'coral reef', 4)!.includes('term=coral+AND+reef&retmax=4'));
   assertEquals(searchUrl('gutenberg', 'coral reef', 4), null);
   assertEquals(searchUrl('wikipedia', '   ', 4), null);
+});
+
+Deno.test('slow sources get the long timeout, every other source the default', () => {
+  assertEquals(fetchTimeoutMs('arxiv'), SLOW_TIMEOUT_MS);
+  assertEquals(fetchTimeoutMs('gutenberg'), SLOW_TIMEOUT_MS);
+  for (const slug of ['wikipedia', 'pubmed', 'openalex', 'data_gov', 'archive_org', '']) assertEquals(fetchTimeoutMs(slug), DEFAULT_TIMEOUT_MS, slug);
+  assert(SLOW_TIMEOUT_MS > DEFAULT_TIMEOUT_MS && SLOW_TIMEOUT_MS <= 20000, 'a slow source still cannot eat the forty-second run');
+});
+
+Deno.test('waitBefore paces arXiv calls three seconds apart and never waits longer than the gap', () => {
+  assertEquals(waitBefore(undefined, 1000), 0, 'first call goes at once');
+  assertEquals(waitBefore(1000, 1500), 2500, 'half a second after the last call, wait the rest of the gap');
+  assertEquals(waitBefore(1000, 4000), 0, 'the gap has passed');
+  assertEquals(waitBefore(1000, 9000), 0, 'long after');
+  assertEquals(waitBefore(5000, 4000), ARXIV_GAP_MS, 'a clock that went backwards waits one gap, not forever');
+  assertEquals(waitBefore(NaN, 4000), 0);
+  assertEquals(waitBefore(1000, 1500, 1000), 500, 'the gap is a parameter');
 });
