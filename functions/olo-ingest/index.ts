@@ -25,8 +25,8 @@ import { clean, hasEmailAddress, isStub } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
-import { errorNote, type RunError } from './runlog.ts';
-import { archiveCandidates, archiveSearchUrl, arxivCandidates, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, type Candidate } from './sources.ts';
+import { composeNote, type RunError } from './runlog.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, waitBefore, type Candidate } from './sources.ts';
 import { isNotFound, permalink, planRecheck, retireUpdate, wikidataEntityState, wikiPageState, wikiPageStateUrl, wikiSummaryUrl } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
@@ -47,7 +47,7 @@ type Source = { id: string; slug: string; kind?: string | null; api_base?: strin
 
 function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }); }
 async function sha256(s: string) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, '0')).join(''); }
-async function get(url: string, accept = 'application/json', timeoutMs = 8000) { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
+async function get(url: string, accept = 'application/json', timeoutMs = fetchTimeoutMs('')) { const r = await fetch(url, { headers: { 'User-Agent': UA, Accept: accept }, signal: AbortSignal.timeout(timeoutMs) }); if (!r.ok) throw new Error(`${r.status} ${url}`); return accept.includes('json') ? r.json() : r.text(); }
 const pick = (arr: any[], n: number) => arr.sort(() => Math.random() - 0.5).slice(0, n);
 
 /* ---------- discovery per source: each returns a few random candidates from the source's own API ---------- */
@@ -82,6 +82,19 @@ async function getOpenAlex(url: string) {
 // Europeana takes its key in the query string; keep it out of error messages, which end up in the run note.
 async function getEuropeana(url: string) {
   try { return await get(url); } catch (e) { throw new Error(redactKey(e instanceof Error ? e.message : String(e))); }
+}
+// arXiv: its API asks for one call every three seconds and answers slowly (sources.ts). A run can call it twice, in the
+// gap search and then the random walk, so the second call waits out the gap; a 429 is named for what it is in the run note.
+let arxivLastCallAt: number | undefined;
+async function getArxiv(url: string): Promise<string> {
+  const wait = waitBefore(arxivLastCallAt, Date.now());
+  if (wait) await new Promise((r) => setTimeout(r, wait));
+  arxivLastCallAt = Date.now();
+  try { return await get(url, 'application/atom+xml', fetchTimeoutMs('arxiv')); } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    // The hint comes first because the run note keeps 90 characters of a message and the URL alone is longer.
+    throw new Error(/^429 /.test(m) ? `arXiv rate limit (429 with the 3 s pacing on, so another caller shares the IP): ${m}` : m);
+  }
 }
 async function pubmedByIds(ids: string[]): Promise<Candidate[]> {
   if (!ids.length) return [];
@@ -120,13 +133,13 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
   async arxiv(n) {
     const cats = ['cs.AI', 'cs.LG', 'cs.CR', 'q-bio', 'physics.soc-ph', 'econ', 'stat.ML', 'cs.CY', 'eess.SP', 'math.OC'];
     const cat = cats[Math.floor(Math.random() * cats.length)];
-    const xml: string = await get(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`, 'application/atom+xml');
+    const xml: string = await getArxiv(`https://export.arxiv.org/api/query?search_query=cat:${cat}&sortBy=submittedDate&sortOrder=descending&start=${Math.floor(Math.random() * 50)}&max_results=${n}`);
     return arxivCandidates(xml);
   },
   // gutendex is a volunteer-run service and slow on deep pages: every call timed out at 8 s on 26 October 2026
-  // (issue #17). Canonical URL (no /books -> /books/ redirect), shallower pages, and 20 s for this source only.
+  // (issue #17). Canonical URL (no /books -> /books/ redirect), shallower pages, and 20 s for this source (sources.ts).
   async gutenberg(n) {
-    const r: any = await get(`https://gutendex.com/books/?page=${1 + Math.floor(Math.random() * 30)}`, 'application/json', 20000);
+    const r: any = await get(`https://gutendex.com/books/?page=${1 + Math.floor(Math.random() * 30)}`, 'application/json', fetchTimeoutMs('gutenberg'));
     return pick(gutenbergCandidates(r.results || []), n);
   },
   // Wikinews: random articles in the main namespace, with the intro and the page's latest revision id.
@@ -187,7 +200,7 @@ const search: Record<string, (topic: string, n: number) => Promise<Candidate[]>>
   async wikipedia(topic, n) { const r: any = await get(searchUrl('wikipedia', topic, n * 2)!); return wikiByTitles('en', wikiSearchTitles(r), n); },
   async wikipedia_es(topic, n) { const r: any = await get(searchUrl('wikipedia_es', topic, n * 2)!); return wikiByTitles('es', wikiSearchTitles(r), n); },
   async wikidata(topic, n) { const r: any = await get(searchUrl('wikidata', topic, n * 2)!); return wikidataByIds(wikidataSearchIds(r), n); },
-  async arxiv(topic, n) { const xml: string = await get(searchUrl('arxiv', topic, n)!, 'application/atom+xml'); return arxivCandidates(xml); },
+  async arxiv(topic, n) { const xml: string = await getArxiv(searchUrl('arxiv', topic, n)!); return arxivCandidates(xml); },
   async pubmed(topic, n) { const s: any = await get(searchUrl('pubmed', topic, n)!); return pubmedByIds(pubmedSearchIds(s)); },
   async wikinews(topic, n) { const r: any = await get(searchUrl('wikinews', topic, n)!); return wikinewsCandidates(r, n); },
   async openalex(topic, n) { const r: any = await getOpenAlex(searchUrl('openalex', topic, n, Deno.env.get('OPENALEX_KEY') || '')!); return openalexCandidates(r?.results || [], n); },
@@ -247,8 +260,12 @@ Deno.serve(async (req) => {
   // Why things failed, per source, written into the run note at the end (see runlog.ts).
   const errors: RunError[] = [];
   const fail = (slug: string, e: unknown) => { stats.failed++; errors.push({ slug, message: e instanceof Error ? e.message : String(e) }); };
-  const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats }).eq('id', run?.id);
   let cutShort = false;
+  // The clauses the run note is made of (runlog.ts composeNote), filled in as the run goes.
+  let gapNote = '', recheckNote = '', sightings = 0, stubs = 0, withEmail = 0;
+  const noteSoFar = () => composeNote({ source: body.source || 'manual', gap: gapNote, recheck: recheckNote, sightings, stubs, withEmail, cutShort, errors });
+  // Counts and the note so far, so a run the runtime kills still leaves an accurate record (closed by run_olo_ingest, sql/001).
+  const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats, note: noteSoFar() }).eq('id', run?.id);
 
   // How many atoms a source added today; a source over the daily cap is skipped until tomorrow.
   const addedToday = new Map<string, number>();
@@ -313,7 +330,6 @@ Deno.serve(async (req) => {
   }
   // Record a duplicate as a sighting of the stored atom (sql/009). False when that is not possible (sql/009 not run),
   // in which case the caller stores the atom as before rather than lose the second source.
-  let sightings = 0, stubs = 0, withEmail = 0;
   async function sight(atomId: string, src: Source, c: Candidate, reason: string, score: number): Promise<boolean> {
     const { error } = await sb.rpc('olo_record_sighting', { p_atom: atomId, p_source: src.id, p_url: c.url, p_external_id: c.external_id || null, p_doi: normDoi(c.doi), p_pmid: normPmid(c.pmid), p_title: clean(c.title).slice(0, 300), p_licence: c.licence || src.licence || null, p_reason: reason, p_similarity: score });
     if (error) return false;
@@ -375,7 +391,6 @@ Deno.serve(async (req) => {
   // old atom becomes history the same way, with no successor (recheck.ts, retireUpdate). Nothing is ever overwritten or
   // deleted. Every atom in the batch leaves the queue one way or another; one that could not be read is the only kind
   // that stays, and it is counted as a failure in the run note so a source outage shows.
-  let recheckNote = '';
   async function recheck(src: Source) {
     const { data: batch } = await sb.rpc('olo_recheck_batch', { p_slug: src.slug, p_n: RECHECK_N });
     if (!Array.isArray(batch) || !batch.length) return;
@@ -440,7 +455,6 @@ Deno.serve(async (req) => {
   }
 
   // 1. Gap filling: the most-asked open topic, searched across the sources that can search.
-  let gapNote = '';
   const searchable = (sources || []).filter((s: Source) => search[s.slug]);
   if (budget >= 6 && searchable.length) {
     const { data: gap } = await sb.rpc('olo_next_gap');
@@ -457,6 +471,7 @@ Deno.serve(async (req) => {
       }
       await sb.from('olo_gaps').update({ tries: (gap.tries || 0) + 1, last_tried_at: new Date().toISOString(), atoms_added: gapAdded, ...(gapAdded > 0 ? { filled_at: new Date().toISOString() } : {}) }).eq('id', gap.id);
       gapNote = ` (gap "${gap.topic}": ${gapAdded} added of ${gapFetched} found)`;
+      await checkpoint();
     }
   }
 
@@ -465,6 +480,7 @@ Deno.serve(async (req) => {
     for (const src of (sources || []).filter((s: Source) => ['wikipedia', 'wikipedia_es', 'wikidata'].includes(s.slug))) {
       if (outOfTime()) { cutShort = true; break; }
       await recheck(src);
+      await checkpoint();
     }
   }
 
@@ -480,7 +496,7 @@ Deno.serve(async (req) => {
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (sightings ? ` (${sightings} duplicates recorded as sightings)` : '') + (stubs ? ` (${stubs} stubs skipped)` : '') + (withEmail ? ` (${withEmail} with an email address skipped)` : '') + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: noteSoFar() }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });

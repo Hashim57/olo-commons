@@ -2,10 +2,13 @@
 #
 # Runs every day at 03:23 UTC. Each run: turns accepted feedback flags into gold lines
 # (zeus/feedback_to_gold.py, when the Supabase service key secret is set), rebuilds the
-# dataset, and trains a new version only when there is something new to learn from
-# (zeus/cloud/due.py: new feedback, a tenth more data, or a week since the last version;
-# about $1.50 of GPU time a run). It also starts when a training request
-# (zeus/TRAIN_REQUEST.json) is pushed, or by hand with a version.
+# dataset, and trains a new version when there is something new to learn from
+# (zeus/cloud/due.py: new feedback, a tenth more data, a changed recipe, a week since the
+# last version, or, since 2026-11-13, simply a day since it and a training set that is
+# not the one it saw, so Zeus trains every day). The optimiser loop stops at the
+# max_minutes budget (default 60: about an hour of GPU, $3 a day with loading and
+# evaluation). It also starts when a training request (zeus/TRAIN_REQUEST.json) is
+# pushed, or by hand with a version.
 #
 # A trained version is measured on the frozen split, on held-out VitaminC dev and on an
 # LLM-AggreFact sample, recorded in STATUS.md and docs/ZEUS_SCORECARD.md, promoted only
@@ -36,6 +39,9 @@ on:
         description: 'Train even if nothing is new'
         type: boolean
         default: true
+      max_minutes:
+        description: 'Minutes the optimiser loop may run (0: the whole pass)'
+        default: '60'
 permissions:
   contents: write
 concurrency:
@@ -102,7 +108,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo "Training ${{ steps.v.outputs.version }}: ${{ steps.v.outputs.reason }}"
-          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}"
+          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '60' }}"
       - name: Record, promote, scorecard, commit
         if: steps.v.outputs.due == '1'
         run: |

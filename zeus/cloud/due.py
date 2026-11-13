@@ -13,7 +13,11 @@ A100 at 32,000 examples), so it runs only when there is something new to learn f
     one it was (the set is capped at 7,000 atoms, so a new generator that adds
     2,000 examples can fall short of the tenth and still be the whole point), or
   * a week has passed since the last trained version (the Commons re-checks and
-    grows every day, and a weekly retrain keeps Zeus on its current text).
+    grows every day, and a weekly retrain keeps Zeus on its current text), or
+  * (since 2026-11-13, asked for by Hashim) a day has passed since the last trained
+    version and the training set is not the one it saw: Zeus trains every day, for
+    the hour modal_train.py's time budget allows, on whatever the day added (gold
+    lines, re-checked text, new atoms). The same set two days running still skips.
 The version is the next vN after the highest with results.
 
 "The last trained version" is the newest one with measured results (last_measured), not
@@ -73,6 +77,8 @@ def decide(best, meta, new_feedback, today, force=False):
         last = date.fromisoformat(str(best.get("date", ""))[:10])
         if (today - last).days >= 7:
             return True, f"{(today - last).days} days since {best.get('version')}"
+        if (today - last).days >= 1 and had and now != had:
+            return True, f"daily run: {now:,} examples against {had:,} trained in {best.get('version')} on {best.get('date')}"
     except ValueError:
         if not best.get("version"):
             return True, "no measured version yet"

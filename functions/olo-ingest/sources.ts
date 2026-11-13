@@ -247,3 +247,31 @@ export function searchUrl(slug: string, topic: string, n: number, key = ''): str
     default: return null;
   }
 }
+
+/* ---------- how fast a source answers, and how often it may be asked ---------- */
+
+/** The time a connector call gets by default, and the longer one for the two APIs that answer slowly. */
+export const DEFAULT_TIMEOUT_MS = 8000;
+export const SLOW_TIMEOUT_MS = 20000;
+
+/**
+ * How long a call to this source may take. gutendex is volunteer-run and slow on deep pages (issue #17), and
+ * arXiv's export API often takes longer than 8 s to answer a sorted query: on 13 November 2026 it timed out in
+ * 5 of 12 runs while every other source answered. Both get 20 s; the rest keep 8 s so a dead source cannot eat the run.
+ */
+export function fetchTimeoutMs(slug: string): number {
+  return slug === 'arxiv' || slug === 'gutenberg' ? SLOW_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
+}
+
+/** arXiv's terms of use ask for at least three seconds between calls to its API. */
+export const ARXIV_GAP_MS = 3000;
+
+/**
+ * Milliseconds to wait before calling a paced API again, given when it was last called (undefined: never) and the
+ * time now. A run can reach arXiv twice (the gap search, then the random walk) within a second, which its API answers
+ * with 429 (seen 13 November 2026); waiting out the gap costs at most three seconds of a forty-second run.
+ */
+export function waitBefore(lastCallAt: number | undefined, now: number, gapMs = ARXIV_GAP_MS): number {
+  if (lastCallAt === undefined || !Number.isFinite(lastCallAt)) return 0;
+  return Math.max(0, Math.min(gapMs, gapMs - (now - lastCallAt)));
+}

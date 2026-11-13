@@ -55,3 +55,33 @@ export function errorNote(errors: RunError[]): string {
   }
   return ` errors: ${parts.join('; ')}${dropped ? `; and ${dropped} more source${dropped > 1 ? 's' : ''}` : ''}`;
 }
+
+/** Everything a run's note is made of; index.ts fills it in as the run goes. */
+export type NoteParts = {
+  /** Who started the run: 'cron', 'manual' or a name the caller passed. */
+  source: string;
+  /** The gap-filling clause, ' (gap "topic": 2 added of 5 found)', or ''. */
+  gap?: string;
+  /** The re-check clauses, ' (wikipedia re-check: 3 unchanged, 0 updated)', or ''. */
+  recheck?: string;
+  sightings?: number;
+  stubs?: number;
+  withEmail?: number;
+  /** True when the forty-second budget stopped the run before every source had its turn. */
+  cutShort?: boolean;
+  errors: RunError[];
+};
+
+/**
+ * The run note from its parts. Written at every checkpoint, not only at the end, so a run the Edge runtime kills
+ * (two of twelve on 13 November 2026) keeps the clauses it had earned; before this such a run was closed by
+ * run_olo_ingest with the bare word "cron" and no trace of which source it was on or what had failed.
+ */
+export function composeNote(p: NoteParts): string {
+  return (p.source || 'manual') + (p.gap || '') + (p.recheck || '')
+    + (p.sightings ? ` (${p.sightings} duplicates recorded as sightings)` : '')
+    + (p.stubs ? ` (${p.stubs} stubs skipped)` : '')
+    + (p.withEmail ? ` (${p.withEmail} with an email address skipped)` : '')
+    + (p.cutShort ? ' (time budget reached, continues next run)' : '')
+    + errorNote(p.errors);
+}
