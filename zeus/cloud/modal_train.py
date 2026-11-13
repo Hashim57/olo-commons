@@ -11,7 +11,9 @@ numbers. Outputs land in zeus/out/zeus-<v>/ (eval.json, train_summary.json) and
 zeus/out/zeus-<v>-peft/ (the two files Cloudflare accepts).
 
 Cost: Modal bills per second (an A100 40 GB is about $2.10 an hour) and gives
-$30 of free credit a month; one run of about 40 minutes is about $1.50.
+$30 of free credit a month; one run of about 40 minutes is about $1.50. Since
+2026-11-13 the optimiser loop stops at --max-minutes (default 60, the hour a day
+Hashim asked for), so a daily run costs about $3 with loading and evaluation.
 Secrets on Modal's side: none; the Hugging Face token, if the base is gated for
 you, comes from the HF_TOKEN environment variable of the caller.
 """
@@ -47,7 +49,7 @@ def _tar(paths):
 
 
 @app.function(image=image, gpu=GPU, timeout=4 * 3600, volumes={"/cache": cache})
-def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600) -> bytes:
+def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 60.0) -> bytes:
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -104,7 +106,11 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=2e-4, weight_decay=0.0)
     batch, accum = 4, 4
     steps = int(len(rows) * iters_epochs / (batch * accum)) or 1
+    planned_steps = steps
+    # The schedule reads `steps` when it is called, so shortening the plan to the time budget below also brings the
+    # decay to zero forward (recipe.steps_within_budget; the budget is the hour a day Hashim asked for).
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: min(1.0, (s + 1) / 20) * max(0.0, 1 - s / max(1, steps)))
+    budget_s = float(max_minutes or 0) * 60
     model.train()
     t0 = time.time()
     import random
@@ -129,8 +135,15 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                 step += 1
                 if step % 10 == 0:
                     print(f"step {step}/{steps} loss {out.loss.item():.4f}", flush=True)
-                if step >= steps:
+                if step in (20, 100) and budget_s:
+                    fit = recipe.steps_within_budget(step, time.time() - t0, steps, budget_s)
+                    if fit < steps:
+                        print(f"time budget {max_minutes} min: {fit} of {planned_steps} planned steps fit at {(time.time() - t0) / step:.1f} s a step", flush=True)
+                        steps = fit
+                if step >= steps or (budget_s and time.time() - t0 > budget_s):
                     break
+        if budget_s and time.time() - t0 > budget_s:
+            break
     minutes = round((time.time() - t0) / 60, 1)
 
     # measure, greedy, as served: the frozen eval split, then the held-out sets nobody trained on
@@ -159,7 +172,8 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     cfg = recipe.peft_config_for_cloudflare(json.load(open(cfg_path)))
     json.dump(cfg, open(cfg_path, "w"), indent=2)
     summary = {"base": base, "framework": "peft-cloud", "gpu": GPU, "train_examples": len(rows), "eval_examples": len(evals), "epochs": iters_epochs,
-               "steps": steps, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
+               "steps": step, "planned_steps": planned_steps, "time_budget_minutes": max_minutes, "time_capped": step < planned_steps,
+               "examples_seen": step * batch * accum, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
     print(json.dumps(report), flush=True)
@@ -231,7 +245,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 1500, aggrefact_n: int = 600):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 1500, aggrefact_n: int = 600, max_minutes: float = 60.0):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)
@@ -245,7 +259,7 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
     parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported") if os.path.isdir(f"zeus/data/{d}")]
     parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
     payload = _tar(parts)
-    result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n)
+    result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n, max_minutes)
     tmp = os.path.join(REPO, "zeus", "out", f".cloud-{version}")
     os.makedirs(tmp, exist_ok=True)
     tarfile.open(fileobj=io.BytesIO(result), mode="r:gz").extractall(tmp)

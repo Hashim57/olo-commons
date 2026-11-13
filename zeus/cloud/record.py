@@ -56,7 +56,7 @@ def main():
     ev = json.load(open(os.path.join(out, "eval.json")))
     s = json.load(open(os.path.join(out, "train_summary.json")))
     note_generators(os.path.join(out, "train_summary.json"), s, os.path.join(ZEUS, "data", "meta.json"))
-    row = recipe.status_row(datetime.now(timezone.utc).date().isoformat(), v, s.get("base") or ev.get("base"), f"{s.get('train_examples'):,}", ev, s.get("minutes"), s.get("gpu"))
+    row = recipe.status_row(datetime.now(timezone.utc).date().isoformat(), v, s.get("base") or ev.get("base"), f"{s.get('train_examples'):,}", ev, s.get("minutes"), s.get("gpu"), s)
     ext_path = os.path.join(out, "eval-external.json")
     if os.path.exists(ext_path):
         ext = json.load(open(ext_path))

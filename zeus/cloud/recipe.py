@@ -58,10 +58,14 @@ def peft_config_for_cloudflare(cfg):
     return out
 
 
-def status_row(date, version, base, train_examples, ev, minutes, gpu):
-    """A STATUS.md table row from measured numbers only."""
+def status_row(date, version, base, train_examples, ev, minutes, gpu, summary=None):
+    """A STATUS.md table row from measured numbers only. With the train_summary.json of a time-capped run, the note
+    says how many of the planned steps the hour allowed, so the examples column is read as the set, not the pass."""
     f1 = ev.get("f1") or {}
-    note = (f"Trained in the cloud ({gpu}, {minutes} min), not on the Mac. Eval n={ev.get('n')}, JSON valid {ev.get('json_valid')}, "
+    capped = ""
+    if summary and summary.get("time_capped"):
+        capped = f" Time budget {summary.get('time_budget_minutes')} min: {summary.get('steps')} of {summary.get('planned_steps')} planned steps, about {summary.get('examples_seen'):,} examples seen."
+    note = (f"Trained in the cloud ({gpu}, {minutes} min), not on the Mac.{capped} Eval n={ev.get('n')}, JSON valid {ev.get('json_valid')}, "
             f"F1 supported {f1.get('supported')} / contradicted {f1.get('contradicted')} / not covered {f1.get('not_covered')}.")
     if ev.get("binary_balanced_accuracy") is not None:
         note += f" Binary balanced accuracy (supported vs the rest, the LLM-AggreFact view) {ev['binary_balanced_accuracy']}."
@@ -69,3 +73,24 @@ def status_row(date, version, base, train_examples, ev, minutes, gpu):
     if rates.get("supported", {}).get("tpr") is not None:
         note += " TPR/TNR " + ", ".join(f"{l} {rates[l]['tpr']}/{rates[l]['tnr']}" for l in ("supported", "contradicted", "not_covered") if l in rates) + "."
     return f"| {date} | {version} | {base} | {train_examples} | {ev.get('label_accuracy')} | {ev.get('evidence_hit')} | {note} |"
+
+
+# How long one training run may spend in the optimiser loop. Hashim asked (2026-11-13) for Zeus to
+# train every day for about an hour, so the loop fits the hour rather than the data: at 32,000 examples one
+# pass took about 90 of v19's 117 minutes on an A100, so a budgeted run sees roughly two thirds of the set,
+# a different two thirds each day (the order is shuffled by step), and the learning rate still decays to zero.
+TRAIN_BUDGET_MINUTES = 60
+
+
+def steps_within_budget(steps_done, elapsed_s, planned_steps, budget_s, min_measured=20):
+    """The number of optimiser steps a run should take so it finishes inside budget_s seconds, from how long
+    the first steps_done steps took. The planned count stands when the pace is not yet measured (fewer than
+    min_measured steps), when no budget is set, or when the whole plan fits; otherwise the pace is projected and
+    the plan shortened, never below the steps already done plus one so the loop always ends cleanly."""
+    if not budget_s or budget_s <= 0 or steps_done < min_measured or elapsed_s <= 0:
+        return planned_steps
+    per_step = elapsed_s / steps_done
+    fit = int(budget_s / per_step)
+    if fit >= planned_steps:
+        return planned_steps
+    return max(steps_done + 1, fit)
