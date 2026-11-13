@@ -25,7 +25,7 @@ import { clean, hasEmailAddress, isStub } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
-import { errorNote, type RunError } from './runlog.ts';
+import { composeNote, type RunError } from './runlog.ts';
 import { archiveCandidates, archiveSearchUrl, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, waitBefore, type Candidate } from './sources.ts';
 import { isNotFound, permalink, planRecheck, retireUpdate, wikidataEntityState, wikiPageState, wikiPageStateUrl, wikiSummaryUrl } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
@@ -260,8 +260,12 @@ Deno.serve(async (req) => {
   // Why things failed, per source, written into the run note at the end (see runlog.ts).
   const errors: RunError[] = [];
   const fail = (slug: string, e: unknown) => { stats.failed++; errors.push({ slug, message: e instanceof Error ? e.message : String(e) }); };
-  const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats }).eq('id', run?.id);
   let cutShort = false;
+  // The clauses the run note is made of (runlog.ts composeNote), filled in as the run goes.
+  let gapNote = '', recheckNote = '', sightings = 0, stubs = 0, withEmail = 0;
+  const noteSoFar = () => composeNote({ source: body.source || 'manual', gap: gapNote, recheck: recheckNote, sightings, stubs, withEmail, cutShort, errors });
+  // Counts and the note so far, so a run the runtime kills still leaves an accurate record (closed by run_olo_ingest, sql/001).
+  const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats, note: noteSoFar() }).eq('id', run?.id);
 
   // How many atoms a source added today; a source over the daily cap is skipped until tomorrow.
   const addedToday = new Map<string, number>();
@@ -326,7 +330,6 @@ Deno.serve(async (req) => {
   }
   // Record a duplicate as a sighting of the stored atom (sql/009). False when that is not possible (sql/009 not run),
   // in which case the caller stores the atom as before rather than lose the second source.
-  let sightings = 0, stubs = 0, withEmail = 0;
   async function sight(atomId: string, src: Source, c: Candidate, reason: string, score: number): Promise<boolean> {
     const { error } = await sb.rpc('olo_record_sighting', { p_atom: atomId, p_source: src.id, p_url: c.url, p_external_id: c.external_id || null, p_doi: normDoi(c.doi), p_pmid: normPmid(c.pmid), p_title: clean(c.title).slice(0, 300), p_licence: c.licence || src.licence || null, p_reason: reason, p_similarity: score });
     if (error) return false;
@@ -388,7 +391,6 @@ Deno.serve(async (req) => {
   // old atom becomes history the same way, with no successor (recheck.ts, retireUpdate). Nothing is ever overwritten or
   // deleted. Every atom in the batch leaves the queue one way or another; one that could not be read is the only kind
   // that stays, and it is counted as a failure in the run note so a source outage shows.
-  let recheckNote = '';
   async function recheck(src: Source) {
     const { data: batch } = await sb.rpc('olo_recheck_batch', { p_slug: src.slug, p_n: RECHECK_N });
     if (!Array.isArray(batch) || !batch.length) return;
@@ -453,7 +455,6 @@ Deno.serve(async (req) => {
   }
 
   // 1. Gap filling: the most-asked open topic, searched across the sources that can search.
-  let gapNote = '';
   const searchable = (sources || []).filter((s: Source) => search[s.slug]);
   if (budget >= 6 && searchable.length) {
     const { data: gap } = await sb.rpc('olo_next_gap');
@@ -470,6 +471,7 @@ Deno.serve(async (req) => {
       }
       await sb.from('olo_gaps').update({ tries: (gap.tries || 0) + 1, last_tried_at: new Date().toISOString(), atoms_added: gapAdded, ...(gapAdded > 0 ? { filled_at: new Date().toISOString() } : {}) }).eq('id', gap.id);
       gapNote = ` (gap "${gap.topic}": ${gapAdded} added of ${gapFetched} found)`;
+      await checkpoint();
     }
   }
 
@@ -478,6 +480,7 @@ Deno.serve(async (req) => {
     for (const src of (sources || []).filter((s: Source) => ['wikipedia', 'wikipedia_es', 'wikidata'].includes(s.slug))) {
       if (outOfTime()) { cutShort = true; break; }
       await recheck(src);
+      await checkpoint();
     }
   }
 
@@ -493,7 +496,7 @@ Deno.serve(async (req) => {
     await checkpoint();
     if (cutShort) break;
   }
-  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: (body.source || 'manual') + gapNote + recheckNote + (sightings ? ` (${sightings} duplicates recorded as sightings)` : '') + (stubs ? ` (${stubs} stubs skipped)` : '') + (withEmail ? ` (${withEmail} with an email address skipped)` : '') + (cutShort ? ' (time budget reached, continues next run)' : '') + errorNote(errors) }).eq('id', run?.id);
+  await sb.from('olo_ingest_runs').update({ ...stats, finished_at: new Date().toISOString(), note: noteSoFar() }).eq('id', run?.id);
   await sb.rpc('olo_snapshot');
   return json({ ok: true, run: run?.id, ...stats });
 });
