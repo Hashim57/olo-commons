@@ -75,7 +75,7 @@ final class AppModel: ObservableObject {
             let s = try await api.verifyEmailCode(email: email, code: code)
             api.token = s.token
             Keychain.write("session", s.token)
-            email = s.user.email ?? email
+            self.email = s.user.email ?? email
             showSignIn = false
             await loadConversations()
             return nil
