@@ -24,6 +24,21 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    LabeledContent("Plan", value: model.planName)
+                    if let e = model.entitlement, e.subscribed {
+                        Text("\(e.messagesRemaining) of \(e.messageLimit) messages left this month.").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Button(model.isSubscribed ? "Manage plan" : "See plans") { model.showPlans = true }
+                    Button("Restore Purchases") { Task { await model.purchases.restore() } }.disabled(!model.signedIn)
+                } header: { Text("Plan") } footer: {
+                    Text(model.isSubscribed ? "A plan bought here, on the web or on the Mac works everywhere you sign in." : BillingText.freePlan + " A plan bought on the web or the Mac works here too.")
+                }
+                Section {
+                    NavigationLink { ConnectorsView() } label: { Label("Mail and calendar", systemImage: "envelope.badge") }
+                } header: { Text("Connectors") } footer: {
+                    Text("Connect Google and Olo can read your Gmail and Calendar when a question calls for it. Read only.")
+                }
+                Section {
                     Toggle("Read answers aloud", isOn: $model.speakAnswers)
                 } header: { Text("Voice") } footer: { Text("Olo uses this iPhone's own speech recognition and voice. Audio is not recorded or kept.") }
                 Section {
@@ -36,6 +51,7 @@ struct SettingsView: View {
                 Section("Privacy and terms") {
                     Link("Privacy Policy", destination: Legal.privacyURL)
                     Link("Terms of Use", destination: Legal.termsURL)
+                    Link("Apple's standard EULA", destination: Legal.eulaURL)
                     Text("Private chats are never stored, used for training or added to the Olo brain.").font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("About") {
