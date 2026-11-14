@@ -114,7 +114,9 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     model.train()
     t0 = time.time()
     import random
-    rng = random.Random(0)
+    # A different part of the set each version under the time budget, reproducible for the version (recipe.shuffle_seed).
+    # The held-out sampling below keeps seed 0 so every version is measured on the same examples.
+    rng = random.Random(recipe.shuffle_seed(version))
     order = list(range(len(rows)))
     step = 0
     while step < steps:
@@ -173,7 +175,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     json.dump(cfg, open(cfg_path, "w"), indent=2)
     summary = {"base": base, "framework": "peft-cloud", "gpu": GPU, "train_examples": len(rows), "eval_examples": len(evals), "epochs": iters_epochs,
                "steps": step, "planned_steps": planned_steps, "time_budget_minutes": max_minutes, "time_capped": step < planned_steps,
-               "examples_seen": step * batch * accum, "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
+               "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
     print(json.dumps(report), flush=True)

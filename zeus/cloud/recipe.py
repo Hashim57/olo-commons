@@ -77,9 +77,20 @@ def status_row(date, version, base, train_examples, ev, minutes, gpu, summary=No
 
 # How long one training run may spend in the optimiser loop. Hashim asked (2026-11-13) for Zeus to
 # train every day for about an hour, so the loop fits the hour rather than the data: at 32,000 examples one
-# pass took about 90 of v19's 117 minutes on an A100, so a budgeted run sees roughly two thirds of the set,
-# a different two thirds each day (the order is shuffled by step), and the learning rate still decays to zero.
+# pass took about 90 of v19's 117 minutes on an A100, so a budgeted run sees roughly half to two thirds of
+# the set (v20: 1,049 of 2,264 planned steps), a different part each day (shuffle_seed below), and the
+# learning rate still decays to zero.
 TRAIN_BUDGET_MINUTES = 60
+
+
+def shuffle_seed(version):
+    """The seed the trainer shuffles the training rows with: the first eight hex digits of the SHA-256 of the
+    version name, so the order is reproducible for a version and different between versions. Until v20 the seed
+    was the constant 0, which did not matter while a run saw the whole set once, but under the hour budget a run
+    stops partway through the shuffled list, so with one seed two budgeted runs on the same rows would train on
+    the same part of the set and never reach the rest. The order is recorded in train_summary.json as shuffle_seed."""
+    import hashlib
+    return int(hashlib.sha256(str(version).encode()).hexdigest()[:8], 16)
 
 
 def steps_within_budget(steps_done, elapsed_s, planned_steps, budget_s, min_measured=20):

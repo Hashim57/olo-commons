@@ -111,12 +111,19 @@ export function archiveSearchUrl(n: number, page: number): string {
  * description of at least 100 characters and a licence URL that is PDM, CC0,
  * the retired CC public domain dedication, CC BY or CC BY-SA (licence.ts). An
  * item without a licence URL, or under any other licence, is not an atom.
+ * Items of the Indian High Court judgments mirror (COURT_MIRROR_RE) are not
+ * either: they are scanned court orders naming private people (text.ts,
+ * isCourtRecord, which also refuses the ones whose identifier is different),
+ * uploaded under CC BY 4.0, so the licence gate lets them through.
  */
+export const COURT_MIRROR_RE = /^india\.highcourt\.judgement\./;
+
 export function archiveCandidates(docs: any[]): Candidate[] {
   const desc = (d: any) => joinParts(d.description);
   const out: Candidate[] = [];
   for (const d of docs || []) {
     if (!d || typeof d.identifier !== 'string' || !d.identifier || !d.title || desc(d).length < 100) continue;
+    if (COURT_MIRROR_RE.test(d.identifier)) continue;
     const licence = openLicence(d.licenseurl);
     if (!licence) continue;
     out.push({ external_id: d.identifier, url: `https://archive.org/details/${d.identifier}`, title: clean(d.title).slice(0, 200), summary: desc(d).slice(0, 600), content: desc(d), authors: d.creator ? [].concat(d.creator).map(clean) : undefined, published_at: /^\d{4}-\d{2}-\d{2}/.test(String(d.date || '')) ? String(d.date).slice(0, 10) : undefined, licence });

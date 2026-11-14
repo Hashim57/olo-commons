@@ -21,7 +21,7 @@
 // source that is not enabled there is never fetched, whatever the code says.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { clean, hasEmailAddress, isStub } from './text.ts';
+import { clean, hasEmailAddress, isCourtRecord, isStub } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
@@ -262,8 +262,8 @@ Deno.serve(async (req) => {
   const fail = (slug: string, e: unknown) => { stats.failed++; errors.push({ slug, message: e instanceof Error ? e.message : String(e) }); };
   let cutShort = false;
   // The clauses the run note is made of (runlog.ts composeNote), filled in as the run goes.
-  let gapNote = '', recheckNote = '', sightings = 0, stubs = 0, withEmail = 0;
-  const noteSoFar = () => composeNote({ source: body.source || 'manual', gap: gapNote, recheck: recheckNote, sightings, stubs, withEmail, cutShort, errors });
+  let gapNote = '', recheckNote = '', sightings = 0, stubs = 0, withEmail = 0, courtRecords = 0;
+  const noteSoFar = () => composeNote({ source: body.source || 'manual', gap: gapNote, recheck: recheckNote, sightings, stubs, withEmail, courtRecords, cutShort, errors });
   // Counts and the note so far, so a run the runtime kills still leaves an accurate record (closed by run_olo_ingest, sql/001).
   const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats, note: noteSoFar() }).eq('id', run?.id);
 
@@ -351,6 +351,8 @@ Deno.serve(async (req) => {
         if (isStub(title, summary, content, c.authors)) { stats.skipped++; stubs++; continue; }
         // No personal data: a description that carries an email address is a contact line or a notice, never a fact about the item.
         if (hasEmailAddress(title, summary, content)) { stats.skipped++; withEmail++; continue; }
+        // No personal data either way: a court order names private people as parties and accused (text.ts, isCourtRecord).
+        if (isCourtRecord(title, summary, content)) { stats.skipped++; courtRecords++; continue; }
         const hash = await sha256(title + '\n' + summary + '\n' + content);
         const { data: dup } = await sb.from('olo_atoms').select('id, source_id, url').or(`content_hash.eq.${hash},url.eq.${c.url}`).limit(1);
         if (dup && dup.length) {

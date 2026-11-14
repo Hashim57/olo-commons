@@ -82,7 +82,7 @@ def test_usable_atoms_drops_duplicates_stubs_and_housekeeping_once_each_and_keep
     town = {"id": "t1", "title": "Ehnen", "summary": "Ehnen: town.", "content": "Ehnen. town. Described in 10 Wikimedia projects.", "source": "wikidata"}
     kept, counts = quality.usable_atoms([good, stub, dict(good), cat, town, dict(stub)])
     assert [a["id"] for a in kept] == ["g1", "t1"]
-    assert counts == {"duplicate": 2, "stub": 1, "email": 0, "housekeeping": 1, "stub_by_rule": {"label": 1}}
+    assert counts == {"duplicate": 2, "stub": 1, "email": 0, "court_record": 0, "housekeeping": 1, "stub_by_rule": {"label": 1}}
     # a non-wikidata atom is never judged by the wikidata rule
     wiki_cat = dict(cat, id="w1", source="wikipedia", summary="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont.",
                     content="Category:Births in Ivrea is a category page on Wikipedia that groups the people born in Ivrea, in Piedmont. It has existed since 2006.")
@@ -282,5 +282,40 @@ def test_atoms_with_an_email_address_are_refused_and_counted_apart():
         {"id": "c", "title": "Patna High Court", "summary": court, "content": court, "source": "archive_org"},
     ]
     kept, counts = quality.usable_atoms(atoms)
+    assert [x["id"] for x in kept] == ["a"]
+    assert counts["email"] == 1 and counts["court_record"] == 1 and counts["stub"] == 0
+
+
+def test_court_records_are_refused_and_counted_apart():
+    patna = ("HIGH COURT OF JUDICATURE AT PATNA Cr.Misc. No.25012 of 2008 A. P. SINHA Versus THE STATE OF BIHAR ----------- 2 28.08.2008 "
+             "Heard learned counsel for the petitioner and State. This petitioner is a named accused person in a case which has been registered under Section")
+    assert quality.is_court_record("Patna High Court - BRHC010028812008 (2008-08-28)", patna[:600], patna)
+    jaipur = ("COURT OF JUDICATURE FOR RAJASTHAN BENCH AT JAIPUR S.B. Civil Writ Petition No.3503/07 G. Toshniwal & Anr. Vs. Chief Judicial Magistrate & Anr. "
+              "Date of order: 5.10.2007 HON'BLE MR. JUSTICE M. RAFIQ Mr. Sandeep Mehta, for the petitioners.")
+    assert quality.is_court_record("High Court Of Rajasthan - RJHC020123982007 (2007-10-05)", jaipur, jaipur)
+    telangana = "SRI JUSTICE G. RAGHURAM W.P.No. 17830 of 2007 23-08-2007 Between: P. S. Reddy Petitioner And The District Collector, East Godavari District and two others Respondents"
+    assert quality.is_court_record("High Court for State of Telangana - HBHC010268642007 (2007-08-23)", telangana, telangana)
+    nainital = "COURT OF UTTARAKHAND AT NAINITAL Writ Petition No. 18(S/S)2007 L. Ram S/o R. Swaroop Barber vide no. 9322622, Central Industrial Security Force (CISF) Unit BHEL, Ranipur, R/o quarter no. A/189 C"
+    assert quality.is_court_record("High Court of Uttarakhand - UKHC010031592007 (2007-04-25)", nainital, nainital)
+    # one or two of the three signs is not a record: Wikipedia and Wikinews texts about courts, an abstract, a book
+    adams = ("2022 Florida court case on transgender students' rights to access bathrooms. Adams ex rel. Kasper v. School Board of St. Johns County, Florida "
+             "is a court case from the United States Court of Appeals for the Eleventh Circuit.")
+    assert not quality.is_court_record("Adams ex rel. Kasper v. School Board of St. Johns County, Florida", adams, adams)
+    monkeys = "The Delhi High Court expressed its displeasure to the civic authorities on their continued failure to resolve the problem of marauding monkeys in the court premises."
+    assert not quality.is_court_record("Errant monkeys draw the ire of Delhi court", monkeys, monkeys)
+    souter = 'In the town of Weare, New Hampshire, a movement is under way to force Supreme Court Justice David Souter to sell his home for "public benefit," an expansion of the eminent domain ruling he joined.'
+    assert not quality.is_court_record("House of Supreme Court Justice threatened", souter, souter)
+    abstract = "We study 1,240 trials registered between 2005 and 2019 (No. 12 of 2019 in our numbering) and find that the applicant institutions reported outcomes in 61 percent of cases."
+    assert not quality.is_court_record("Reporting of trial outcomes", abstract, abstract)
+    book = "A history of the Supreme Court of the United States from its founding to the present day, with chapters on each Chief Justice and the cases that defined the institution."
+    assert not quality.is_court_record("The Supreme Court: a history", book, book)
+    assert not quality.is_court_record("Project Gutenberg", ABS, ABS)
+    assert not quality.is_court_record(None, None, "")
+    atoms = [
+        {"id": "a", "title": "Project Gutenberg", "summary": ABS[:120], "content": ABS, "source": "wikipedia"},
+        {"id": "b", "title": "Patna High Court - BRHC010028812008 (2008-08-28)", "summary": patna[:600], "content": patna, "source": "archive_org"},
+        {"id": "c", "title": "The Supreme Court: a history", "summary": book, "content": book, "source": "archive_org"},
+    ]
+    kept, counts = quality.usable_atoms(atoms)
     assert [x["id"] for x in kept] == ["a", "c"]
-    assert counts["email"] == 1 and counts["stub"] == 0
+    assert counts["court_record"] == 1 and counts["email"] == 0 and counts["stub"] == 0

@@ -46,12 +46,12 @@ Deno.test('composeNote builds the run note from its parts, in the order the page
   assertEquals(composeNote({ source: '', errors: [] }), 'manual');
   const note = composeNote({
     source: 'cron', gap: ' (gap "solar": 1 added of 3 found)', recheck: ' (wikipedia re-check: 3 unchanged, 0 updated)',
-    sightings: 2, stubs: 1, withEmail: 1, cutShort: true, errors: [{ slug: 'arxiv', message: 'TimeoutError: signal timed out' }],
+    sightings: 2, stubs: 1, withEmail: 1, courtRecords: 3, cutShort: true, errors: [{ slug: 'arxiv', message: 'TimeoutError: signal timed out' }],
   });
-  assertEquals(note, 'cron (gap "solar": 1 added of 3 found) (wikipedia re-check: 3 unchanged, 0 updated) (2 duplicates recorded as sightings) (1 stubs skipped) (1 with an email address skipped) (time budget reached, continues next run) errors: arxiv: TimeoutError: signal timed out');
+  assertEquals(note, 'cron (gap "solar": 1 added of 3 found) (wikipedia re-check: 3 unchanged, 0 updated) (2 duplicates recorded as sightings) (1 stubs skipped) (1 with an email address skipped) (3 court records skipped) (time budget reached, continues next run) errors: arxiv: TimeoutError: signal timed out');
 });
 
 Deno.test('composeNote leaves out every clause that is zero or empty, so a checkpoint early in the run reads cleanly', () => {
-  assertEquals(composeNote({ source: 'cron', gap: '', recheck: '', sightings: 0, stubs: 0, withEmail: 0, cutShort: false, errors: [] }), 'cron');
+  assertEquals(composeNote({ source: 'cron', gap: '', recheck: '', sightings: 0, stubs: 0, withEmail: 0, courtRecords: 0, cutShort: false, errors: [] }), 'cron');
   assertEquals(composeNote({ source: 'cron', errors: [{ slug: 'gutenberg', message: 'TimeoutError' }] }), 'cron errors: gutenberg: TimeoutError');
 });
