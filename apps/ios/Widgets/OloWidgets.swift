@@ -1,3 +1,4 @@
+import AppIntents
 import ActivityKit
 import SwiftUI
 import WidgetKit
@@ -7,6 +8,27 @@ struct OloWidgetBundle: WidgetBundle {
     var body: some Widget {
         NextUpWidget()
         OloLiveActivity()
+        if #available(iOS 18.0, *) {
+            AskOloControl()
+        }
+    }
+}
+
+// MARK: Ask Olo control (iOS 18): one button that opens Quick Ask with the microphone listening.
+// Add it in Control Center, put it on the Lock Screen, or choose it for the Action Button.
+
+@available(iOS 18.0, *)
+struct AskOloControl: ControlWidget {
+    static let kind = "com.helius.olo.AskOloControl"
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: AskOloControl.kind) {
+            ControlWidgetButton(action: OpenQuickAskIntent()) {
+                Label("Ask Olo", systemImage: "waveform")
+            }
+        }
+        .displayName("Ask Olo")
+        .description("Opens Quick Ask, listening for your question.")
     }
 }
 

@@ -46,8 +46,21 @@ targets:
         LSSupportsOpeningDocumentsInPlace: true
         NSCalendarsFullAccessUsageDescription: Olo reads your calendar on this iPhone to show your day, find free time and learn your routine. Nothing is sent anywhere unless you choose to share your day with a question.
         NSRemindersFullAccessUsageDescription: Olo shows the reminders due today and adds the ones you ask for.
-        NSMicrophoneUsageDescription: Olo listens only while you hold a conversation with it by voice.
-        NSSpeechRecognitionUsageDescription: Olo turns what you say into the text of your question.
+        NSMicrophoneUsageDescription: "Olo uses the microphone so you can ask by voice: dictation, Quick Ask, Talk to Olo, and Hey Olo when you turn it on."
+        NSSpeechRecognitionUsageDescription: Olo turns what you say into text for your question. Hey Olo listens only when you turn it on, and recognises speech on this iPhone.
+        # "Keep listening on the Home Screen" (Settings, Hands free, off until turned on): Hey Olo keeps the
+        # microphone while Olo is still running in the background and reads the answer aloud.
+        UIBackgroundModes: [audio]
+        # Press and hold the icon on the Home Screen.
+        UIApplicationShortcutItems:
+          - UIApplicationShortcutItemType: com.helius.olo.quickask
+            UIApplicationShortcutItemTitle: Quick Ask
+            UIApplicationShortcutItemSubtitle: Say it, hear the answer
+            UIApplicationShortcutItemIconSymbolName: mic
+          - UIApplicationShortcutItemType: com.helius.olo.talk
+            UIApplicationShortcutItemTitle: Talk to Olo
+            UIApplicationShortcutItemSubtitle: A conversation by voice
+            UIApplicationShortcutItemIconSymbolName: waveform
         CFBundleURLTypes:
           - CFBundleURLName: com.helius.olo
             CFBundleURLSchemes: [olo]

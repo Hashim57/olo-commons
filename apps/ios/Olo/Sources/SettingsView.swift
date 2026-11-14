@@ -4,11 +4,24 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var calendar: CalendarBridge
+    @EnvironmentObject var hands: HandsFree
+    /// The language Talk to Olo, Quick Ask and dictation listen for; "auto" follows the phone's language.
+    @AppStorage(VoiceLanguage.preferenceKey) private var voiceLanguage: String = VoiceLanguage.auto
 
     private var version: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? ""
         return "\(v) (\(b))"
+    }
+
+    private var handsFreeNote: String {
+        var lines = ["Hey Olo: while Olo is open on screen, say \"Hey Olo\" and then your question. Speech is recognised on this iPhone and the audio never leaves it. The ear button at the top of the chat turns it on and off too. Listening stops when you leave the app; iOS lets only its own assistant listen in the background or on the Lock Screen."]
+        if hands.heyOlo {
+            lines.append("Keep listening on the Home Screen: while Olo is still running in the background, say Hey Olo or shake the phone. Olo says \"Go ahead, I'm listening.\", then reads the answer aloud. iOS shows the orange microphone dot the whole time and it uses more battery. It stops if you close Olo from the app switcher or iOS closes it.")
+        }
+        lines.append("Shake to ask: shake the phone while Olo is open. Olo says \"Go ahead, I'm listening.\" and Quick Ask takes your question. iOS does not let apps feel a shake when they are closed.")
+        lines.append("Anywhere else: use the Ask Olo and Quick Ask shortcuts, set the Action Button to one of them, or add the Ask Olo control to Control Center or the Lock Screen (iOS 18).")
+        return lines.joined(separator: "\n\n")
     }
 
     var body: some View {
@@ -40,7 +53,28 @@ struct SettingsView: View {
                 }
                 Section {
                     Toggle("Read answers aloud", isOn: $model.speakAnswers)
-                } header: { Text("Voice") } footer: { Text("Olo uses this iPhone's own speech recognition and voice. Audio is not recorded or kept.") }
+                    Picker("Listening in", selection: $voiceLanguage) {
+                        Text("Automatic (\(VoiceLanguage.label(VoiceLanguage.resolve(preference: VoiceLanguage.auto, deviceLocale: Locale.current.identifier))))").tag(VoiceLanguage.auto)
+                        ForEach(VoiceLanguage.options) { option in Text(option.label).tag(option.code) }
+                    }
+                    Button("Talk to Olo") { hands.openTalk() }
+                    Button("Quick Ask") { hands.openQuickAsk() }
+                } header: { Text("Voice") } footer: {
+                    Text("Answers are read in Olo's own voice when you are signed in, and in this iPhone's voice otherwise. A speech recogniser has to be told which language to listen for; Olo answers in the language you speak. Audio is not recorded or kept.")
+                }
+                Section {
+                    Toggle("Listen for Hey Olo", isOn: $hands.heyOlo)
+                    if hands.heyOlo {
+                        Toggle("Keep listening on the Home Screen", isOn: $hands.heyOloBackground)
+                    }
+                    if case .unavailable(let reason) = hands.wakeState, hands.heyOlo {
+                        Text(reason).font(.footnote).foregroundStyle(.red)
+                    }
+                    Toggle("Shake to ask", isOn: $hands.shakeToAsk)
+                    Toggle("Haptics", isOn: $hands.haptics)
+                } header: { Text("Hands free") } footer: {
+                    Text(handsFreeNote)
+                }
                 Section {
                     LabeledContent("Calendar", value: calendar.eventsAllowed ? "Allowed" : "Not allowed")
                     LabeledContent("Reminders", value: calendar.remindersAllowed ? "Allowed" : "Not allowed")

@@ -13,8 +13,32 @@ verdicts. It replaces the earlier React Native app under the same bundle id, `co
   screen of the app, can be dragged anywhere, looks where you drag it, and offers a suggestion that
   fits the screen when tapped. Its mood follows the answer: thinking, pleased, or unsure when part
   of an answer could not be verified.
-- **Talk to Olo**: the microphone button listens with the phone's own speech recognition; "Read
-  aloud" speaks answers with the phone's own voice.
+- **Voice** (brought over from the earlier iPhone app; pure parts in `OloKit`, unit tested):
+  - **Dictation**: the microphone in the composer puts your words in the box as they are
+    recognised, for you to read and send.
+  - **Quick Ask** (`QuickAsk.swift`): one question, one answer. Tap Olo and speak; 1.5 s of
+    silence sends it; a spoken question is answered aloud; Open in chat continues it.
+  - **Talk to Olo** (`TalkToOlo.swift`): a whole conversation by voice. Olo says "Go ahead,
+    I'm listening.", reads each answer sentence by sentence while it is written, then listens
+    again. Say "stop", "that's all" or "goodbye" to finish; tap Olo to interrupt; "Build me
+    a..." starts a build and Olo reads the summary when it is done. The screen stays awake.
+  - **Hey Olo** (`HandsFree.swift`, `OloKit/WakePhrase.swift`): off until turned on (the ear
+    button in the chat, or Settings, Hands free). While Olo is open, say "Hey Olo" and the
+    question. Speech is recognised on the phone and the audio never leaves it; if the phone
+    cannot do that for English, Hey Olo stays off and says why. A pause after "Hey Olo" gets
+    "Go ahead, I'm listening."; "Hey Olo, let's talk" opens Talk to Olo. With "Keep listening
+    on the Home Screen" on as well, it carries on while Olo is still running in the
+    background and reads the answer aloud.
+  - **Shake to ask** (`OloKit/Shake.swift`): on unless turned off. Shake the phone while Olo
+    is open: Olo says "Go ahead, I'm listening." and Quick Ask takes the question. When Hey Olo
+    has the microphone it takes the question itself, with no hand-over.
+  - **Olo's voice** (`Speaking.swift`): answers are read by Olo's own voice (ElevenLabs,
+    through helius-olo.io) when signed in and the server has a voice key, in pieces so it
+    starts within about a second; this iPhone's best voice for the answer's language reads
+    otherwise. The language listened for is chosen in Settings or in Talk to Olo.
+  - **Ways in**: `olo://talk`, `olo://ask?listen=1`, the Quick Ask and Talk to Olo
+    home-screen actions and shortcuts, and the Ask Olo control (iOS 18) for Control Center,
+    the Lock Screen and the Action Button.
 - **Today**: reads the calendar and reminders on the phone (EventKit). What is next, the day's
   agenda, free time, the reminders due, and "What Olo has noticed": habits worked out on the device
   from the last four weeks (`OloKit/DayPlan.swift`, unit tested). "Plan my day with Olo" shows
@@ -58,6 +82,10 @@ verdicts. It replaces the earlier React Native app under the same bundle id, `co
   notifications and Siri.
 - There is no way to read Apple Mail. Olo reads mail through a connected Google account
   instead, and hands drafts to Mail for you to send. Other mail providers are not connected yet.
+- An app cannot listen for a wake word or feel a shake once it has been closed, or on the Lock
+  Screen. Hey Olo and shake to ask work while Olo is open (and, if you turn it on, while it is
+  still running in the background, with the orange microphone dot showing). Outside the app
+  the shortcuts and the Ask Olo control do the job.
 - An app cannot read other apps' data. "Learning the schedule" means the calendar and reminders
   the person allows.
 
@@ -66,8 +94,12 @@ verdicts. It replaces the earlier React Native app under the same bundle id, `co
 - The editor works on one file at a time in the app's own folder. There is no folder tree, no
   tabs, no suggestions at the cursor as you type, no automatic review while typing and no
   "Fix as I save": the phone asks for a review or a change when you press the button.
-- No browser and Run view, no Olo brain orbs, no Quick Ask window and no "Talk to Olo" call
-  screen (the microphone button and Read aloud cover voice).
+- No browser and Run view and no Olo brain orbs.
+- Voice, compared with the earlier iPhone app: Quick Ask uses the chat's Olo brain and Sources
+  switches rather than a switch of its own, and does not answer from the offline Commons copy.
+  Nothing in the voice code has been run on a phone yet: it compiles and its pure parts are
+  tested, but the microphone, the wake phrase, the shake and the audio session need a real
+  iPhone to try.
 - Word files (.docx, .doc) cannot be attached, because iOS has no reader for them; PDF and
   text can.
 - Only Google is offered as a connector, as on the Mac, and only when the server has Google
@@ -96,6 +128,10 @@ The server must also have its App Store keys set (it reports this through
 2. Select the Olo target, Signing and Capabilities, and choose your team. Do the same for the OloWidgets target. Xcode creates the app group `group.com.helius.olo` for both.
 3. Choose your iPhone as the destination and press Run. The Dynamic Island and the Lock Screen need a real iPhone; the rest runs in the simulator.
 4. To submit: Product, Archive, then Distribute App. The version is 2.0.0 (1); it must be higher than the last build of the earlier app.
+
+The app declares the audio background mode, for "Keep listening on the Home Screen" only. If
+App Review objects to it, remove the `UIBackgroundModes` line from `project.yml` and the switch
+in Settings; everything else in voice works without it.
 
 Before submitting, update the App Privacy answers in App Store Connect: the app reads calendar and
 reminders on the device, and shares calendar titles and times with Helius Network only when the

@@ -6,7 +6,9 @@ import SwiftUI
 struct ChatView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var voice: Voice
+    @EnvironmentObject var hands: HandsFree
     @State private var draft = ""
+    @State private var heyOloNote: String?
     @State private var showHistory = false
     @State private var pickingFiles = false
     @FocusState private var focused: Bool
@@ -38,12 +40,55 @@ struct ChatView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showHistory = true } label: { Image(systemName: "sidebar.left") }.accessibilityLabel("Conversations")
                 }
+                ToolbarItem(placement: .topBarLeading) { heyOloButton }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { hands.tap(); hands.openTalk(conversationId: model.isPrivate ? nil : model.conversationId) } label: { Image(systemName: "waveform") }
+                        .accessibilityLabel("Talk to Olo")
+                }
                 ToolbarItem(placement: .topBarTrailing) { ExportMenu() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { model.newConversation() } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New conversation")
                 }
             }
             .sheet(isPresented: $showHistory) { HistoryView() }
+            .alert("Hey Olo", isPresented: Binding(get: { heyOloNote != nil }, set: { if !$0 { heyOloNote = nil } })) {
+                Button("Turn off", role: .destructive) { hands.heyOlo = false }
+                Button("OK", role: .cancel) {}
+            } message: { Text(heyOloNote ?? "") }
+        }
+    }
+
+    /// Hey Olo, always findable: outlined when off (tap to turn on), a green dot while listening
+    /// (tap to turn off), red when it is on but cannot listen (tap to see why).
+    private var heyOloButton: some View {
+        Button {
+            hands.tap()
+            if case .unavailable(let reason) = hands.wakeState, hands.heyOlo { heyOloNote = reason }
+            else { hands.heyOlo.toggle() }
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: hands.heyOlo ? "ear.fill" : "ear")
+                Circle().fill(heyOloColour).frame(width: 7, height: 7).offset(x: 3, y: -2)
+            }
+        }
+        .accessibilityLabel(heyOloLabel)
+    }
+
+    private var heyOloColour: Color {
+        guard hands.heyOlo else { return .clear }
+        switch hands.wakeState {
+        case .listening, .heard: return .green
+        case .unavailable: return .red
+        case .off, .starting: return .gray
+        }
+    }
+
+    private var heyOloLabel: String {
+        guard hands.heyOlo else { return "Hey Olo is off. Tap to listen for Hey Olo." }
+        switch hands.wakeState {
+        case .listening, .heard: return "Hey Olo is listening. Tap to turn off."
+        case .unavailable: return "Hey Olo cannot listen. Tap to see why."
+        case .off, .starting: return "Hey Olo is on. Tap to turn off."
         }
     }
 
@@ -90,8 +135,14 @@ struct ChatView: View {
 
     private var composer: some View {
         VStack(spacing: 8) {
-            if voice.listening {
-                Text(voice.transcript.isEmpty ? "Listening…" : voice.transcript).font(.subheadline).foregroundStyle(.secondary)
+            if voice.isListening(.dictation) {
+                Label("Listening. Your words go into the box; tap the microphone to stop.", systemImage: "waveform")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6)
+            }
+            if case .heard(let question) = hands.wakeState {
+                Label(question.isEmpty ? "Hey Olo heard you. Go ahead." : question, systemImage: "ear.fill")
+                    .font(.footnote).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6)
             }
             if let problem = voice.problem { Text(problem).font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading) }
@@ -104,13 +155,10 @@ struct ChatView: View {
                 TextField("Ask Olo", text: $draft, axis: .vertical).lineLimit(1...5).focused($focused)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
-                Button {
-                    if voice.listening { let heard = voice.finish(); if !heard.isEmpty { model.ask(heard) } }
-                    else { focused = false; Task { await voice.start() } }
-                } label: {
-                    Image(systemName: voice.listening ? "waveform.circle.fill" : "mic.circle").font(.system(size: 32))
+                Button { dictate() } label: {
+                    Image(systemName: voice.isListening(.dictation) ? "waveform.circle.fill" : "mic.circle").font(.system(size: 32))
                 }
-                .accessibilityLabel(voice.listening ? "Stop listening and ask" : "Talk to Olo")
+                .accessibilityLabel(voice.isListening(.dictation) ? "Stop dictating" : "Dictate")
                 Button {
                     if model.sending { model.stop() } else { let q = draft; draft = ""; model.ask(q) }
                 } label: {
@@ -135,6 +183,24 @@ struct ChatView: View {
         }
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 8)
         .background(.bar)
+    }
+}
+
+extension ChatView {
+    /// Dictation: the words land in the composer as they are recognised, after whatever was typed,
+    /// so the sentence can be read and corrected before it is sent.
+    @MainActor func dictate() {
+        hands.tap()
+        if voice.isListening(.dictation) { voice.stopListening(); return }
+        focused = false
+        voice.problem = nil
+        let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            let reason = await voice.start(owner: .dictation, onText: { text, _ in
+                draft = typed.isEmpty ? text : typed + " " + text
+            })
+            if let reason { voice.problem = reason }
+        }
     }
 }
 
