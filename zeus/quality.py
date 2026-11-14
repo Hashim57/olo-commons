@@ -171,6 +171,24 @@ def has_email_address(*parts):
     return any(EMAIL_RE.search(clean(p)) for p in parts)
 
 
+COURT_RE = re.compile(r"\b(?:high court|supreme court|court of judicature|district court|sessions? court|court of appeals?|tribunal|chief judicial magistrate|court of [a-z]+(?: and [a-z]+)? at [a-z]+|(?:mr\.?|mrs\.?|smt\.?|sri|dr\.?|the hon[\u2019']?ble(?: mr\.?| mrs\.?| sri| dr\.?)?) justice)\b", re.I)
+CASE_RE = re.compile(r"\b(?:writ petition|criminal (?:appeal|revision|misc)|civil (?:appeal|writ|revision|misc)|special appeal|revision petition|misc\.? petition|cr\.? ?misc\.?|crl\.? ?m(?:isc)?\.?|w\.? ?p\.? ?(?:no|nos)|(?:no|nos)\.?\s*:?\s*\d+(?:[-/]\w+)?\s*(?:/|of)\s*(?:19|20)?\d{2}(?:\d{2})?)\b", re.I)
+PARTY_RE = re.compile(r"\b(?:versus|vs?\.)\s|\b(?:petitioner|respondent|appellant|applicant|accused|coram|between)s?\b|\bhon[\u2019']?ble\b|\blearned counsel\b|\b[swdr]/o\b", re.I)
+
+
+def is_court_record(title, summary, content):
+    """True when a text is a court record (isCourtRecord in text.ts): it names a court (in the title or the body), a
+    case and the parties, all three. The Internet Archive mirrors the Indian High Court judgments corpus as scanned
+    orders whose description is the OCR of the first page, naming private people as accused and petitioners with their
+    parentage and village (78 atoms on the 2026-11-14 snapshot, 75 of them matched here, no atom of any other source).
+    The Commons stores no personal data, so neither does a Zeus training set."""
+    s, c = clean(summary), clean(content)
+    body = c if len(c) >= len(s) else s
+    if not body:
+        return False
+    return bool(COURT_RE.search(clean(title) + " " + body) and CASE_RE.search(body) and PARTY_RE.search(body))
+
+
 def is_stub(title, summary, content, authors=None):
     """True when an atom carries no knowledge: a label, one line repeated, a notice that points elsewhere, a catalogue
     record, a shelf mark, a rights notice, or nothing beyond its title, authors and physical description (stub_reason names which)."""
@@ -204,11 +222,11 @@ def wikidata_description(a):
 
 
 def usable_atoms(atoms):
-    """The atoms a build should see: each id once, no stubs, no atom carrying an email address, no Wikidata housekeeping items.
-    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "email": n, "housekeeping": n, "stub_by_rule": {rule: n}},
+    """The atoms a build should see: each id once, no stubs, no atom carrying an email address, no court record, no Wikidata housekeeping items.
+    Returns (kept, counts) with counts = {"duplicate": n, "stub": n, "email": n, "court_record": n, "housekeeping": n, "stub_by_rule": {rule: n}},
     where stub_by_rule names the rule that refused each stub (STUB_RULES), so a build can say which rule did the work."""
     seen, kept = set(), []
-    counts = {"duplicate": 0, "stub": 0, "email": 0, "housekeeping": 0, "stub_by_rule": {}}
+    counts = {"duplicate": 0, "stub": 0, "email": 0, "court_record": 0, "housekeeping": 0, "stub_by_rule": {}}
     for a in atoms:
         aid = a.get("id")
         if aid in seen:
@@ -222,6 +240,9 @@ def usable_atoms(atoms):
             continue
         if has_email_address(a.get("title"), a.get("summary"), a.get("content")):
             counts["email"] += 1
+            continue
+        if is_court_record(a.get("title"), a.get("summary"), a.get("content")):
+            counts["court_record"] += 1
             continue
         if (a.get("source") or a.get("source_slug")) == "wikidata" and wikidata_housekeeping(a.get("title"), wikidata_description(a)):
             counts["housekeeping"] += 1

@@ -141,6 +141,16 @@ Deno.test('archive_org: HTML and entities cleaned, creator arrays kept, rows wit
   assertEquals(archiveCandidates(null as unknown as any[]), []);
 });
 
+Deno.test('archive_org: the Indian High Court judgments mirror is skipped whatever its licence (scanned orders naming private people)', () => {
+  const docs = [
+    { identifier: 'india.highcourt.judgement.brhc010028812008', title: 'Patna High Court - BRHC010028812008 (2008-08-28)', licenseurl: 'http://creativecommons.org/licenses/by/4.0/',
+      description: 'HIGH COURT OF JUDICATURE AT PATNA Cr.Misc. No.25012 of 2008 A. P. SINHA Versus THE STATE OF BIHAR ----------- 2 28.08.2008 Heard learned counsel for the petitioner and State. Mirrored from https://github.com/vanga/indian-high-court-judgments' },
+    { identifier: 'open-textbook-intro-stats-2e', title: 'Introductory Statistics, 2nd edition', licenseurl: 'https://creativecommons.org/licenses/by/4.0/',
+      description: 'An open textbook covering descriptive statistics, probability, sampling distributions, confidence intervals and hypothesis tests, with worked examples and exercises for a first course.' },
+  ];
+  assertEquals(archiveCandidates(docs).map(c => c.external_id), ['open-textbook-intro-stats-2e']);
+});
+
 /* ---------- arxiv ---------- */
 
 Deno.test('arxiv: live Atom entries keep version, DOI, all listed authors and decoded entities', async () => {

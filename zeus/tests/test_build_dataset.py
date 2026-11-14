@@ -213,7 +213,7 @@ def test_usable_atoms_run_before_the_split_so_a_stub_is_neither_claim_nor_passag
     atoms.append({"id": "stub-1", "title": "New Book", "summary": "new book new book new book new book new book", "content": "", "url": "https://archive.org/details/x", "source": "archive_org"})
     atoms.append(dict(atoms[0]))  # the export repeated a page-boundary atom
     kept, dropped = quality.usable_atoms(atoms)
-    assert dropped == {"duplicate": 1, "stub": 1, "email": 0, "housekeeping": 0, "stub_by_rule": {"label": 1}}
+    assert dropped == {"duplicate": 1, "stub": 1, "email": 0, "court_record": 0, "housekeeping": 0, "stub_by_rule": {"label": 1}}
     data = bd.build(kept, 0.3, near_miss=False)
     seen = {p["id"] for split in data.values() for ex in split for p in ex["passages"]}
     assert "stub-1"[:8] not in seen

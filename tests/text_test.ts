@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -278,4 +278,36 @@ Deno.test('hasEmailAddress: an @ that is not an address, and real atoms of every
   assert(!hasEmailAddress('Project Gutenberg', 'Project Gutenberg is a volunteer effort to digitize and archive cultural works. It was founded in 1971 by American writer Michael S. Hart.', ''));
   assert(!hasEmailAddress('Ehnen', 'Ehnen: town.', 'Ehnen. town. Described in 10 Wikimedia projects.'));
   assert(!hasEmailAddress(undefined, null, ''));
+});
+
+Deno.test('isCourtRecord: court orders from the 2026-11-14 snapshot (a court, a case and the parties) are refused', () => {
+  const patna = 'HIGH COURT OF JUDICATURE AT PATNA Cr.Misc. No.25012 of 2008 A. P. SINHA Versus THE STATE OF BIHAR ----------- 2 28.08.2008 Heard learned counsel for the petitioner and State. This petitioner is a named accused person in a case which has been registered under Section Mirrored from https://github.com/vanga/indian-high-court-judgments';
+  assert(isCourtRecord('Patna High Court - BRHC010028812008 (2008-08-28)', patna.slice(0, 600), patna));
+  const jaipur = 'COURT OF JUDICATURE FOR RAJASTHAN BENCH AT JAIPUR S.B. Civil Writ Petition No.3503/07 G. Toshniwal & Anr. Vs. Chief Judicial Magistrate & Anr. Date of order: 5.10.2007 HON\'BLE MR. JUSTICE M. RAFIQ Mr. Sandeep Mehta, for the petitioners.';
+  assert(isCourtRecord('High Court Of Rajasthan - RJHC020123982007 (2007-10-05)', jaipur, jaipur), 'the case number written with a slash and a two-digit year');
+  const chandigarh = 'COURT OF PUNJAB AND HARYANA AT CHANDIGARH Crl.Misc. No.66004-M of 2006 Date of Decision:- 20.02.2007 R. Singh ....Petitioner(s) through Ms. S. Trikha, Advocate vs. State of Haryana & ors. ....Respondent(s)';
+  assert(isCourtRecord('High Court of Punjab and Haryana - PHHC010359472006 (2007-02-20)', chandigarh, chandigarh), 'a court named as "COURT OF X AND Y AT Z"');
+  const telangana = 'SRI JUSTICE G. RAGHURAM W.P.No. 17830 of 2007 23-08-2007 Between: P. S. Reddy Petitioner And The District Collector, East Godavari District and two others Respondents';
+  assert(isCourtRecord('High Court for State of Telangana - HBHC010268642007 (2007-08-23)', telangana, telangana), 'the court only in the title, the bench and the parties in the body');
+  const nainital = 'COURT OF UTTARAKHAND AT NAINITAL Writ Petition No. 18(S/S)2007 L. Ram S/o R. Swaroop Barber vide no. 9322622, Central Industrial Security Force (CISF) Unit BHEL, Ranipur, R/o quarter no. A/189 C';
+  assert(isCourtRecord('High Court of Uttarakhand - UKHC010031592007 (2007-04-25)', nainital, nainital), 'parentage and residence marks (S/o, R/o) are the parties');
+});
+
+Deno.test('isCourtRecord: texts about courts and cases from every other source pass (one or two of the three signs is not a record)', () => {
+  // Wikipedia: a court case article names a court and parties but no case number
+  const adams = "2022 Florida court case on transgender students' rights to access bathrooms. Adams ex rel. Kasper v. School Board of St. Johns County, Florida is a court case from the United States Court of Appeals for the Eleventh Circuit.";
+  assert(!isCourtRecord('Adams ex rel. Kasper v. School Board of St. Johns County, Florida', adams, adams));
+  // Wikinews: a court and a ruling, no case number, no parties styled as such
+  const monkeys = 'The Delhi High Court expressed its displeasure to the civic authorities on their continued failure to resolve the problem of marauding monkeys in the court premises, and gave the Municipal Corporation of Delhi four weeks to act.';
+  assert(!isCourtRecord('Errant monkeys draw the ire of Delhi court', monkeys, monkeys));
+  const souter = 'In the town of Weare, New Hampshire, a movement is under way to force Supreme Court Justice David Souter to sell his home for "public benefit," an expansion of the eminent domain ruling he joined on June 23, 2005.';
+  assert(!isCourtRecord('House of Supreme Court Justice threatened', souter, souter));
+  // arXiv and PubMed: numbers with years and the word "between" are not a case
+  const abs = 'We study 1,240 trials registered between 2005 and 2019 (No. 12 of 2019 in our numbering) and find that the applicant institutions reported outcomes in 61 percent of cases.';
+  assert(!isCourtRecord('Reporting of trial outcomes', abs, abs));
+  // a book about the law
+  const book = 'A history of the Supreme Court of the United States from its founding to the present day, with chapters on each Chief Justice and the cases that defined the institution.';
+  assert(!isCourtRecord('The Supreme Court: a history', book, book));
+  assert(!isCourtRecord('Ehnen', 'Ehnen: town.', 'Ehnen. town. Described in 10 Wikimedia projects.'));
+  assert(!isCourtRecord(undefined, null, ''));
 });

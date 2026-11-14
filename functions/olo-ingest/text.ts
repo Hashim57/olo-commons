@@ -119,6 +119,42 @@ export function hasEmailAddress(...parts: unknown[]): boolean {
   return parts.some(p => EMAIL_RE.test(clean(p)));
 }
 
+/** A court's name, or a judge's style, as a court order writes it ("HIGH COURT OF JUDICATURE AT PATNA", "COURT OF UTTARAKHAND AT NAINITAL", "SRI JUSTICE"). */
+export const COURT_RE = /\b(?:high court|supreme court|court of judicature|district court|sessions? court|court of appeals?|tribunal|chief judicial magistrate|court of [a-z]+(?: and [a-z]+)? at [a-z]+|(?:mr\.?|mrs\.?|smt\.?|sri|dr\.?|the hon[’']?ble(?: mr\.?| mrs\.?| sri| dr\.?)?) justice)\b/i;
+
+/** A case: the kind of filing ("Writ Petition", "Criminal Appeal", "Cr.Misc.") or a case number with its year ("No.27082 of 2005", "NO.3503/07", "No.66004-M of 2006"). */
+export const CASE_RE = /\b(?:writ petition|criminal (?:appeal|revision|misc)|civil (?:appeal|writ|revision|misc)|special appeal|revision petition|misc\.? petition|cr\.? ?misc\.?|crl\.? ?m(?:isc)?\.?|w\.? ?p\.? ?(?:no|nos)|(?:no|nos)\.?\s*:?\s*\d+(?:[-/]\w+)?\s*(?:\/|of)\s*(?:19|20)?\d{2}(?:\d{2})?)\b/i;
+
+/** The parties and the bench: "Versus", "Vs.", "Petitioner", "Respondent", "Appellant", "Hon'ble", "learned counsel", "S/o" and "W/o" (son of, wife of). */
+export const PARTY_RE = /\b(?:versus|vs?\.)\s|\b(?:petitioner|respondent|appellant|applicant|accused|coram|between)s?\b|\bhon[’']?ble\b|\blearned counsel\b|\b[swdr]\/o\b/i;
+
+/**
+ * True when a text is a court record: it names a court (in the title or the
+ * body), a case and the parties, all three. The Internet Archive mirrors the
+ * Indian High Court judgments corpus (identifiers india.highcourt.judgement.*,
+ * 78 atoms on the 2026-11-14 snapshot, 20 of them added on 13 November alone,
+ * two thirds of what the source added behind the licence gate) as scanned
+ * orders whose description is the OCR of the first page: "HIGH COURT OF
+ * JUDICATURE AT PATNA Cr.Misc. No.25012 of 2008 AASHISH PRASAD SINHA Versus
+ * THE STATE OF BIHAR ... This petitioner Aashish Prasad Sinha is a named
+ * accused person in a case which has been registered under Section". The
+ * Commons stores no personal data (README, "Adding a source"), and a court
+ * order names private people as accused, petitioners and witnesses, with
+ * their parentage and village; what it states is a ruling about them, not a
+ * fact about the world a claim could be checked against. All three signs are
+ * required because each alone is common in real text: on the snapshot the
+ * rule refused 75 of the 78 orders (the other three are OCR too broken to
+ * read, or list only the case numbers in the first 600 characters) and no
+ * atom of any other source, and only five Wikinews and Wikipedia texts about
+ * court cases carried two of the three signs.
+ */
+export function isCourtRecord(title: unknown, summary: unknown, content: unknown): boolean {
+  const s = clean(summary), c = clean(content);
+  const body = c.length >= s.length ? c : s;
+  if (!body) return false;
+  return COURT_RE.test(clean(title) + ' ' + body) && CASE_RE.test(body) && PARTY_RE.test(body);
+}
+
 export const CATALOGUE_MIN_LABELS = 3;    // a body with fewer "Label: value" fields than this is read as prose
 export const CATALOGUE_MAX_WORDS_PER_LABEL = 5; // ...and one with more words than this per field is prose with headings (a structured abstract)
 

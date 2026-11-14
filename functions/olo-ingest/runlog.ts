@@ -67,6 +67,7 @@ export type NoteParts = {
   sightings?: number;
   stubs?: number;
   withEmail?: number;
+  courtRecords?: number;
   /** True when the forty-second budget stopped the run before every source had its turn. */
   cutShort?: boolean;
   errors: RunError[];
@@ -82,6 +83,7 @@ export function composeNote(p: NoteParts): string {
     + (p.sightings ? ` (${p.sightings} duplicates recorded as sightings)` : '')
     + (p.stubs ? ` (${p.stubs} stubs skipped)` : '')
     + (p.withEmail ? ` (${p.withEmail} with an email address skipped)` : '')
+    + (p.courtRecords ? ` (${p.courtRecords} court records skipped)` : '')
     + (p.cutShort ? ' (time budget reached, continues next run)' : '')
     + errorNote(p.errors);
 }
