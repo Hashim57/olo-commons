@@ -1,0 +1,94 @@
+{
+  "identifier" : "A2C7E6B4-5F1D-4E0B-9C3A-6D8F2B1E7A90",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_GB",
+    "_storefront" : "GBR",
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21640001",
+      "localizations" : [
+        {
+          "description" : "Olo plans for the Mac, the web and the iPhone.",
+          "displayName" : "Olo plans",
+          "locale" : "en_GB"
+        }
+      ],
+      "name" : "Olo plans",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6740000001",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "500 messages a month, 10 analyses",
+              "displayName" : "Olo Starter",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "com.helius.olo.desktop.starter.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Olo Starter Monthly (Mac)",
+          "subscriptionGroupID" : "21640001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6740000002",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "5,000 messages a month, 100 analyses",
+              "displayName" : "Olo Growth",
+              "locale" : "en_GB"
+            }
+          ],
+          "productID" : "com.helius.olo.desktop.growth.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Olo Growth Monthly (Mac)",
+          "subscriptionGroupID" : "21640001",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}
