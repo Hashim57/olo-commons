@@ -1,0 +1,7 @@
+Olo.xcodeproj
+build
+*.log
+Olo/Info.plist
+Olo/Olo.entitlements
+Widgets/Info.plist
+Widgets/OloWidgets.entitlements
