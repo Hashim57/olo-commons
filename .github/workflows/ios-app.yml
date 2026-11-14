@@ -1,0 +1,47 @@
+# Olo for iPhone (apps/ios): compiled on GitHub's Mac runners on every push, so a
+# change that does not build never reaches main. The app shares OloKit with the
+# Mac app, so OloKit's unit tests run here too.
+#
+# Nothing is signed or uploaded here. Archive and submit from Xcode on your Mac
+# (apps/ios/README.md).
+
+name: iOS app
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/ios/**", "apps/macos/OloKit/**", ".github/workflows/ios-app.yml"]
+  pull_request:
+    paths: ["apps/ios/**", "apps/macos/OloKit/**", ".github/workflows/ios-app.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Test OloKit and build the app
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        run: xcodebuild -version && swift --version
+      - name: OloKit unit tests
+        run: swift test --package-path apps/macos/OloKit
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          cd apps/ios && xcodegen generate
+      - name: Build for the iPhone simulator (unsigned)
+        working-directory: apps/ios
+        run: |
+          set -o pipefail
+          xcodebuild -project Olo.xcodeproj -scheme Olo -configuration Debug -derivedDataPath build \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 \
+            || { grep -E "error:|error :" build.log | sort -u | head -n 120; tail -n 30 build.log; exit 1; }
+          grep -E "BUILD SUCCEEDED" build.log
