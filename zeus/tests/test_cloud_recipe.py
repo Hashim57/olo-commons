@@ -57,6 +57,18 @@ def test_steps_within_budget_fits_the_plan_to_the_hour():
     assert recipe.TRAIN_BUDGET_MINUTES == 60
 
 
+def test_shuffle_seed_differs_between_versions_and_holds_for_one():
+    # reproducible for a version, so a run can be repeated
+    assert recipe.shuffle_seed("v21") == recipe.shuffle_seed("v21")
+    # different between versions, so two budgeted runs on the same rows see different parts of the set
+    seeds = {recipe.shuffle_seed(f"v{n}") for n in range(20, 40)}
+    assert len(seeds) == 20
+    # a 32-bit value, what random.Random takes and train_summary.json records
+    assert all(0 <= x < 2 ** 32 for x in seeds)
+    # the constant 0 of v6 to v20 is not among them, so the record shows which runs had the rotation
+    assert 0 not in seeds
+
+
 def test_status_row_notes_a_time_capped_run():
     ev = {"n": 200, "json_valid": 1.0, "label_accuracy": 0.99, "evidence_hit": 0.98, "f1": {"supported": 1.0, "contradicted": 0.98, "not_covered": 1.0}}
     summary = {"time_capped": True, "time_budget_minutes": 60, "steps": 720, "planned_steps": 2142, "examples_seen": 11520}
