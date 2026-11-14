@@ -35,7 +35,7 @@ struct OloFace: View {
         let s = size
         let body = s * 0.58
         let speed = mood == .thinking ? 2.6 : 1.0
-        let floatY = animated ? sin(t * 1.7) * s * 0.035 : 0
+        let floatY: CGFloat = animated ? CGFloat(sin(t * 1.7)) * s * 0.035 : 0
         let blink = animated && (t.truncatingRemainder(dividingBy: 4.6) > 4.45)
         return ZStack {
             // the ring behind the body
@@ -95,9 +95,13 @@ struct OloFace: View {
 
     private func electron(t: Double, tilt: Double, radiusX: CGFloat, radiusY: CGFloat, dot: CGFloat, filled: Bool) -> some View {
         let a = animated ? t * 1.9 : 0.6
-        let x = cos(a) * radiusX, y = sin(a) * radiusY
-        let r = tilt * .pi / 180
-        let px = x * cos(r) - y * sin(r), py = x * sin(r) + y * cos(r)
+        let x: Double = cos(a) * Double(radiusX)
+        let y: Double = sin(a) * Double(radiusY)
+        let r: Double = tilt * Double.pi / 180
+        let cr: Double = cos(r)
+        let sr: Double = sin(r)
+        let px = CGFloat(x * cr - y * sr)
+        let py = CGFloat(x * sr + y * cr)
         return Circle().fill(filled ? Color.primary : OloFace.blue)
             .overlay(Circle().stroke(Color.primary, lineWidth: max(1, dot * 0.2)))
             .frame(width: dot, height: dot)
