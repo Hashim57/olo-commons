@@ -27,7 +27,7 @@ struct AskOloIntent: AppIntent {
 
 struct MyDayIntent: AppIntent {
     static var title: LocalizedStringResource = "What is my day like"
-    static var description = IntentDescription("Olo reads today's calendar on this iPhone and sums it up.")
+    static var description = IntentDescription("Olo reads today's calendar on this device and sums it up.")
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
