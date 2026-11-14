@@ -12,6 +12,11 @@ struct ChatItem: Identifiable, Equatable {
     var sources: [Source] = []
     var followUps: [String] = []
     var notices: [String] = []
+    /// Files the answer produced, and the names of the files that went with the question.
+    var artifacts: [Artifact] = []
+    var attached: [String] = []
+    /// A build that outran the live answer and carries on in the background.
+    var buildJobId: String?
     var streaming = false
     var failed = false
 }
@@ -29,6 +34,15 @@ final class AppModel: ObservableObject {
     @Published var email: String?
     @Published var banner: String?
     @Published var showSignIn = false
+    /// What the account may do now (the plan and what is left of it), once the server has said.
+    @Published var entitlement: Entitlement?
+    @Published var showPlans = false
+    /// Files waiting to go with the next question.
+    @Published var attachments: [Attachment] = []
+    /// The project questions are asked in, if any: its instructions and files go with each one.
+    @Published var activeProject: Project?
+    /// Counts up when the browser returns from a connector's consent page (olo://connected).
+    @Published var connectorReturns = 0
 
     // The switches under the composer, as on the Mac and the web.
     @Published var tier: String = UserDefaults.standard.string(forKey: "olo.tier") ?? "medium" { didSet { UserDefaults.standard.set(tier, forKey: "olo.tier") } }
@@ -40,6 +54,7 @@ final class AppModel: ObservableObject {
     @Published var termsAccepted: String = UserDefaults.standard.string(forKey: "olo.termsAccepted") ?? "" { didSet { UserDefaults.standard.set(termsAccepted, forKey: "olo.termsAccepted") } }
 
     let api: OloAPI
+    let purchases = StoreController()
     private var task: Task<Void, Never>?
     var onAnswer: ((String) -> Void)?
 
@@ -53,7 +68,7 @@ final class AppModel: ObservableObject {
     // MARK: Session
 
     /// A session to ask with: the saved one, or a new anonymous workspace with the free allowance.
-    private func ensureSession() async throws {
+    func ensureSession() async throws {
         if api.token != nil { return }
         let s = try await api.createSession()
         api.token = s.token
@@ -78,6 +93,7 @@ final class AppModel: ObservableObject {
             self.email = s.user.email ?? email
             showSignIn = false
             await loadConversations()
+            await refreshEntitlement()
             return nil
         } catch { return error.localizedDescription }
     }
@@ -87,6 +103,7 @@ final class AppModel: ObservableObject {
         api.token = nil
         Keychain.write("session", nil)
         email = nil; items = []; conversations = []; conversationId = nil
+        entitlement = nil; activeProject = nil; attachments = []
     }
 
     // MARK: Conversations
@@ -121,9 +138,14 @@ final class AppModel: ObservableObject {
     /// Sends a question and streams the answer as it is written and checked.
     func ask(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !sending else { return }
+        let files = attachments
+        guard !(text.isEmpty && files.isEmpty), !sending else { return }
         banner = nil
-        items.append(ChatItem(role: "user", text: text))
+        attachments = []
+        let composed = MessageComposer.compose(question: text, attachments: files)
+        if !composed.trimmed.isEmpty { banner = "Too long to send whole, so the end was left out: " + composed.trimmed.joined(separator: ", ") + "." }
+        let project = activeProject?.id
+        items.append(ChatItem(role: "user", text: text.isEmpty ? "Explain this." : text, attached: files.map(\.name)))
         items.append(ChatItem(role: "assistant", text: "", status: "Thinking", streaming: true))
         let index = items.count - 1
         sending = true; mood = .thinking
@@ -134,8 +156,8 @@ final class AppModel: ObservableObject {
             var outcome = StreamOutcome()
             do {
                 try await self.ensureSession()
-                var input = OloAPI.AskInput(conversationId: privateNow ? nil : self.conversationId, content: text, grounded: self.grounded,
-                                            challenge: self.challenge, brain: self.brain, isPrivate: privateNow)
+                var input = OloAPI.AskInput(conversationId: privateNow ? nil : self.conversationId, content: composed.content, grounded: self.grounded,
+                                            projectId: project, challenge: self.challenge, brain: self.brain, isPrivate: privateNow)
                 input.tier = self.tier
                 input.autoTier = self.tier == "medium"
                 input.client = "ios"
@@ -149,6 +171,8 @@ final class AppModel: ObservableObject {
                     self.items[index].sources = outcome.sources
                     self.items[index].followUps = outcome.followUps
                     self.items[index].notices = outcome.notices
+                    self.items[index].artifacts = outcome.artifacts
+                    if case .truncated(let jobId, _) = event, let jobId { self.items[index].buildJobId = jobId }
                     if case .error(let message, _, _) = event { self.items[index].failed = true; self.banner = message }
                 }
                 if !privateNow, let id = outcome.conversationId { self.conversationId = id }
@@ -156,6 +180,10 @@ final class AppModel: ObservableObject {
                 if failure.isQuota {
                     self.banner = self.signedIn ? failure.message : "You have used today's free questions. Sign in to carry on."
                     self.showSignIn = !self.signedIn
+                    if self.signedIn {
+                        await self.refreshEntitlement()
+                        if self.entitlement?.isFree ?? true { self.showPlans = true }
+                    }
                 } else if failure.isUnauthorized {
                     self.api.token = nil; Keychain.write("session", nil); self.email = nil
                     self.banner = "Your session ended. Ask again to start a new one."

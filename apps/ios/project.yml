@@ -41,6 +41,8 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSSupportsLiveActivities: true
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         NSCalendarsFullAccessUsageDescription: Olo reads your calendar on this iPhone to show your day, find free time and learn your routine. Nothing is sent anywhere unless you choose to share your day with a question.
         NSRemindersFullAccessUsageDescription: Olo shows the reminders due today and adds the ones you ask for.
         NSMicrophoneUsageDescription: Olo listens only while you hold a conversation with it by voice.

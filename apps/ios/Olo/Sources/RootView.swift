@@ -23,11 +23,17 @@ struct RootView: View {
             FloatingOlo(tab: $tab)
         }
         .sheet(isPresented: $model.showSignIn) { SignInView() }
+        .sheet(isPresented: $model.showPlans) { PlansView(store: model.purchases) }
+        .onOpenURL { url in
+            if case .some(.ask) = LinkPolicy.parse(url) { tab = .olo }
+            model.handle(url: url)
+        }
         .fullScreenCover(isPresented: .constant(model.needsTerms)) { TermsGate() }
         .task {
             model.onAnswer = { text in if model.speakAnswers { voice.speak(text) } }
             await model.refreshProfile()
             await model.loadConversations()
+            await model.bootstrapBilling()
             await calendar.reload()
             refreshCompanion()
         }
@@ -73,7 +79,9 @@ struct FloatingOlo: View {
                            ("Try a question with a date in it. I check those hardest.", "When was the Internet Archive founded, and by whom?")]
         case .today: return [("I can plan the day around what is in your calendar.", "Help me plan today around my calendar."),
                              ("Short of time? Ask me what can wait.", "Looking at a busy day, how do I decide what can wait?")]
-        case .library: return [("Everything I remember is here, and you approve each one.", "What do you remember about me?")]
+        case .library: return [("Everything I remember is here, and you approve each one.", "What do you remember about me?"),
+                               ("Connect Google under Mail and calendar and I can read your mail when you ask.", "Summarise my unread email from the last two days."),
+                               ("Open Build with Olo and tell me what to make.", "What can you build for me on this phone?")]
         case .settings: return [("Your private chats are never stored. Ask me how that works.", "How do private chats work in Olo?")]
         }
     }
