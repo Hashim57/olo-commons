@@ -14,12 +14,20 @@ struct LibraryView: View {
                         Button("Sign in") { model.showSignIn = true }
                     }
                 }
-                Section {
+                Section("Make") {
+                    NavigationLink { BuildHomeView() } label: { Label("Build with Olo", systemImage: "hammer") }
+                    NavigationLink { ArtifactShelf() } label: { Label("Artifacts", systemImage: "doc.richtext") }
+                    NavigationLink { ProjectsView() } label: { Label("Projects and files", systemImage: "folder") }
+                }
+                Section("Olo for you") {
                     NavigationLink { MemoryShelf() } label: { Label("Memory", systemImage: "brain") }
                     NavigationLink { ScheduleShelf() } label: { Label("Scheduled", systemImage: "clock.arrow.circlepath") }
                     NavigationLink { WatchShelf() } label: { Label("Watching", systemImage: "eye") }
-                    NavigationLink { ArtifactShelf() } label: { Label("Artifacts", systemImage: "doc.richtext") }
                     NavigationLink { SkillShelf() } label: { Label("Skills", systemImage: "wand.and.stars") }
+                }
+                Section("Checked and connected") {
+                    NavigationLink { ZeusGraphView() } label: { Label("What Zeus knows", systemImage: "point.3.connected.trianglepath.dotted") }
+                    NavigationLink { ConnectorsView() } label: { Label("Mail and calendar", systemImage: "envelope.badge") }
                 }
             }
             .navigationTitle("Library")
@@ -31,6 +39,8 @@ struct LibraryView: View {
 struct Shelf<Item: Identifiable, Row: View>: View {
     let title: String
     let emptyText: String
+    /// Change this to load the list again (after something was created).
+    var refresh: Int = 0
     let load: () async throws -> [Item]
     @ViewBuilder let row: (Item, @escaping () async -> Void) -> Row
     @State private var items: [Item] = []
@@ -50,7 +60,7 @@ struct Shelf<Item: Identifiable, Row: View>: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
-        .task { await reload() }
+        .task(id: refresh) { await reload() }
     }
 }
 
@@ -75,19 +85,29 @@ struct MemoryShelf: View {
 
 struct ScheduleShelf: View {
     @EnvironmentObject var model: AppModel
+    @State private var showNew = false
+    @State private var refresh = 0
     var body: some View {
-        Shelf(title: "Scheduled", emptyText: "No scheduled tasks. Create them on the Mac or the web and they will appear here.", load: { try await model.api.listSchedules() }) { t, reload in
+        Shelf(title: "Scheduled", emptyText: "No scheduled tasks yet. Press + to have Olo ask something for you every day or every week.", refresh: refresh, load: { try await model.api.listSchedules() }) { t, reload in
             VStack(alignment: .leading, spacing: 6) {
                 Text(t.title).font(.headline)
-                Text(t.scheduleLine).font(.subheadline).foregroundStyle(.secondary)
+                Text(t.scheduleLine + (t.enabled ? "" : " (paused)")).font(.subheadline).foregroundStyle(.secondary)
                 if let last = t.lastLine { Text(last).font(.caption).foregroundStyle(.secondary) }
-                HStack {
+                HStack(spacing: 14) {
                     Button("Run now") { Task { try? await model.api.runScheduleNow(id: t.id); await reload() } }.font(.caption.weight(.semibold)).buttonStyle(.borderless)
+                    Button(t.enabled ? "Pause" : "Resume") { Task { _ = try? await model.api.updateSchedule(OloAPI.ScheduleUpdate(id: t.id, enabled: !t.enabled)); await reload() } }.font(.caption).buttonStyle(.borderless)
+                    Button(t.email ? "Stop emailing" : "Email me") { Task { _ = try? await model.api.updateSchedule(OloAPI.ScheduleUpdate(id: t.id, email: !t.email)); await reload() } }.font(.caption).buttonStyle(.borderless)
                     Spacer()
                     Button("Delete", role: .destructive) { Task { try? await model.api.deleteSchedule(id: t.id); await reload() } }.font(.caption).buttonStyle(.borderless)
                 }
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { if model.signedIn { showNew = true } else { model.showSignIn = true } } label: { Image(systemName: "plus") }.accessibilityLabel("New scheduled task")
+            }
+        }
+        .sheet(isPresented: $showNew) { NewScheduleSheet(done: { refresh += 1 }) }
     }
 }
 
@@ -108,15 +128,13 @@ struct WatchShelf: View {
 struct ArtifactShelf: View {
     @EnvironmentObject var model: AppModel
     var body: some View {
-        Shelf(title: "Artifacts", emptyText: "Nothing built yet. Ask Olo to build a page, a document or a chart.", load: { try await model.api.listArtifacts() }) { a, _ in
+        Shelf(title: "Artifacts", emptyText: "Nothing built yet. Ask Olo to build a page, a document or a chart, or open Build with Olo.", load: { try await model.api.listArtifacts() }) { a, reload in
             NavigationLink {
-                ScrollView { Text(a.code).font(.footnote.monospaced()).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(16) }
-                    .navigationTitle(a.title).navigationBarTitleDisplayMode(.inline)
-                    .toolbar { ToolbarItem(placement: .topBarTrailing) { ShareLink(item: a.code) } }
+                ArtifactDetailView(artifact: a, deleted: { Task { await reload() } })
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(a.title)
-                    Text(a.filename).font(.caption).foregroundStyle(.secondary)
+                    Text(a.suggestedFilename).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -125,12 +143,30 @@ struct ArtifactShelf: View {
 
 struct SkillShelf: View {
     @EnvironmentObject var model: AppModel
+    @State private var showNew = false
+    @State private var refresh = 0
+    @State private var note: String?
     var body: some View {
-        Shelf(title: "Skills", emptyText: "No skills yet. Create them on the Mac or the web.", load: { try await model.api.listSkills() }) { s, _ in
+        Shelf(title: "Skills", emptyText: "No skills yet. A skill is a short set of instructions Olo follows when a request matches it. Press + to write one.", refresh: refresh, load: { try await model.api.listSkills() }) { s, reload in
             VStack(alignment: .leading, spacing: 4) {
-                Text(s.name).font(.headline)
+                HStack {
+                    Text(s.name).font(.headline)
+                    Spacer()
+                    Text(s.statusLabel).font(.caption).foregroundStyle(.secondary)
+                }
                 Text(s.description).font(.subheadline).foregroundStyle(.secondary)
+                if !s.triggers.isEmpty { Text("Triggers: \(s.triggers.joined(separator: ", "))").font(.caption).foregroundStyle(.secondary) }
+                Button("Delete", role: .destructive) { Task { try? await model.api.deleteSkill(id: s.id); await reload() } }.font(.caption).buttonStyle(.borderless)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if let note { Text(note).font(.footnote).padding(10).frame(maxWidth: .infinity).background(.bar).onTapGesture { self.note = nil } }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { if model.signedIn { showNew = true } else { model.showSignIn = true } } label: { Image(systemName: "plus") }.accessibilityLabel("New skill")
+            }
+        }
+        .sheet(isPresented: $showNew) { NewSkillSheet(done: { message in note = message; refresh += 1 }) }
     }
 }

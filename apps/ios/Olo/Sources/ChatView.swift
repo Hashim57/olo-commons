@@ -8,6 +8,7 @@ struct ChatView: View {
     @EnvironmentObject var voice: Voice
     @State private var draft = ""
     @State private var showHistory = false
+    @State private var pickingFiles = false
     @FocusState private var focused: Bool
 
     private let starters = ["Build something", "Check it against sources", "Work through a decision"]
@@ -21,6 +22,13 @@ struct ChatView: View {
                         .background(Color.orange.opacity(0.18))
                         .onTapGesture { model.banner = nil }
                 }
+                if let quota = model.quotaBanner {
+                    HStack(alignment: .top, spacing: 10) {
+                        Text(quota).font(.footnote).frame(maxWidth: .infinity, alignment: .leading)
+                        Button(model.isSubscribed ? "Manage" : "Subscribe") { model.showPlans = true }.font(.footnote.weight(.semibold)).buttonStyle(.borderedProminent).controlSize(.small)
+                    }
+                    .padding(10).background(Color.accentColor.opacity(0.12))
+                }
                 if model.items.isEmpty { empty } else { thread }
                 composer
             }
@@ -30,6 +38,7 @@ struct ChatView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showHistory = true } label: { Image(systemName: "sidebar.left") }.accessibilityLabel("Conversations")
                 }
+                ToolbarItem(placement: .topBarTrailing) { ExportMenu() }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { model.newConversation() } label: { Image(systemName: "square.and.pencil") }.accessibilityLabel("New conversation")
                 }
@@ -86,7 +95,12 @@ struct ChatView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 6)
             }
             if let problem = voice.problem { Text(problem).font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading) }
+            AttachmentBar(picking: $pickingFiles)
             HStack(alignment: .bottom, spacing: 8) {
+                Button { focused = false; pickingFiles = true } label: {
+                    Image(systemName: "paperclip.circle").font(.system(size: 32))
+                }
+                .accessibilityLabel("Attach a file")
                 TextField("Ask Olo", text: $draft, axis: .vertical).lineLimit(1...5).focused($focused)
                     .padding(.horizontal, 14).padding(.vertical, 10)
                     .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18))
@@ -102,7 +116,7 @@ struct ChatView: View {
                 } label: {
                     Image(systemName: model.sending ? "stop.circle.fill" : "arrow.up.circle.fill").font(.system(size: 32))
                 }
-                .disabled(!model.sending && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(!model.sending && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && model.attachments.isEmpty)
                 .accessibilityLabel(model.sending ? "Stop" : "Send")
             }
             Picker("Depth", selection: $model.tier) {
@@ -150,9 +164,14 @@ struct MessageView: View {
 
     var body: some View {
         if item.role == "user" {
-            Text(item.text).padding(.horizontal, 14).padding(.vertical, 10)
-                .background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 16))
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(item.text).padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 16))
+                if !item.attached.isEmpty {
+                    Label(item.attached.joined(separator: ", "), systemImage: "paperclip").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 if !item.text.isEmpty { Text(rich(item.text)).textSelection(.enabled) }
@@ -160,6 +179,13 @@ struct MessageView: View {
                     HStack(spacing: 8) { ProgressView().controlSize(.small); Text(status).font(.footnote).foregroundStyle(.secondary) }
                 }
                 ForEach(item.notices, id: \.self) { Text($0).font(.footnote).foregroundStyle(.secondary) }
+                ForEach(item.artifacts) { artifact in ArtifactCard(artifact: artifact) }
+                if let jobId = item.buildJobId {
+                    BuildJobCard(jobId: jobId, showsResult: true, finished: { job in
+                        if let whole = job.finishedAnswer { model.finishAnswer(item.id, with: whole) }
+                    })
+                        .padding(12).background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                }
                 if let v = item.verification, !item.streaming { verdicts(v) }
                 if !item.sources.isEmpty && !item.streaming { sources }
                 if !item.followUps.isEmpty && !item.streaming {
@@ -173,6 +199,7 @@ struct MessageView: View {
                         }
                     }
                 }
+                if !item.streaming && !item.text.isEmpty { AnswerActions(text: item.text) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
