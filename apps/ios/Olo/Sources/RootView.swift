@@ -8,7 +8,9 @@ struct RootView: View {
     @EnvironmentObject var calendar: CalendarBridge
     @EnvironmentObject var voice: Voice
     @EnvironmentObject var companion: Companion
+    @EnvironmentObject var hands: HandsFree
     @ObservedObject private var pending = PendingAsk.shared
+    @ObservedObject private var entries = PendingEntry.shared
     @Environment(\.scenePhase) private var phase
     @State private var tab: AppTab = .olo
 
@@ -24,13 +26,19 @@ struct RootView: View {
         }
         .sheet(isPresented: $model.showSignIn) { SignInView() }
         .sheet(isPresented: $model.showPlans) { PlansView(store: model.purchases) }
+        .sheet(item: $hands.quickAsk) { request in QuickAskView(request: request).id(request.id) }
+        .fullScreenCover(item: $hands.talk) { request in TalkToOloView(request: request).id(request.id) }
         .onOpenURL { url in
+            // olo://ask?listen=1 and olo://talk are voice; every other olo:// link is as before.
+            if let entry = VoiceEntry.parse(url) { hands.handle(entry); return }
             if case .some(.ask) = LinkPolicy.parse(url) { tab = .olo }
             model.handle(url: url)
         }
         .fullScreenCover(isPresented: .constant(model.needsTerms)) { TermsGate() }
         .task {
-            model.onAnswer = { text in if model.speakAnswers { voice.speak(text) } }
+            model.onAnswer = { text in if model.speakAnswers { voice.read(text, api: model.api) } }
+            hands.attach(model: model, voice: voice)
+            takeEntry()
             await model.refreshProfile()
             await model.loadConversations()
             await model.bootstrapBilling()
@@ -44,9 +52,23 @@ struct RootView: View {
             model.ask(question)
         }
         .onChange(of: phase) { _, now in
-            if now == .active { Task { await calendar.reload(); refreshCompanion() } }
+            hands.sceneChanged(active: now == .active)
+            if now == .active {
+                // The Ask Olo control and shortcut leave a note for the app to open Quick Ask.
+                if QuickAskSignal.take() { hands.openQuickAsk() }
+                Task { await calendar.reload(); refreshCompanion() }
+            }
         }
+        .onChange(of: entries.entry) { _, _ in takeEntry() }
+        .onChange(of: hands.showChat) { _, _ in tab = .olo }
         .onChange(of: model.mood) { _, _ in refreshCompanion() }
+    }
+
+    /// A home-screen action or the Talk to Olo shortcut asked for a voice screen.
+    private func takeEntry() {
+        guard let entry = entries.entry else { return }
+        entries.entry = nil
+        hands.handle(entry)
     }
 
     /// Keeps the Lock Screen, the Dynamic Island and the widget in step with the app.

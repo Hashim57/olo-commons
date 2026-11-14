@@ -6,6 +6,8 @@ struct OloApp: App {
     @StateObject private var calendar = CalendarBridge()
     @StateObject private var voice = Voice()
     @StateObject private var companion = Companion()
+    @StateObject private var hands = HandsFree()
+    @UIApplicationDelegateAdaptor(OloAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
@@ -14,6 +16,7 @@ struct OloApp: App {
                 .environmentObject(calendar)
                 .environmentObject(voice)
                 .environmentObject(companion)
+                .environmentObject(hands)
         }
     }
 }

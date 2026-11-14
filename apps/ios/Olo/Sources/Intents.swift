@@ -49,5 +49,7 @@ struct OloShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(intent: AskOloIntent(), phrases: ["Ask \(.applicationName)", "Ask \(.applicationName) a question"], shortTitle: "Ask Olo", systemImageName: "bubble.left")
         AppShortcut(intent: MyDayIntent(), phrases: ["What is my day like in \(.applicationName)", "\(.applicationName) my day"], shortTitle: "My day", systemImageName: "calendar")
+        AppShortcut(intent: OpenQuickAskIntent(), phrases: ["Quick ask \(.applicationName)", "\(.applicationName) quick ask"], shortTitle: "Quick Ask", systemImageName: "mic")
+        AppShortcut(intent: TalkToOloIntent(), phrases: ["Talk to \(.applicationName)", "Start a conversation with \(.applicationName)"], shortTitle: "Talk to Olo", systemImageName: "waveform")
     }
 }
