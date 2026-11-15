@@ -243,11 +243,58 @@ export function withoutPhysicalDescription(body: string): string {
   return body.slice(m[0].length).replace(CATALOGUE_NOTES_RE, ' ').replace(/\s+/g, ' ').trim();
 }
 
+export const FILE_MAX_WORDS_PER_TAG = 6; // a part between commas longer than this is a phrase, not a collection tag
+
+/**
+ * A quoted run of at least three characters standing on its own: opened at the start or after a space, a comma or a
+ * bracket, closed before the end or a space, a comma or a stop, so an apostrophe inside a word ("Women's") opens nothing.
+ */
+export const QUOTED_RE = /(?:^|(?<=[\s,;:(]))(?:'[^']{3,}?'|"[^"]{3,}?"|‘[^’]{3,}?’|“[^”]{3,}?”)(?=$|[\s,;:.)])/g;
+
+/** The field name the Indian digitisation projects write before the quoted file name. */
+export const FILENAME_RE = /\bfile ?name\s*:/i;
+
+/** A sentence end: a stop, a question mark or an exclamation mark followed by a space or the end. */
+export const SENTENCE_END_RE = /[.!?](?:\s|$)/;
+
+/**
+ * True when a body is a file record, not a description: the item's file name
+ * or title in quotation marks, with nothing around it but the names of the
+ * collections it belongs to. The scanning projects of Indian libraries upload
+ * to the Internet Archive with such descriptions ("SPS, SPS-Srinagar,
+ * Funded-By-IKS-MoE,IKS-SPS Filename: 'Bharatiya Sangeet Ka Itihas Dr.Thakur
+ * Jayadeva Singh Kolkata - Sangeet Research Academy'", "'Shola E Khamosh By
+ * Kalidas Gupta Raza Urdu Poetry Bombay 1965 - Subh E Ummid Publications',
+ * Nazki Collection"). They pass the licence gate (CC0) and every other rule:
+ * enough distinct words, no label, no link, no shelf-mark separators, and the
+ * quoted name is longer than the title, so the rest is long enough. The rule:
+ * at least one quoted run with no sentence inside it; outside the quotes no
+ * sentence end and, between commas, parts of at most FILE_MAX_WORDS_PER_TAG
+ * words; and either the quotes hold half the body or a "Filename:" field names
+ * them. On the 2026-11-15 snapshot 8 archive_org atoms were of that kind, 6 of
+ * them stored since 11 November (about a third of what the source added), and
+ * no atom of any other source matched. Such a body repeats the title and says
+ * which shelf the scan came from, which the URL already says.
+ */
+export function isFileRecord(body: unknown): boolean {
+  const b = oncely(clean(body));
+  if (!b) return false;
+  const quoted = b.match(QUOTED_RE) || [];
+  if (!quoted.length) return false;
+  if (quoted.some(q => SENTENCE_END_RE.test(q.slice(1, -1)))) return false;
+  const rest = b.replace(QUOTED_RE, ' ').split(FILENAME_RE).join(' ');
+  if (SENTENCE_END_RE.test(rest)) return false;
+  const tags = rest.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+  if (tags.some(t => words(t).length > FILE_MAX_WORDS_PER_TAG)) return false;
+  const quotedLength = quoted.reduce((n, q) => n + q.length, 0);
+  return quotedLength * 2 >= b.length || FILENAME_RE.test(b);
+}
+
 /**
  * True when an atom would carry no knowledge: its body is a label, one word
  * or one line repeated, a notice that points elsewhere (isLinkNotice), a
  * catalogue record (isCatalogueRecord), a shelf mark (isShelfMark), a rights
- * notice (isRightsNotice), or says
+ * notice (isRightsNotice), a file record (isFileRecord), or says
  * nothing beyond the title, the authors and a physical description
  * (withoutPhysicalDescription).
  * The Internet Archive search returns many uploads whose description is the
@@ -272,6 +319,7 @@ export function isStub(title: unknown, summary: unknown, content: unknown, autho
   if (isCatalogueRecord(body)) return true;
   if (isShelfMark(body)) return true;
   if (isRightsNotice(body)) return true;
+  if (isFileRecord(body)) return true;
   // What the body says once the physical description, the title and the authors are taken out of it.
   let rest = ' ' + withoutPhysicalDescription(body).toLowerCase() + ' ';
   const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);
