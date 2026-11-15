@@ -49,6 +49,14 @@ SHELF_MAX_WORDS_PER_SEGMENT = 4   # ...and one with a part longer than this hold
 SEGMENT_RE = re.compile(r"\s(?:[\u2013\u2014-]|\||/|>|\u00bb|::)\s")
 
 # A library catalogue's physical description at the start of a body ("ix, 203 pages : 24 cm") and its standard notes (PHYSICAL_RE and CATALOGUE_NOTES_RE in text.ts).
+FILE_MAX_WORDS_PER_TAG = 6   # a part between commas longer than this is a phrase, not a collection tag
+
+# A quoted run of at least three characters standing on its own (QUOTED_RE in text.ts): opened at the start or after a
+# space, a comma or a bracket, closed before the end or a space, a comma or a stop, so an apostrophe inside a word opens nothing.
+QUOTED_RE = re.compile(r"(?:^|(?<=[\s,;:(]))(?:'[^']{3,}?'|\"[^\"]{3,}?\"|\u2018[^\u2019]{3,}?\u2019|\u201c[^\u201d]{3,}?\u201d)(?=$|[\s,;:.)])")
+FILENAME_RE = re.compile(r"\bfile ?name\s*:", re.I)
+SENTENCE_END_RE = re.compile(r"[.!?](?:\s|$)")
+
 PHYSICAL_RE = re.compile(r"^(?:[xivlc]+, )?(?:\d+ (?:p\.|pages?|v\.|volumes?|leaves)|volumes?|\d+ (?:volume|guide|portfolio) \((?:unpaged|\d+ p\.?)\))(?: of plates)?[^A-Za-z0-9]*(?:(?:ill\.?|illustrations|col\.|colou?r|maps?|ports?\.?|facsims?\.?|music|charts?|plates)[^A-Za-z0-9]*)*(?:\d+(?: x \d+)? cm\.?)?", re.I)
 CATALOGUE_NOTES_RE = re.compile(r"\bIncludes? (?:bibliographical references?|bibliography|bibliographies|index(?:es)?|discography|filmography)(?: \((?:p\.|pages?)? ?[\d, -]+\))?(?: and index(?:es)?)?\.?|\bBibliography: (?:p\.|pages?) [\d, -]+\.?", re.I)
 
@@ -120,6 +128,31 @@ def is_shelf_mark(body):
     return len(segs) >= SHELF_MIN_SEGMENTS and all(len(words(s)) <= SHELF_MAX_WORDS_PER_SEGMENT for s in segs)
 
 
+def is_file_record(body):
+    """True when a body is a file record, not a description (isFileRecord in text.ts): the item's file name or title in
+    quotation marks with nothing around it but the names of its collections ("SPS, SPS-Srinagar, Funded-By-IKS-MoE,IKS-SPS
+    Filename: 'Bharatiya Sangeet Ka Itihas ... - Sangeet Research Academy'", "'Shola E Khamosh By Kalidas Gupta Raza Urdu
+    Poetry Bombay 1965 - Subh E Ummid Publications', Nazki Collection"). At least one quoted run with no sentence inside
+    it; outside the quotes no sentence end and at most FILE_MAX_WORDS_PER_TAG words between commas; and either the quotes
+    hold half the body or a "Filename:" field names them. 8 archive_org atoms on the 2026-11-15 snapshot, 6 of them
+    stored since 11 November, no atom of any other source."""
+    b = oncely(clean(body))
+    if not b:
+        return False
+    quoted = [m.group(0) for m in QUOTED_RE.finditer(b)]
+    if not quoted:
+        return False
+    if any(SENTENCE_END_RE.search(q[1:-1]) for q in quoted):
+        return False
+    rest = FILENAME_RE.sub(" ", QUOTED_RE.sub(" ", b))
+    if SENTENCE_END_RE.search(rest):
+        return False
+    tags = [t.strip() for t in re.split(r"[,;]", rest) if t.strip()]
+    if any(len(words(t)) > FILE_MAX_WORDS_PER_TAG for t in tags):
+        return False
+    return sum(len(q) for q in quoted) * 2 >= len(b) or FILENAME_RE.search(b) is not None
+
+
 def without_physical_description(body):
     """A body with its library physical description and catalogue notes taken out ("ix, 203 pages : 24 cm Includes
     bibliographical references and index" becomes ""); a body with no physical description comes back unchanged."""
@@ -129,14 +162,15 @@ def without_physical_description(body):
     return clean(CATALOGUE_NOTES_RE.sub(" ", body[m.end():]))
 
 
-STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "no_rest")
+STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "file_record", "no_rest")
 
 
 def stub_reason(title, summary, content, authors=None):
     """The name of the rule that makes an atom a stub, or None when it carries knowledge. The rules run in the
     ingester's order (isStub in text.ts), so the first that fires is named: "empty" (no body), "label" (fewer than
     STUB_MIN_DISTINCT different words), "repeat" (one line written over and over), "link_notice", "catalogue_record",
-    "shelf_mark", "rights_notice", and "no_rest" (nothing beyond the title, the authors and a physical description)."""
+    "shelf_mark", "rights_notice", "file_record", and "no_rest" (nothing beyond the title, the authors and a physical
+    description)."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
@@ -155,6 +189,8 @@ def stub_reason(title, summary, content, authors=None):
         return "shelf_mark"
     if is_rights_notice(body):
         return "rights_notice"
+    if is_file_record(body):
+        return "file_record"
     rest = " " + without_physical_description(body).lower() + " "
     for name in [title] + list(authors or []):
         n = clean(name).lower()

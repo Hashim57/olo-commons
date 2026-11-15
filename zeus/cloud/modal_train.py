@@ -71,12 +71,15 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
         return [json.loads(l) for l in open(path) if l.strip()] if os.path.exists(path) else []
 
     train = load(os.path.join(data, "train.jsonl"))
+    rule_made = len(train)
     for sub in ("gold", "imported"):
         d = os.path.join(data, sub)
         if os.path.isdir(d):
             for f in sorted(os.listdir(d)):
                 if f.endswith(".jsonl") and not f.endswith("-eval.jsonl"):
                     train += load(os.path.join(d, f))
+    # The gold and imported rows: under the time budget they always come inside the part of the list a run reads (recipe.budgeted_order).
+    priority = [i >= rule_made for i in range(len(train))]
     evals = load(os.path.join(data, "eval.jsonl"))[:eval_limit]
 
     base, tok, model = None, None, None
@@ -117,10 +120,9 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     # A different part of the set each version under the time budget, reproducible for the version (recipe.shuffle_seed).
     # The held-out sampling below keeps seed 0 so every version is measured on the same examples.
     rng = random.Random(recipe.shuffle_seed(version))
-    order = list(range(len(rows)))
     step = 0
     while step < steps:
-        rng.shuffle(order)
+        order = recipe.budgeted_order(priority, rng)
         for i in range(0, len(order) - batch + 1, batch):
             chunk = [rows[j] for j in order[i:i + batch]]
             L = max(len(x[0]) for x in chunk)
@@ -175,7 +177,10 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     json.dump(cfg, open(cfg_path, "w"), indent=2)
     summary = {"base": base, "framework": "peft-cloud", "gpu": GPU, "train_examples": len(rows), "eval_examples": len(evals), "epochs": iters_epochs,
                "steps": step, "planned_steps": planned_steps, "time_budget_minutes": max_minutes, "time_capped": step < planned_steps,
-               "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True}
+               "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True,
+               # how many of the gold and imported rows the budgeted part of the order held (all of them unless the hour allowed less than PRIORITY_FRONT of the list)
+               "priority_rows": sum(priority), "priority_front": recipe.PRIORITY_FRONT,
+               "priority_seen": sum(1 for pos in range(min(len(order), step * batch * accum)) if priority[order[pos]]) if step < planned_steps else sum(priority)}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
     print(json.dumps(report), flush=True)

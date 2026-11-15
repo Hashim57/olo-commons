@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isFileRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -149,6 +149,45 @@ Deno.test('isRightsNotice: a description that mentions rights in passing is kept
   // a Wikidata item ends with the project count, which is not a rights sentence
   assertEquals(isRightsNotice('Public Domain Day. annual observance on 1 January. Described in 8 Wikimedia projects.'), false);
   assertEquals(isRightsNotice(''), false);
+});
+
+/* ---------- isFileRecord: a quoted file name and the collections it sits in ---------- */
+
+Deno.test('isFileRecord: the Indian digitisation records from the 2026-11-15 snapshot are stubs', () => {
+  const records: [string, string][] = [
+    ['Bharatiya Sangeet Ka Itihas Dr. Thakur Jayadeva Singh Kolkata', "SPS, SPS-Srinagar, Funded-By-IKS-MoE,IKS-SPS Filename: 'Bharatiya Sangeet Ka Itihas Dr.Thakur Jayadeva Singh Kolkata - Sangeet Research Academy'"],
+    ['Miscellaneous Unknown Unknown Tamil', "Muthulakshmi Research Academy Scans,Funded-By-IKS-MoE,IKS-MUTHU, Filename: 'Miscellaneous-Unknown-Unknown-Tamil'"],
+    ['Upanishad Rahasya Ya Gita Ki Samagra Vyakhya ( Box 22 ) Anandomayi', "Sri Sri Anandamayee Ashram Varanasi Collection Filename: 'Upanishad Rahasya ya Gita ki Samagra Vyakhya ( Box 22 ) - Anandomayi'"],
+    ['Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965', "'Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965 - Subh E Ummid Publications', Nazki Collection"],
+    ['Mugdhabodhawithcommentary Sivanarayansiromani 1913 Bibliotheca Indica', "Bibliotheca Indica Series, Asiatic Society of Bengal, 'Mugdhabodhawithcommentary-Sivanarayansiromani1913 Bibliotheca Indica - the Asiatic Society Calcutta'"],
+    ['Shash Kalima Ma Namaz Arabic And Urdu Islam Lithograph Missing Pages Srinagar', "'Shash Kalima Ma Namaz Arabic and Urdu Islam Lithograph Missing Pages Srinagar - Ghulam Muhammad Nur Muhammad', Aalami-Urdu-ConferenceAalami-Urdu-Conference, BVB-Lucknow-Donations, BVB"],
+    // a template that never rendered
+    ['Der Tropenpflanzer', "${res.getProperty('main.meta.description')}"],
+  ];
+  for (const [title, body] of records) {
+    assert(isFileRecord(body), body);
+    assert(isFileRecord(body + ' ' + body), 'written twice: ' + body);
+    assert(isStub(title, body, body), body);
+  }
+  // double and typographic quotation marks count as well
+  assert(isFileRecord('Nazki Collection, "Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965 - Subh E Ummid Publications"'));
+  assert(isFileRecord('Nazki Collection, “Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965”'));
+});
+
+Deno.test('isFileRecord: a description that quotes something is kept', () => {
+  // a machine-written book summary opens with the title in quotation marks and goes on to say what the book is
+  assertEquals(isFileRecord('"Northanger Abbey" by Jane Austen is a coming-of-age novel and satire of Gothic fiction completed in 1799 and published posthumously in 1817.'), false);
+  // the quoted run is a sentence, and the rest is one too
+  assertEquals(isFileRecord('15 pages : 21 cm "The circus is in town. Come and see!"--Back cover'), false);
+  assertEquals(isFileRecord('The minister said the plan was "a first step", and the opposition called it "too little, too late".'), false);
+  // an apostrophe inside a word opens no quotation
+  assertEquals(isFileRecord("Women's rights advocate and Georgetown University Law Center graduate Sandra Fluke was a featured speaker Wednesday at the 2012 Democratic National Convention in Charlotte, North Carolina, the speech was broadcast on the network's news channel"), false);
+  // a quoted title with a real note after it: the note is a phrase of more than six words
+  assertEquals(isFileRecord("'Annual report of the Mysore railways 1903', scanned from the copy held by the state archive at Bangalore"), false);
+  // no quotation marks at all
+  assertEquals(isFileRecord('Karnataka State Archives - Mysore - Gazettes - Gazette-6 - HRS-Historical Record Section - R - 369 (ID 102517)'), false);
+  assertEquals(isFileRecord('Ochyrotica. genus of insects. Described in 8 Wikimedia projects.'), false);
+  assertEquals(isFileRecord(''), false);
 });
 
 /* ---------- isCatalogueRecord: a description that is a metadata record ---------- */

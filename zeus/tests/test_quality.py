@@ -231,6 +231,40 @@ def test_descriptions_that_mention_rights_in_passing_pass_the_rights_rule():
     assert not quality.is_stub("Public Domain Day", "Public Domain Day. annual observance on 1 January.", "Public Domain Day. annual observance on 1 January. Described in 8 Wikimedia projects.")
 
 
+FILE_RECORDS = [
+    ("Bharatiya Sangeet Ka Itihas Dr. Thakur Jayadeva Singh Kolkata", "SPS, SPS-Srinagar, Funded-By-IKS-MoE,IKS-SPS Filename: 'Bharatiya Sangeet Ka Itihas Dr.Thakur Jayadeva Singh Kolkata - Sangeet Research Academy'"),
+    ("Miscellaneous Unknown Unknown Tamil", "Muthulakshmi Research Academy Scans,Funded-By-IKS-MoE,IKS-MUTHU, Filename: 'Miscellaneous-Unknown-Unknown-Tamil'"),
+    ("Upanishad Rahasya Ya Gita Ki Samagra Vyakhya ( Box 22 ) Anandomayi", "Sri Sri Anandamayee Ashram Varanasi Collection Filename: 'Upanishad Rahasya ya Gita ki Samagra Vyakhya ( Box 22 ) - Anandomayi'"),
+    ("Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965", "'Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965 - Subh E Ummid Publications', Nazki Collection"),
+    ("Mugdhabodhawithcommentary Sivanarayansiromani 1913 Bibliotheca Indica", "Bibliotheca Indica Series, Asiatic Society of Bengal, 'Mugdhabodhawithcommentary-Sivanarayansiromani1913 Bibliotheca Indica - the Asiatic Society Calcutta'"),
+    ("Shash Kalima Ma Namaz Arabic And Urdu Islam Lithograph Missing Pages Srinagar", "'Shash Kalima Ma Namaz Arabic and Urdu Islam Lithograph Missing Pages Srinagar - Ghulam Muhammad Nur Muhammad', Aalami-Urdu-ConferenceAalami-Urdu-Conference, BVB-Lucknow-Donations, BVB"),
+    ("Der Tropenpflanzer", "${res.getProperty('main.meta.description')}"),
+]
+
+
+def test_file_records_are_stubs():
+    # the same examples as tests/text_test.ts (the 2026-11-15 snapshot), so the ingester and the training filter stay in step
+    for title, body in FILE_RECORDS:
+        assert quality.is_file_record(body), body
+        assert quality.is_file_record(body + " " + body), body
+        assert quality.is_stub(title, body, body), body
+        # the first rule in the ingester's order is named: the template has too few distinct words to get this far
+        assert quality.stub_reason(title, body, body) == ("label" if body.startswith("$") else "file_record"), body
+    assert quality.is_file_record('Nazki Collection, "Shola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965 - Subh E Ummid Publications"')
+    assert quality.is_file_record("Nazki Collection, \u201cShola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965\u201d")
+
+
+def test_descriptions_that_quote_something_pass_the_file_record_rule():
+    assert not quality.is_file_record('"Northanger Abbey" by Jane Austen is a coming-of-age novel and satire of Gothic fiction completed in 1799 and published posthumously in 1817.')
+    assert not quality.is_file_record('15 pages : 21 cm "The circus is in town. Come and see!"--Back cover')
+    assert not quality.is_file_record('The minister said the plan was "a first step", and the opposition called it "too little, too late".')
+    assert not quality.is_file_record("Women's rights advocate and Georgetown University Law Center graduate Sandra Fluke was a featured speaker Wednesday at the 2012 Democratic National Convention in Charlotte, North Carolina, the speech was broadcast on the network's news channel")
+    assert not quality.is_file_record("'Annual report of the Mysore railways 1903', scanned from the copy held by the state archive at Bangalore")
+    assert not quality.is_file_record("Karnataka State Archives - Mysore - Gazettes - Gazette-6 - HRS-Historical Record Section - R - 369 (ID 102517)")
+    assert not quality.is_file_record("Ochyrotica. genus of insects. Described in 8 Wikimedia projects.")
+    assert not quality.is_file_record("")
+
+
 def test_stub_reason_names_the_first_rule_that_fires_in_the_ingester_order():
     shelf = " - ".join(["Karnataka State Archives", "Mysore", "Gazettes", "Gazette-6", "HRS-Historical Record Section", "R", "369 (ID 102517)"])
     cases = [
