@@ -65,6 +65,8 @@ def status_row(date, version, base, train_examples, ev, minutes, gpu, summary=No
     capped = ""
     if summary and summary.get("time_capped"):
         capped = f" Time budget {summary.get('time_budget_minutes')} min: {summary.get('steps')} of {summary.get('planned_steps')} planned steps, about {summary.get('examples_seen'):,} examples seen."
+        if summary.get("priority_rows"):
+            capped += f" Gold and imported rows seen: {summary.get('priority_seen')} of {summary.get('priority_rows')}."
     note = (f"Trained in the cloud ({gpu}, {minutes} min), not on the Mac.{capped} Eval n={ev.get('n')}, JSON valid {ev.get('json_valid')}, "
             f"F1 supported {f1.get('supported')} / contradicted {f1.get('contradicted')} / not covered {f1.get('not_covered')}.")
     if ev.get("binary_balanced_accuracy") is not None:
@@ -91,6 +93,37 @@ def shuffle_seed(version):
     the same part of the set and never reach the rest. The order is recorded in train_summary.json as shuffle_seed."""
     import hashlib
     return int(hashlib.sha256(str(version).encode()).hexdigest()[:8], 16)
+
+
+# The share of the shuffled list that holds every hand-written and imported example. v20, the first
+# budgeted run, stopped after 46 percent of the list, so a plain shuffle would have left about half of
+# the gold lines and of the VitaminC rows unseen by that version (and a different half by the next).
+# They are the examples a rule cannot write and the ones the held-out sets are closest to, so a run
+# that trains for an hour should see every one of them; the rule-made rows fill the rest of the order.
+PRIORITY_FRONT = 0.4
+
+
+def budgeted_order(priority, rng, front=PRIORITY_FRONT):
+    """The order a budgeted run reads its training rows in. `priority` is one flag per row (True for a gold
+    or imported row). Both groups are shuffled with `rng`, then the priority rows are spread at even
+    intervals through the first `front` share of the list (or through as many positions as there are
+    priority rows, when there are more), and the other rows fill the remaining positions in their shuffled
+    order. So a run that stops after `front` of the list has still seen every priority row once, spaced
+    among rule-made rows rather than in one block, and the rule-made part still differs between versions
+    (the rng is seeded by the version). Every index appears exactly once."""
+    first = [i for i, p in enumerate(priority) if p]
+    rest = [i for i, p in enumerate(priority) if not p]
+    rng.shuffle(first)
+    rng.shuffle(rest)
+    if not first:
+        return rest
+    n = len(priority)
+    span = min(n, max(len(first), int(n * front)))
+    targets = {int(j * span / len(first)) for j in range(len(first))}
+    order, f, r = [], iter(first), iter(rest)
+    for pos in range(n):
+        order.append(next(f) if pos in targets else next(r))
+    return order
 
 
 def steps_within_budget(steps_done, elapsed_s, planned_steps, budget_s, min_measured=20):

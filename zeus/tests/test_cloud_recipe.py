@@ -74,5 +74,34 @@ def test_status_row_notes_a_time_capped_run():
     summary = {"time_capped": True, "time_budget_minutes": 60, "steps": 720, "planned_steps": 2142, "examples_seen": 11520}
     row = recipe.status_row("2026-11-14", "v20", "mistralai/Mistral-7B-Instruct-v0.2", "34,474", ev, 61.2, "A100-40GB", summary)
     assert "Time budget 60 min: 720 of 2142 planned steps, about 11,520 examples seen." in row
+    assert "Gold and imported rows seen" not in row  # a summary written before the rows were ordered by priority
+    with_priority = dict(summary, priority_rows=1742, priority_seen=1742, priority_front=0.4)
+    assert "about 11,520 examples seen. Gold and imported rows seen: 1742 of 1742." in recipe.status_row("2026-11-15", "v21", "b", "1", ev, 61.2, "A100-40GB", with_priority)
     assert "Time budget" not in recipe.status_row("2026-11-14", "v20", "b", "1", ev, 61.2, "A100-40GB", dict(summary, time_capped=False))
     assert "Time budget" not in recipe.status_row("2026-11-14", "v20", "b", "1", ev, 61.2, "A100-40GB")
+
+
+def test_budgeted_order_puts_every_gold_and_imported_row_inside_the_front_of_the_list():
+    import random
+    priority = [False] * 1000 + [True] * 50
+    order = recipe.budgeted_order(priority, random.Random(3))
+    assert sorted(order) == list(range(1050))  # a permutation: every row once
+    front = order[: int(1050 * recipe.PRIORITY_FRONT)]
+    assert sum(priority[i] for i in front) == 50  # all of them inside the budgeted part
+    positions = [pos for pos, i in enumerate(order) if priority[i]]
+    gaps = [b - a for a, b in zip(positions, positions[1:])]
+    assert min(gaps) >= 7 and max(gaps) <= 9  # spread evenly (420 positions over 50 rows), never one block
+    # the rule-made part differs between versions, the priority set does not
+    other = recipe.budgeted_order(priority, random.Random(4))
+    assert other != order and {i for i in other[:420] if priority[i]} == set(range(1000, 1050))
+
+
+def test_budgeted_order_with_no_or_too_many_priority_rows():
+    import random
+    assert sorted(recipe.budgeted_order([False] * 10, random.Random(0))) == list(range(10))
+    assert recipe.budgeted_order([], random.Random(0)) == []
+    # more priority rows than the front holds: they take the first positions, and nothing is lost
+    order = recipe.budgeted_order([True] * 8 + [False] * 2, random.Random(1))
+    assert sorted(order) == list(range(10)) and all(i < 8 for i in order[:8])
+    # all priority rows
+    assert sorted(recipe.budgeted_order([True] * 5, random.Random(2))) == list(range(5))
