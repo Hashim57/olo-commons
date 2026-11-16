@@ -16,17 +16,29 @@ What this module adds, over train atoms only, with train distractors only:
                                        contradiction rule, B among the passages; evidence quotes B
   century_supported      supported     "in 1863" restated as "in the 19th century", which the year entails
   century_wrong          contradicted  the same sentence with the century one off ("in the 18th century")
+  decade_supported       supported     "in 1863" restated as the part of its decade it falls in ("early in the
+                                       1860s", "during the early 1860s", "in the mid-1860s" for 1865), which
+                                       the year entails (compose-v2)
+  decade_wrong           contradicted  the same sentence moved to the wrong part of the decade ("late in the
+                                       1860s") or to the decade before or after ("in the early 1870s")
 
 The three composed kinds come as a contrastive set over the same two sentences, so "the claim is
-long and joins two facts" never predicts the label by itself; the century pair likewise.
+long and joins two facts" never predicts the label by itself; the century and decade pairs likewise.
 
-Kept apart from eval3 on purpose. eval3 joins two lead sentences with ", and " and restates a year
-as its decade; this module never uses ", and " as the joint (it uses "; ", ", while ", " Also, ",
-" In addition, ") and restates years as centuries, never decades. So a gain on eval3 after this
-change measures transfer of the skill, not a learned template. It never reads eval atoms, and it
-draws from its own generators (seeded by the atom id and the version), so eval.jsonl, eval2.jsonl,
-eval3.jsonl and the order of the earlier train examples are unchanged; --no-compose reproduces the
-train split without it. Bump COMPOSE_VERSION when a rule changes.
+Kept apart from eval3 on purpose. eval3 joins two lead sentences with ", and " and restates "in 1863"
+as "in the 1860s", the bare decade; this module never uses ", and " as the joint (it uses "; ",
+", while ", " Also, ", " In addition, ") and never writes the bare decade: compose-v1 restated years
+as centuries only, and a gain on eval3 was to measure transfer of the skill. It did not transfer:
+paraphrase_decade on eval3 went 0.18 (v16), 0.6 (v18), 0.438 (v20), 0.25 (v22), the one pattern
+still far from the ceiling while the gold set has carried a dozen decade paraphrases since 9
+November. compose-v2 teaches the decade directly, but always as a third of it ("early", "mid",
+"late") with the phrasing drawn from several templates, so eval3's "in the 1860s" is still a form
+the model has never seen in a rule-made example; from v23 on, eval3 paraphrase_decade measures a
+taught skill under a new template, not transfer, and STATUS.md says so. The module never reads eval
+atoms, and it draws from its own generators (seeded by the atom id and the version), so eval.jsonl,
+eval2.jsonl, eval3.jsonl and the order of the earlier train examples are unchanged; --no-compose
+reproduces the train split without it. Bump COMPOSE_VERSION when a rule changes (compose-v2 reseeds
+the earlier kinds too, so v23 draws different two-passage and century pairs than v22 did).
 """
 import hashlib
 import random
@@ -34,7 +46,7 @@ import re
 
 from build_dataset import _english, passage, sentences, stable_split
 
-COMPOSE_VERSION = "compose-v1"
+COMPOSE_VERSION = "compose-v2"
 JOINTS = ("; ", ", while ", " Also, ", " In addition, ")
 YEAR_RE = re.compile(r"\bin (1[0-9]\d\d|20[0-9]\d)\b(?!\s*[-\u2013\u2014/]\s*\d)")
 # words that may start the second half in lower case (anything else, likely a name, keeps its capital)
@@ -142,6 +154,68 @@ def century_pair(a, others, rng):
                  kind="century_wrong", edit=f"{year} -> {ordinal(wrong)} century")]
 
 
+# The three parts of a decade, by the last digit of the year, and the three ways a claim may say each
+# (chosen by one index, so the supported and the contradicted claim of a pair use the same wording):
+# the bare decade ("in the 1860s", eval3's form) is never among them.
+DECADE_PARTS = ((0, 3, "early"), (4, 6, "mid"), (7, 9, "late"))
+DECADE_PHRASES = {
+    "early": ("in the early {decade}", "early in the {decade}", "during the early {decade}"),
+    "mid": ("in the mid-{decade}", "in the middle of the {decade}", "during the mid-{decade}"),
+    "late": ("in the late {decade}", "late in the {decade}", "during the late {decade}"),
+}
+
+
+def decade_part(year):
+    """"early", "mid" or "late" for the third of its decade a year falls in: 1860 to 1863 early, 1864 to 1866 mid, 1867 to 1869 late."""
+    d = year % 10
+    return next(name for lo, hi, name in DECADE_PARTS if lo <= d <= hi)
+
+
+def decade_name(year, part):
+    """The part of a decade as a noun phrase, for a rationale: "early 1860s", "mid-1860s", "late 1860s"."""
+    decade = f"{year // 10 * 10}s"
+    return f"mid-{decade}" if part == "mid" else f"{part} {decade}"
+
+
+def decade_phrase(year, part, template):
+    """"in 1863" as a part of its decade, in wording number `template` (0 to 2): decade_phrase(1863, "early", 0) is
+    "in the early 1860s", decade_phrase(1865, "mid", 1) is "in the middle of the 1860s"."""
+    return DECADE_PHRASES[part][template].format(decade=f"{year // 10 * 10}s")
+
+
+def decade_pair(a, others, rng, now_decade=2020):
+    """A sentence with "in YYYY" restated as the part of its decade the year falls in (supported) and as the
+    wrong part of the decade or the wrong decade (contradicted). The decade after now_decade is never claimed."""
+    sents = [s for s in _usable(a) if YEAR_RE.search(s)]
+    if not sents or not others:
+        return []
+    s = rng.choice(sents)
+    m = YEAR_RE.search(s)
+    year = int(m.group(1))
+    part = decade_part(year)
+    template = rng.randrange(3)
+    good = s[:m.start()] + decade_phrase(year, part, template) + s[m.end():]
+    if rng.random() < 0.5:
+        wrong_part = rng.choice([name for _, _, name in DECADE_PARTS if name != part])
+        bad = s[:m.start()] + decade_phrase(year, wrong_part, template) + s[m.end():]
+        what = f"{year} -> {decade_name(year, wrong_part)}"
+        why = f"The passage gives the year {year}, which is the {decade_name(year, part)}, not the {decade_name(year, wrong_part)}."
+    else:
+        step = -10 if year // 10 * 10 >= now_decade else rng.choice((-10, 10))  # never a decade that has not begun
+        wrong_year = year + step
+        bad = s[:m.start()] + decade_phrase(wrong_year, part, template) + s[m.end():]
+        what = f"{year} -> {decade_name(wrong_year, part)}"
+        why = f"The passage gives the year {year}, which falls in the {year // 10 * 10}s, not the {wrong_year // 10 * 10}s."
+    own = passage(a)
+    ps = [own] + [passage(o) for o in others[:2]]
+    rng.shuffle(ps)
+    base = {"atom_id": a["id"], "generator": COMPOSE_VERSION, "passages": ps, "pair": f"{a['id']}:decade:{COMPOSE_VERSION}"}
+    return [dict(base, claim=good, label="supported", evidence=[{"passage": own["id"], "quote": s}],
+                 rationale=f"The passage gives the year {year}, which is the {decade_name(year, part)}.", kind="decade_supported"),
+            dict(base, claim=bad, label="contradicted", evidence=[{"passage": own["id"], "quote": s}],
+                 rationale=why, kind="decade_wrong", edit=what)]
+
+
 def add_composed(train, atoms, eval_share, contra, seed=7):
     """Insert the compose-v1 examples into train (in place) and return them. Train atoms only.
     Partners for a composed claim come from the same source (same language and register)."""
@@ -167,6 +241,10 @@ def add_composed(train, atoms, eval_share, contra, seed=7):
             rng = _rng(a["id"], "century")
             others = rng.sample([o for o in pool if o["id"] != a["id"]], k=min(2, len(pool) - 1))
             made.extend(century_pair(a, others, rng))
+        if _gate(a["id"], "decade", 2):
+            rng = _rng(a["id"], "decade")
+            others = rng.sample([o for o in pool if o["id"] != a["id"]], k=min(2, len(pool) - 1))
+            made.extend(decade_pair(a, others, rng))
     ins = random.Random(f"{seed}:{COMPOSE_VERSION}:insert")
     for ex in made:
         train.insert(ins.randrange(len(train) + 1), ex)

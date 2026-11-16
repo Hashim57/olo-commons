@@ -290,13 +290,60 @@ export function isFileRecord(body: unknown): boolean {
   return quotedLength * 2 >= b.length || FILENAME_RE.test(b);
 }
 
+/** A measurement with a unit followed by the side it measures: 'Dimensions are: 8 1/2" width by 11" height', "148.0 millimeters width", "220 millimeters diameter". */
+export const DIMENSIONS_RE = /\bdimensions?\b(?:[^.;]|\.\d){0,80}\b(?:width|height|length|diameter|thickness)\b|\d\s*(?:"|''|”|inch(?:es)?|in\.|millimet(?:er|re)s?|mm|cm)\s*(?:in\s+)?(?:width|height|length|diameter|thickness)\b/i;
+
+/** The weight of an object: "weight 1.9 grams", "weighs 32.3 grams", "weight 1,443.0 grams" (a decimal point does not end the clause). */
+export const WEIGHT_RE = /\b(?:weight|weighs|weighing)\b(?:[^.;]|\.\d){0,40}\b(?:grams?|g|ounces?|oz|kilograms?|kg|pounds?|lbs?)\b/i;
+
+/** The copyright status of a scanned American item: "No copyright notice evident", "No copyright notice or registration on file", "Public Domain under Rule 5 of the United States Copyright Statutes". */
+export const COPYRIGHT_STATUS_RE = /\bno copyright (?:notice|registration)(?: or (?:notice|registration))?\b[^.;,]{0,20}\b(?:evident|found|filed|on file|appears|appeared|located)\b|\brule 5 of the (?:united states|u\.?s\.?) copyright\b/i;
+
+/** An uploader placing their own work in the public domain: "This work was created by Jane Doe and is in the Public Domain", "Uploaded by Jane Doe and released under the Creative Commons License in the Public Domain", "Released into the Public Domain by Jane Doe". */
+export const DEDICATION_RE = /\b(?:created|digiti[sz]ed|scanned|written|photographed|uploaded|e[- ]?text created) by [A-Z][\w.'’-]+(?: [A-Z][\w.'’-]+){1,3}\b[^.]{0,40}\b(?:and (?:is|are|was|released|placed|dedicated)|released)\b[^.]{0,60}\bpublic domain\b|\breleased (?:into|to|in) the public domain by [A-Z][\w.'’-]+(?: [A-Z][\w.'’-]+){1,3}\b/i;
+
+/** The digitiser's credit on a scan: "Etext created by Jane Doe", "E-text created by Jane Doe". */
+export const ETEXT_CREDIT_RE = /\be[- ]?text created by [A-Z]/i;
+
+/**
+ * True when a body is an item record, not a description: it describes a
+ * scanned object as an object. One uploader to the Internet Archive puts his
+ * own papers and belongings online under CC0 or a public domain mark, each
+ * described by what it is, its dimensions and weight, its copyright status
+ * and his dedication: "This is a Baptismal Certificate issued in the
+ * Immaculate Conception Church, Astoria, New York, Form No. 314, dated 5
+ * October, 1952, for ... No copyright notice evident, Public Domain under Rule
+ * 5 of the United States Copyright Statutes", "Gaylord Library Card number
+ * 55; 13 August 1982. Dimensions: 2 7/8" width by 4 7/8" height; weight 1.9
+ * grams. E text created by ...", "This is a Poem written by ...; 19 February
+ * 2000. This work was created by ... and is in the Public Domain under the
+ * Creative Commons License". They pass the licence gate and every other rule
+ * (a real sentence, enough distinct words, no label, no link, no quotes). On
+ * the 2026-11-16 snapshot 57 archive_org atoms were of that kind, 54 of them
+ * stored since 10 November (about seven a day, a quarter to a third of what
+ * the source added), and no atom of any other source matched. Among them are a
+ * baptismal certificate, a home inspection report with a street address, class
+ * rosters and teaching records, which name private people (the Commons stores
+ * no personal data), and the rest state the size and weight of a hubcap, an
+ * ashtray or a warranty card, which no claim is checked against. The rule:
+ * the copyright-status boilerplate, or the dedication, or the digitiser's
+ * credit, or a dimensions clause together with a weight; a dimensions clause
+ * alone is kept, because a paper measures proteins in nanometres and a news
+ * story gives a display's size in inches.
+ */
+export function isItemRecord(body: unknown): boolean {
+  const b = oncely(clean(body));
+  if (!b) return false;
+  return COPYRIGHT_STATUS_RE.test(b) || DEDICATION_RE.test(b) || ETEXT_CREDIT_RE.test(b) || (DIMENSIONS_RE.test(b) && WEIGHT_RE.test(b));
+}
+
 /**
  * True when an atom would carry no knowledge: its body is a label, one word
  * or one line repeated, a notice that points elsewhere (isLinkNotice), a
  * catalogue record (isCatalogueRecord), a shelf mark (isShelfMark), a rights
- * notice (isRightsNotice), a file record (isFileRecord), or says
- * nothing beyond the title, the authors and a physical description
- * (withoutPhysicalDescription).
+ * notice (isRightsNotice), a file record (isFileRecord), an item record
+ * (isItemRecord), or says nothing beyond the title, the authors and a
+ * physical description (withoutPhysicalDescription).
  * The Internet Archive search returns many uploads whose description is the
  * identifier, a file name or a word typed twice ("new book new book", "fhfh
  * fhfh", "P P"); a third of the archive_org atoms in the Commons on 2026-11-03
@@ -320,6 +367,7 @@ export function isStub(title: unknown, summary: unknown, content: unknown, autho
   if (isShelfMark(body)) return true;
   if (isRightsNotice(body)) return true;
   if (isFileRecord(body)) return true;
+  if (isItemRecord(body)) return true;
   // What the body says once the physical description, the title and the authors are taken out of it.
   let rest = ' ' + withoutPhysicalDescription(body).toLowerCase() + ' ';
   const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);

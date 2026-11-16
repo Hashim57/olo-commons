@@ -47,7 +47,7 @@ Determinism and versioning: each atom draws from its own generator seeded by its
 
 Example counts from an offline build of the 26 Oct 2026 snapshot (1,851 atoms; counts of examples, not scores): 1,725 hard examples in 781 contrastive sets, that is 781 supported twins, 694 contradicted (291 value shift, 255 antonym flip, 92 negation, 51 entity swap, 5 quantifier, 0 order swap, a pattern the snapshot's short summaries rarely contain) and 250 not covered (153 added clause, 47 modal shift, 29 scope shift, 21 relation shift). The rule-made train split grows from 5,766 to 7,491 examples: supported 1,496 to 2,277, contradicted 1,314 to 2,008, not covered 2,956 to 3,206, so the hard sets also pull the labels closer to balance (not covered had been the largest by far, because of the near misses).
 
-### 1c. Composed train examples (generator `compose-v1`, added 5 Nov 2026)
+### 1c. Composed train examples (generator `compose-v1`, added 5 Nov 2026; `compose-v2` since 16 Nov 2026)
 
 Why: v16 scored 0.0 on eval3's two_passage pattern (59 supported claims whose halves come from two passages) and 0.18 on paraphrase_decade. Every rule-made and hard-v1 supported example was one sentence quoted from one passage, so the model had learned that a supported claim has exactly one quote. `zeus/compose.py` adds, over train atoms only with train distractors only:
 
@@ -57,6 +57,13 @@ Why: v16 scored 0.0 on eval3's two_passage pattern (59 supported claims whose ha
 - `century_supported` (supported) and `century_wrong` (contradicted): "in 1863" restated as "in the 19th century", and as the century before or after (never a century that has not begun; years ending in 00 are skipped).
 
 One train atom in five starts a composed set, one in two may give a century pair. The joints are "; ", ", while ", " Also, " and " In addition, " (English joints only between English sentences), never eval3's ", and", and years become centuries, never decades, so a gain on eval3 after this change measures transfer of the skill rather than a copied template. On the 2026-11-05 snapshot it adds 1,988 examples (773 supported, 773 missing half, 216 false half, 113 and 113 century). `eval.jsonl`, `eval2.jsonl` and `eval3.jsonl` are byte-identical with or without it, and `--no-compose` reproduces the train split without it; `meta.json` records `compose-v1` in `train_generators` and the counts in `train_composed_by_kind`.
+
+`compose-v2` (16 Nov 2026) adds a decade pair beside the century pair, because the skill did not transfer: eval3's paraphrase_decade went 0.18 (v16), 0.6 (v18), 0.438 (v20), 0.25 (v22), the one eval3 pattern still far from the ceiling, while the gold set has carried a dozen decade paraphrases since 9 November.
+
+- `decade_supported` (supported): "in 1863" restated as the third of its decade the year falls in, in one of three wordings per part ("in the early 1860s", "early in the 1860s", "during the early 1860s"; "in the mid-1860s", "in the middle of the 1860s", "during the mid-1860s"; and the same for "late"), which the year entails.
+- `decade_wrong` (contradicted): the same sentence, same wording, moved to the wrong part of the decade ("in the late 1860s") or to the decade before or after ("in the early 1870s"; never a decade that has not begun).
+
+The bare decade, eval3's form ("in the 1860s"), is still never written by a rule, so eval3 paraphrase_decade from v23 on measures a taught skill under a different wording, not transfer. One train atom in two may give a decade pair. The version bump reseeds the earlier kinds, so a compose-v2 build draws different two-passage and century pairs than a compose-v1 build of the same atoms did; the eval files are unchanged (byte-identical on the 2026-11-16 snapshot). On that snapshot, at the 7,000-atom cap, compose-v2 adds 3,542 examples (1,152 supported, 1,152 missing half, 340 false half, 232 and 232 century, 217 and 217 decade).
 
 ## 2. Gold examples (hand-written)
 

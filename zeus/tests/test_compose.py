@@ -1,6 +1,6 @@
-"""Unit tests for the compose-v1 train examples (zeus/compose.py). Run with: python3 -m pytest zeus/tests.
+"""Unit tests for the compose-v2 train examples (zeus/compose.py). Run with: python3 -m pytest zeus/tests.
 No network, synthetic atoms only."""
-import os, random, sys, uuid
+import os, random, re, sys, uuid
 
 HERE = os.path.dirname(__file__)
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -64,11 +64,48 @@ def test_composed_set_is_contrastive_over_the_same_claim():
             assert f["evidence"] == [sup["evidence"][1]]
 
 
-def test_never_the_eval3_joint_and_never_a_decade():
+def test_never_the_eval3_joint_and_never_the_bare_decade():
     _, made = build(atoms())
     for ex in made:
         assert ", and " not in ex["claim"].replace(ex["evidence"][0]["quote"] if ex["evidence"] else "\0", "")
-        assert "0s" not in ex["claim"]
+        # eval3 writes "in the 1860s"; compose writes a decade only as a third of it ("in the early 1860s", "early in the 1860s")
+        assert not re.search(r"(?<!early )(?<!mid )(?<!late )\bin the \d{3}0s\b", ex["claim"]), ex["claim"]
+        if not ex["kind"].startswith("decade_"):
+            assert "0s" not in ex["claim"]
+
+
+def test_decade_rules():
+    assert [compose.decade_part(y) for y in (1860, 1863, 1864, 1866, 1867, 1869)] == ["early", "early", "mid", "mid", "late", "late"]
+    assert compose.decade_phrase(1863, "early", 0) == "in the early 1860s"
+    assert compose.decade_phrase(2008, "late", 1) == "late in the 2000s"
+    assert compose.decade_phrase(1865, "mid", 0) == "in the mid-1860s" and compose.decade_phrase(1865, "mid", 1) == "in the middle of the 1860s"
+    assert compose.decade_name(1865, "mid") == "mid-1860s" and compose.decade_name(1863, "early") == "early 1860s"
+    a = atoms()
+    others = a[1:3]
+    pair = compose.decade_pair(a[1], others[1:] + a[3:4], random.Random(1))  # built in 1707: late 1700s
+    good, bad = pair
+    assert good["label"] == "supported" and good["kind"] == "decade_supported"
+    assert "late" in good["claim"] and "1700s" in good["claim"] and "1707" not in good["claim"]
+    assert bad["label"] == "contradicted" and bad["kind"] == "decade_wrong" and bad["claim"] != good["claim"]
+    assert bad["evidence"] == good["evidence"] and good["evidence"][0]["quote"] in a[1]["summary"]
+    assert bad["edit"].startswith("1707 -> ")
+    # over many seeds both kinds of wrong appear, and the wrong one is never the right part of the right decade
+    kinds = set()
+    for seed in range(40):
+        good, bad = compose.decade_pair(a[1], others, random.Random(seed))
+        wrong = bad["edit"].split(" -> ")[1]
+        assert wrong != "late 1700s"
+        kinds.add("part" if wrong.endswith("1700s") else "decade")
+    assert kinds == {"part", "decade"}
+
+
+def test_a_2020s_year_is_never_moved_into_the_2030s():
+    a = atoms(3)
+    a[0]["summary"] = "The new terminal of the airport number 0 opened in 2024 after a long period of building works."
+    for seed in range(40):
+        good, bad = compose.decade_pair(a[0], a[1:], random.Random(seed))
+        assert ("mid-2020s" in good["claim"] or "middle of the 2020s" in good["claim"]) and "2024" not in good["claim"]
+        assert "2030s" not in bad["claim"]
 
 
 def test_century_rules():
