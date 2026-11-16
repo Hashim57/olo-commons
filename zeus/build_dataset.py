@@ -1029,7 +1029,7 @@ def compose_contra(s, texts, rng):
 
 
 def add_composed_train(train, atoms, eval_share, seed=7):
-    """compose-v1 (zeus/compose.py): two-passage claims and century paraphrases, train atoms only."""
+    """compose-v2 (zeus/compose.py): two-passage claims, century and decade paraphrases, train atoms only."""
     import compose
     return compose.add_composed(train, atoms, eval_share, compose_contra, seed)
 
@@ -1045,7 +1045,7 @@ def main():
     ap.add_argument("--eval-share", type=float, default=0.1)
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
-    ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v1 train examples (two-passage claims and century paraphrases; train only)")
+    ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v2 train examples (two-passage claims, century and decade paraphrases; train only)")
     ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
                     help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
     args = ap.parse_args()
