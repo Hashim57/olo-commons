@@ -254,6 +254,45 @@ def test_file_records_are_stubs():
     assert quality.is_file_record("Nazki Collection, \u201cShola E Khamosh By Kalidas Gupta Raza Urdu Poetry Bombay 1965\u201d")
 
 
+ITEM_RECORDS = [
+    # the same examples as tests/text_test.ts (the 2026-11-16 snapshot), the uploader's name replaced by a placeholder
+    ("gaylord_library_card_number_55", 'Gaylord Library Card number 55; 13 August 1982. Dimensions: 2 7/8" width by 4 7/8" height; weight 1.9 grams. E text created by Jane Doe. Hi-resolution TIFF files are archived and can be downloaded.'),
+    ("Baptism_Certificate_Immaculate_Conception_Church", "This is a Baptismal Certificate issued in the Immaculate Conception Church, Astoria, New York, Form No. 314, dated 5 October, 1952, for Jane Doe; printed by F. J. Remey Co., New York. No copyright notice evident, Public Domain under Rule 5 of the United States Copyright Statutes."),
+    ("Homart_303_220_Sears_Humidifier_", 'Homart Furnace Humidifier; Published by Sears, Roebuck and Company, Chicago, Illinois; in 1950; Part Number 85-099; Model Number 303.220. Dimensions are: 8 1/2" width by 11" height, 4 pages. No copyright notice evident.'),
+    ("olympus_model_OM_10_camera_", "Olympus Model OM-10 Camera and owner's manual; published June 1979, by Olympus. There is no copyright registration or notice filed for this item; the digital work was created by Jane Doe and is in the Public Domain under the Creative Commons License."),
+    ("Thoughts_Of_You", "This is a Poem written by Jane Doe; 19 February 2000. 'Thoughts of You'. The hand written document is included. This work was created by Jane Doe and is in the Public Domain under the Creative Commons License."),
+    ("ISE_100_Prospectus", "This is a prospectus for a course ISE100 'Computer and Information Technology Fundamentals' held for National College, South Bend, Indiana. 19 December 2011. Created by Jane Doe and released under the Creative Commons License in the Public Domain."),
+    ("ISE100_Course_Objectives", "These are the Course Objectives and Outline for Week 8; for the course ISE100 offered at National College, South Bend, Indiana. Released into the Public Domain by Jane Doe under the Creative Commons License."),
+    ("What_Is_Medical_Informatics_", "What is Medical Informatics; by Dr. John Roe. Used for MP520 Computer Systems in Medicine for Radiological Technologies University, South Bend, Indiana Campus. Uploaded by Jane Doe and released into the Public Domain."),
+    ("IREX_Addendum_", "This is an Addendum to an exchange program Proposal filed under the International Research and Exchanges Board (IREX), 2121 K Street, NW; Suite 700, Washington, D.C. 20037; 26 June 2002. Public Domain as government document. Etext created by Jane Doe."),
+    ("ceramic_pitcher_03_wash_basin_green_white", "Ceramic Pitcher 03 and wash-basin; 1920. Dimensions are: Pitcher height 305.0 millimeters by maximum width by base width 110.0 millimeters by width 110.0 millimeters; and weight 1,443.0 grams; Bowl dimensions are: top 405.0 millimeters diameter by base 175.0 millimeters diameter by 115.0 millimeters height."),
+    ("hand_fan_01_japanese_silk_1890", "Japanese Hand Fan made of silk. Dimension of fan: 220 millimeters diameter by 2.0 millimeters rim thickness, 110.0 handle length by 9.0 millimeters thickness, and 23.1 grams total weight. No copyright notice or registration on file."),
+    ("CASE Original Purchaser Warranty Card", "CASE Original Purchaser Warranty Card New Case Machines, 9-55671, Form 2107-Rev. 1, November 1963. J. I. CASE Company, Racine, Wisconsin. Dimensions are: 89.0 millimeters width by 120.0 millimeters height, and weight 3.1 grams; 1 page."),
+]
+
+
+def test_item_records_are_stubs():
+    for title, body in ITEM_RECORDS:
+        assert quality.is_item_record(body), body
+        assert quality.is_item_record(body + " " + body), body
+        assert quality.is_stub(title, body, body), body
+        assert quality.stub_reason(title, body, body) == "item_record", body
+
+
+def test_measurements_and_the_public_domain_in_real_text_pass_the_item_record_rule():
+    # a dimensions clause alone, a weight alone
+    assert not quality.is_item_record("Roll up displays for use in hand-held gadgets will be available for mass production by March 2007 according to Philips. The first screens are 5 inches wide and 0.1 mm thick, a 5 inch width that fits a pocket.")
+    assert not quality.is_item_record("We relate the stability of a protein to its length: a chain of 300 residues spans about 10 nm length when folded, and the dimension of the folded state sets the width of the funnel.")
+    assert not quality.is_item_record("A 68-year-old man was seen at the hospital because of an increasing body weight loss of 12 kg, unquenchable thirst and back pain.")
+    # the public domain mentioned in passing, a work that entered it by age, a copyright notice discussed
+    assert not quality.is_item_record("Public Domain Day is an annual observance on 1 January of the day when copyrights expire and works enter the public domain. Described in 8 Wikimedia projects.")
+    assert not quality.is_item_record("The novel was published in 1817 and has been in the public domain for more than a century; this edition was scanned by the Boston Public Library from its own copy.")
+    assert not quality.is_item_record("Under the 1909 Act a work published without a copyright notice fell into the public domain; the 1989 amendments made the notice optional.")
+    assert not quality.is_item_record("Ochyrotica. genus of insects. Described in 8 Wikimedia projects.")
+    assert not quality.is_item_record("")
+    assert quality.stub_reason("Public Domain Day", "Public Domain Day. annual observance on 1 January. Described in 8 Wikimedia projects.", "") is None
+
+
 def test_descriptions_that_quote_something_pass_the_file_record_rule():
     assert not quality.is_file_record('"Northanger Abbey" by Jane Austen is a coming-of-age novel and satire of Gothic fiction completed in 1799 and published posthumously in 1817.')
     assert not quality.is_file_record('15 pages : 21 cm "The circus is in town. Come and see!"--Back cover')

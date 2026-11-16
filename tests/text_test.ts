@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isFileRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isFileRecord, isItemRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -188,6 +188,51 @@ Deno.test('isFileRecord: a description that quotes something is kept', () => {
   assertEquals(isFileRecord('Karnataka State Archives - Mysore - Gazettes - Gazette-6 - HRS-Historical Record Section - R - 369 (ID 102517)'), false);
   assertEquals(isFileRecord('Ochyrotica. genus of insects. Described in 8 Wikimedia projects.'), false);
   assertEquals(isFileRecord(''), false);
+});
+
+/* ---------- isItemRecord: a scanned object described as an object ---------- */
+
+Deno.test('isItemRecord: the personal item records from the 2026-11-16 snapshot are stubs', () => {
+  // the uploader's name is replaced by a placeholder here; the rule reads the shape of the sentence, not the name
+  const records: [string, string][] = [
+    // dimensions and the copyright status
+    ['gaylord_library_card_number_55', 'Gaylord Library Card number 55; 13 August 1982. Dimensions: 2 7/8" width by 4 7/8" height; weight 1.9 grams. E text created by Jane Doe. Hi-resolution TIFF files are archived and can be downloaded.'],
+    ['Baptism_Certificate_Immaculate_Conception_Church', 'This is a Baptismal Certificate issued in the Immaculate Conception Church, Astoria, New York, Form No. 314, dated 5 October, 1952, for Jane Doe; printed by F. J. Remey Co., New York. No copyright notice evident, Public Domain under Rule 5 of the United States Copyright Statutes.'],
+    ['Homart_303_220_Sears_Humidifier_', 'Homart Furnace Humidifier; Published by Sears, Roebuck and Company, Chicago, Illinois; in 1950; Part Number 85-099; Model Number 303.220. Dimensions are: 8 1/2" width by 11" height, 4 pages. No copyright notice evident.'],
+    ['olympus_model_OM_10_camera_', 'Olympus Model OM-10 Camera and owner\'s manual; published June 1979, by Olympus. There is no copyright registration or notice filed for this item; the digital work was created by Jane Doe and is in the Public Domain under the Creative Commons License.'],
+    // the dedication alone
+    ['Thoughts_Of_You', "This is a Poem written by Jane Doe; 19 February 2000. 'Thoughts of You'. The hand written document is included. This work was created by Jane Doe and is in the Public Domain under the Creative Commons License."],
+    ['ISE_100_Prospectus', "This is a prospectus for a course ISE100 'Computer and Information Technology Fundamentals' held for National College, South Bend, Indiana. 19 December 2011. Created by Jane Doe and released under the Creative Commons License in the Public Domain."],
+    ['ISE100_Course_Objectives', 'These are the Course Objectives and Outline for Week 8; for the course ISE100 offered at National College, South Bend, Indiana. Released into the Public Domain by Jane Doe under the Creative Commons License.'],
+    ['What_Is_Medical_Informatics_', 'What is Medical Informatics; by Dr. John Roe. Used for MP520 Computer Systems in Medicine for Radiological Technologies University, South Bend, Indiana Campus. Uploaded by Jane Doe and released into the Public Domain.'],
+    // the digitiser's credit alone
+    ['IREX_Addendum_', 'This is an Addendum to an exchange program Proposal filed under the International Research and Exchanges Board (IREX), 2121 K Street, NW; Suite 700, Washington, D.C. 20037; 26 June 2002. Public Domain as government document. Etext created by Jane Doe.'],
+    // dimensions with a weight, no copyright words at all
+    ['ceramic_pitcher_03_wash_basin_green_white', 'Ceramic Pitcher 03 and wash-basin; 1920. Dimensions are: Pitcher height 305.0 millimeters by maximum width by base width 110.0 millimeters by width 110.0 millimeters; and weight 1,443.0 grams; Bowl dimensions are: top 405.0 millimeters diameter by base 175.0 millimeters diameter by 115.0 millimeters height.'],
+    ['hand_fan_01_japanese_silk_1890', 'Japanese Hand Fan made of silk. Dimension of fan: 220 millimeters diameter by 2.0 millimeters rim thickness, 110.0 handle length by 9.0 millimeters thickness, and 23.1 grams total weight. No copyright notice or registration on file.'],
+    ['CASE Original Purchaser Warranty Card', 'CASE Original Purchaser Warranty Card New Case Machines, 9-55671, Form 2107-Rev. 1, November 1963. J. I. CASE Company, Racine, Wisconsin. Dimensions are: 89.0 millimeters width by 120.0 millimeters height, and weight 3.1 grams; 1 page.'],
+  ];
+  for (const [title, body] of records) {
+    assert(isItemRecord(body), body);
+    assert(isItemRecord(body + ' ' + body), 'written twice: ' + body);
+    assert(isStub(title, body, body), body);
+  }
+});
+
+Deno.test('isItemRecord: a measurement, a weight or the public domain in a real text is kept', () => {
+  // a dimensions clause alone: a news story gives a display's size, a paper measures proteins
+  assertEquals(isItemRecord('Roll up displays for use in hand-held gadgets will be available for mass production by March 2007 according to Philips. The first screens are 5 inches wide and 0.1 mm thick, a 5 inch width that fits a pocket.'), false);
+  assertEquals(isItemRecord('We relate the stability of a protein to its length: a chain of 300 residues spans about 10 nm length when folded, and the dimension of the folded state sets the width of the funnel.'), false);
+  // a weight alone
+  assertEquals(isItemRecord('A 68-year-old man was seen at the hospital because of an increasing body weight loss of 12 kg, unquenchable thirst and back pain.'), false);
+  // the public domain mentioned in passing, and a work that entered it by age rather than by dedication
+  assertEquals(isItemRecord('Public Domain Day is an annual observance on 1 January of the day when copyrights expire and works enter the public domain. Described in 8 Wikimedia projects.'), false);
+  assertEquals(isItemRecord('The novel was published in 1817 and has been in the public domain for more than a century; this edition was scanned by the Boston Public Library from its own copy.'), false);
+  // a copyright notice discussed, not declared absent
+  assertEquals(isItemRecord('Under the 1909 Act a work published without a copyright notice fell into the public domain; the 1989 amendments made the notice optional.'), false);
+  // a Wikidata item and an empty body
+  assertEquals(isItemRecord('Ochyrotica. genus of insects. Described in 8 Wikimedia projects.'), false);
+  assertEquals(isItemRecord(''), false);
 });
 
 /* ---------- isCatalogueRecord: a description that is a metadata record ---------- */

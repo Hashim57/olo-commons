@@ -57,6 +57,16 @@ QUOTED_RE = re.compile(r"(?:^|(?<=[\s,;:(]))(?:'[^']{3,}?'|\"[^\"]{3,}?\"|\u2018
 FILENAME_RE = re.compile(r"\bfile ?name\s*:", re.I)
 SENTENCE_END_RE = re.compile(r"[.!?](?:\s|$)")
 
+# An item record: a scanned object described as an object (DIMENSIONS_RE, WEIGHT_RE, COPYRIGHT_STATUS_RE, DEDICATION_RE and
+# ETEXT_CREDIT_RE in text.ts). A measurement with a unit and the side it measures; the object's weight; the copyright status
+# of an American item ("No copyright notice evident", "Rule 5 of the United States Copyright Statutes"); an uploader placing
+# their own work in the public domain; the digitiser's credit ("Etext created by ...").
+DIMENSIONS_RE = re.compile(r"\bdimensions?\b(?:[^.;]|\.\d){0,80}\b(?:width|height|length|diameter|thickness)\b|\d\s*(?:\"|''|\u201d|inch(?:es)?|in\.|millimet(?:er|re)s?|mm|cm)\s*(?:in\s+)?(?:width|height|length|diameter|thickness)\b", re.I)
+WEIGHT_RE = re.compile(r"\b(?:weight|weighs|weighing)\b(?:[^.;]|\.\d){0,40}\b(?:grams?|g|ounces?|oz|kilograms?|kg|pounds?|lbs?)\b", re.I)
+COPYRIGHT_STATUS_RE = re.compile(r"\bno copyright (?:notice|registration)(?: or (?:notice|registration))?\b[^.;,]{0,20}\b(?:evident|found|filed|on file|appears|appeared|located)\b|\brule 5 of the (?:united states|u\.?s\.?) copyright\b", re.I)
+DEDICATION_RE = re.compile(r"\b(?:created|digiti[sz]ed|scanned|written|photographed|uploaded|e[- ]?text created) by [A-Z][\w.'\u2019-]+(?: [A-Z][\w.'\u2019-]+){1,3}\b[^.]{0,40}\b(?:and (?:is|are|was|released|placed|dedicated)|released)\b[^.]{0,60}\bpublic domain\b|\breleased (?:into|to|in) the public domain by [A-Z][\w.'\u2019-]+(?: [A-Z][\w.'\u2019-]+){1,3}\b", re.I)
+ETEXT_CREDIT_RE = re.compile(r"\be[- ]?text created by [A-Z]", re.I)
+
 PHYSICAL_RE = re.compile(r"^(?:[xivlc]+, )?(?:\d+ (?:p\.|pages?|v\.|volumes?|leaves)|volumes?|\d+ (?:volume|guide|portfolio) \((?:unpaged|\d+ p\.?)\))(?: of plates)?[^A-Za-z0-9]*(?:(?:ill\.?|illustrations|col\.|colou?r|maps?|ports?\.?|facsims?\.?|music|charts?|plates)[^A-Za-z0-9]*)*(?:\d+(?: x \d+)? cm\.?)?", re.I)
 CATALOGUE_NOTES_RE = re.compile(r"\bIncludes? (?:bibliographical references?|bibliography|bibliographies|index(?:es)?|discography|filmography)(?: \((?:p\.|pages?)? ?[\d, -]+\))?(?: and index(?:es)?)?\.?|\bBibliography: (?:p\.|pages?) [\d, -]+\.?", re.I)
 
@@ -153,6 +163,21 @@ def is_file_record(body):
     return sum(len(q) for q in quoted) * 2 >= len(b) or FILENAME_RE.search(b) is not None
 
 
+def is_item_record(body):
+    """True when a body is an item record, not a description (isItemRecord in text.ts): a scanned object described as an
+    object, by its dimensions and weight, its copyright status ("No copyright notice evident, Public Domain under Rule 5 of
+    the United States Copyright Statutes"), the uploader's dedication of their own work to the public domain or the
+    digitiser's credit ("Etext created by ..."). The rule is the copyright status, or the dedication, or the credit, or a
+    dimensions clause together with a weight; a dimensions clause alone is kept (a paper measures proteins, a news story
+    gives a display's size). 57 archive_org atoms on the 2026-11-16 snapshot, 54 of them stored since 10 November, among
+    them a baptismal certificate, a home inspection report with a street address and class rosters naming private people;
+    no atom of any other source."""
+    b = oncely(clean(body))
+    if not b:
+        return False
+    return bool(COPYRIGHT_STATUS_RE.search(b) or DEDICATION_RE.search(b) or ETEXT_CREDIT_RE.search(b) or (DIMENSIONS_RE.search(b) and WEIGHT_RE.search(b)))
+
+
 def without_physical_description(body):
     """A body with its library physical description and catalogue notes taken out ("ix, 203 pages : 24 cm Includes
     bibliographical references and index" becomes ""); a body with no physical description comes back unchanged."""
@@ -162,15 +187,15 @@ def without_physical_description(body):
     return clean(CATALOGUE_NOTES_RE.sub(" ", body[m.end():]))
 
 
-STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "file_record", "no_rest")
+STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "file_record", "item_record", "no_rest")
 
 
 def stub_reason(title, summary, content, authors=None):
     """The name of the rule that makes an atom a stub, or None when it carries knowledge. The rules run in the
     ingester's order (isStub in text.ts), so the first that fires is named: "empty" (no body), "label" (fewer than
     STUB_MIN_DISTINCT different words), "repeat" (one line written over and over), "link_notice", "catalogue_record",
-    "shelf_mark", "rights_notice", "file_record", and "no_rest" (nothing beyond the title, the authors and a physical
-    description)."""
+    "shelf_mark", "rights_notice", "file_record", "item_record", and "no_rest" (nothing beyond the title, the authors and a
+    physical description)."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
@@ -191,6 +216,8 @@ def stub_reason(title, summary, content, authors=None):
         return "rights_notice"
     if is_file_record(body):
         return "file_record"
+    if is_item_record(body):
+        return "item_record"
     rest = " " + without_physical_description(body).lower() + " "
     for name in [title] + list(authors or []):
         n = clean(name).lower()
