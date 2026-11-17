@@ -105,3 +105,38 @@ def test_budgeted_order_with_no_or_too_many_priority_rows():
     assert sorted(order) == list(range(10)) and all(i < 8 for i in order[:8])
     # all priority rows
     assert sorted(recipe.budgeted_order([True] * 5, random.Random(2))) == list(range(5))
+
+
+def _row(claim, label="supported"):
+    return {"claim": claim, "passages": [{"id": "p1", "source": "wikipedia", "text": claim + " text"}, {"id": "p2", "source": "wikipedia", "text": "other"}],
+            "label": label, "evidence": [], "rationale": "r", "kind": "k"}
+
+
+def test_mistakes_keep_only_wrong_answers_and_never_a_held_out_claim():
+    rows = [_row("a"), _row("b", "contradicted"), _row("c"), _row("held")]
+    answers = [{"label": "supported"}, {"label": "supported"}, None, {"label": "not_covered"}]
+    m = recipe.mistakes_from(rows, answers, "v23", held_out_claims={"held"})
+    assert [r["claim"] for r in m] == ["b", "c"]
+    assert m[0]["mistake"] == {"version": "v23", "said": "supported", "key": recipe.example_key(rows[1])}
+    assert m[1]["mistake"]["said"] == "invalid", "an answer that does not parse is a mistake"
+    assert set(m[0]) == {"claim", "passages", "label", "evidence", "rationale", "kind", "mistake"}
+    lic = recipe.mistakes_from([dict(_row("v"), licence="CC BY-SA 3.0", attribution="VitaminC")], [None], "v23")
+    assert lic[0]["licence"] == "CC BY-SA 3.0" and lic[0]["attribution"] == "VitaminC", "an imported row keeps its licence"
+
+
+def test_pool_puts_new_mistakes_first_dedupes_and_caps():
+    old = recipe.mistakes_from([_row("x"), _row("y")], [{"label": "no"}, {"label": "no"}], "v22")
+    new = recipe.mistakes_from([_row("y"), _row("z")], [{"label": "no"}, {"label": "no"}], "v23")
+    pool = recipe.merge_pool(old, new)
+    assert [r["claim"] for r in pool] == ["y", "z", "x"]
+    assert pool[0]["mistake"]["version"] == "v23", "a repeated mistake carries its newest record"
+    assert [r["claim"] for r in recipe.merge_pool(old, new, cap=2)] == ["y", "z"]
+
+
+def test_probe_indices_are_reproducible_per_version_and_bounded():
+    import random
+    a = recipe.probe_indices(5000, random.Random(recipe.shuffle_seed("v23")), 100)
+    b = recipe.probe_indices(5000, random.Random(recipe.shuffle_seed("v23")), 100)
+    c = recipe.probe_indices(5000, random.Random(recipe.shuffle_seed("v24")), 100)
+    assert a == b and a != c and len(a) == 100 and len(set(a)) == 100
+    assert recipe.probe_indices(7, random.Random(0), 100) == list(range(7))

@@ -138,3 +138,63 @@ def steps_within_budget(steps_done, elapsed_s, planned_steps, budget_s, min_meas
     if fit >= planned_steps:
         return planned_steps
     return max(steps_done + 1, fit)
+
+
+# ---------------------------------------------------------------------------
+# Learning from mistakes (since 2026-11-17). Every version trains from the base model, so what one version
+# got wrong reaches the next only through the data. After training, a version answers a sample of its own
+# training rows (never a held-out row); the ones it gets wrong go into zeus/data/mistakes/pool.jsonl, and the
+# next version trains them as priority rows, so each of them is read twice (once in its usual place, once
+# early in the order). The pool keeps the newest mistakes first and is capped, so a row the model has since
+# learned ages out instead of being drilled for ever.
+# ---------------------------------------------------------------------------
+MISTAKE_PROBE_N = 800       # training rows a version answers after training, to find what it still gets wrong
+MISTAKE_POOL_CAP = 2000     # rows kept in the pool; the oldest go first
+MISTAKE_KEYS = ("claim", "passages", "label", "evidence", "rationale", "kind", "licence", "attribution")  # an imported row keeps its licence (VitaminC: CC BY-SA 3.0)
+
+
+def example_key(ex):
+    """A stable identity for a training row: the SHA-256 of its claim, label and passage texts. Two builds of
+    the same row from the same atoms get the same key, so the pool never holds one mistake twice."""
+    import hashlib
+    texts = "\u0001".join(str(p.get("text", "")) for p in ex.get("passages") or [])
+    return hashlib.sha256(f"{ex.get('claim', '')}\u0000{ex.get('label', '')}\u0000{texts}".encode()).hexdigest()[:16]
+
+
+def probe_indices(n_rows, rng, n=MISTAKE_PROBE_N):
+    """Which training rows a version answers after training: a sample of n (all of them when there are fewer),
+    drawn with the version-seeded rng so it is reproducible and differs between versions."""
+    idx = list(range(n_rows))
+    rng.shuffle(idx)
+    return sorted(idx[:n])
+
+
+def mistakes_from(examples, answers, version, held_out_claims=()):
+    """The rows a version answered wrongly, each kept whole (MISTAKE_KEYS) with what the model said, the version
+    and the row's key. An answer that does not parse counts as wrong ("invalid"). A row whose claim is also a
+    held-out claim is never kept, so the pool can never carry an eval example into training."""
+    held = set(held_out_claims)
+    out = []
+    for ex, ans in zip(examples, answers):
+        said = ans.get("label") if isinstance(ans, dict) else None
+        if said == ex.get("label") or ex.get("claim") in held:
+            continue
+        row = {k: ex[k] for k in MISTAKE_KEYS if k in ex}
+        row["mistake"] = {"version": version, "said": said if said in ("supported", "contradicted", "not_covered") else "invalid", "key": example_key(ex)}
+        out.append(row)
+    return out
+
+
+def merge_pool(pool, new, cap=MISTAKE_POOL_CAP):
+    """The pool after a version's mistakes are added: the new ones first, then the older ones not repeated, at
+    most cap rows. A row the newest version got wrong again moves to the front with its newest record."""
+    seen, out = set(), []
+    for row in list(new) + list(pool):
+        k = (row.get("mistake") or {}).get("key") or example_key(row)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(row)
+        if len(out) >= cap:
+            break
+    return out

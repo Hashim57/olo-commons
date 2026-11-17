@@ -50,6 +50,16 @@ def note_generators(summary_path, summary, meta_path):
     return gens
 
 
+def learning_note(learning, summary):
+    """One sentence for the STATUS row on learning from mistakes: how many earlier mistakes this version trained
+    again, and what its probe of its own training rows found. Only measured numbers."""
+    if learning.get("error"):
+        return f"Mistake probe failed ({learning['error'][:80]})."
+    trained = summary.get("mistake_pool_rows", learning.get("pool_rows_trained", 0))
+    return (f"Learning from mistakes: trained {trained} earlier mistakes again; probe of {learning.get('probe_n')} own training rows "
+            f"accuracy {learning.get('probe_accuracy')}, {learning.get('mistakes')} new mistakes kept for the next version.")
+
+
 def main():
     v = sys.argv[1]
     out = os.path.join(ZEUS, "out", f"zeus-{v}")
@@ -72,6 +82,9 @@ def main():
             held.append(f"LLM-AggreFact sample (n={agg.get('n')}) balanced accuracy {agg['balanced_accuracy']} percent")
         if held:
             row = row.rstrip()[:-1].rstrip() + " Held out: " + "; ".join(held) + ". |"
+    learning_path = os.path.join(out, "learning.json")
+    if os.path.exists(learning_path):
+        row = row.rstrip()[:-1].rstrip() + " " + learning_note(json.load(open(learning_path)), s) + " |"
     print("STATUS row added" if add_row(os.path.join(ZEUS, "STATUS.md"), row, v) else "STATUS row already there")
     subprocess.run([sys.executable, os.path.join(ZEUS, "promote.py")], check=True)
     subprocess.run([sys.executable, os.path.join(HERE, "scorecard.py")], check=False)
