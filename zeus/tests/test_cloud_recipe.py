@@ -140,3 +140,28 @@ def test_probe_indices_are_reproducible_per_version_and_bounded():
     c = recipe.probe_indices(5000, random.Random(recipe.shuffle_seed("v24")), 100)
     assert a == b and a != c and len(a) == 100 and len(set(a)) == 100
     assert recipe.probe_indices(7, random.Random(0), 100) == list(range(7))
+
+
+def test_focus_keeps_every_valuable_row_and_samples_the_easy_ones_by_label():
+    import random
+    from collections import Counter
+    train = ([{"label": "supported"}] * 600 + [{"label": "not_covered"}] * 1200 + [{"label": "contradicted"}] * 200
+             + [{"label": "supported", "generator": "hard-v1"}] * 500 + [{"label": "supported", "generator": "longdoc-v1"}] * 80
+             + [{"label": "supported", "generator": "compose-v2"}] * 90 + [{"label": "contradicted"}] * 50)
+    priority = [False] * (len(train) - 50) + [True] * 50
+    keep = recipe.focus_indices(train, priority, random.Random(1), caps={"rules": 1000, "hard-v1": 100})
+    groups = Counter(recipe.focus_group(train[i], priority[i]) for i in keep)
+    assert groups == {"rules": 1000, "hard-v1": 100, "longdoc-v1": 80, "compose-v2": 90, "priority": 50}
+    labels = Counter(train[i]["label"] for i in keep if recipe.focus_group(train[i], priority[i]) == "rules")
+    assert labels == {"supported": 300, "not_covered": 600, "contradicted": 100}, "each label keeps its share"
+    assert keep == sorted(keep) and len(set(keep)) == len(keep)
+
+
+def test_focus_sample_differs_between_versions_and_holds_for_one():
+    import random
+    train = [{"label": "supported"}] * 3000
+    pr = [False] * 3000
+    a = recipe.focus_indices(train, pr, random.Random(recipe.shuffle_seed("v24")), caps={"rules": 500})
+    b = recipe.focus_indices(train, pr, random.Random(recipe.shuffle_seed("v24")), caps={"rules": 500})
+    c = recipe.focus_indices(train, pr, random.Random(recipe.shuffle_seed("v25")), caps={"rules": 500})
+    assert a == b and a != c and len(a) == 500

@@ -7,7 +7,9 @@
 # last version, or, since 2026-11-13, simply a day since it and a training set that is
 # not the one it saw, so Zeus trains every day). The optimiser loop stops at the
 # max_minutes budget (default 120 since 2026-11-17: two hours of training, about two and a
-# half hours of GPU and $5 to $6 a day with loading, evaluation and the mistake probe).
+# half hours of GPU and $5 to $6 a day with loading, evaluation and the mistake probe; since the
+# same day a run trains on a focused set, recipe.focus_indices, and ends in about 80 to 90 minutes,
+# about $3.50 to $4 a day).
 # Each version also answers a sample of its own training rows; what it gets wrong goes into
 # zeus/data/mistakes/pool.jsonl, which the next version trains again (modal_train.py). It also starts when a training request (zeus/TRAIN_REQUEST.json) is
 # pushed, or by hand with a version.
