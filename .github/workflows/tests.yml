@@ -53,7 +53,7 @@ jobs:
           for f in zeus/train_mac.sh zeus/serve_mac.sh zeus/mac/zeus-agent.sh zeus/mac/install.sh zeus/mac/zeus-serve.sh zeus/mac/install-serve.sh zeus/cloudflare/setup.sh zeus/cloudflare/publish.sh zeus/cloud/publish_ci.sh; do bash -n "$f"; done
       - name: Unit tests
         run: |
-          python3 -m pip install --quiet pytest requests numpy
+          python3 -m pip install --quiet pytest requests numpy matplotlib reportlab
           python3 -m pytest zeus/tests scripts/tests -q
       - name: Validate the gold examples
         run: |
