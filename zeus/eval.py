@@ -119,17 +119,25 @@ def score(examples, answers):
 
 
 def score_by_kind(examples, answers):
-    """Label accuracy per pattern ({kind: {"n", "accuracy"}}) for splits whose lines carry a `kind`
+    """Label accuracy per pattern ({kind: {"n", "accuracy", "wrong"}}) for splits whose lines carry a `kind`
     (eval2, eval3). Lines without one count as "other". Same answer handling as score(): an answer
-    that does not parse is wrong."""
+    that does not parse is wrong. `wrong` counts what the wrong answers called the claim ({label: count},
+    "invalid" for an answer that does not parse or carries no known label; {} when every answer was right),
+    so a pattern's failure mode can be read from the report: eval3's paraphrase_decade at 0.25 in v22 was
+    supported claims called contradicted, not claims the model could not read."""
     kinds = {}
     for ex, ans in zip(examples, answers):
         pred = ans if isinstance(ans, dict) else parse(ans or "")
-        d = kinds.setdefault(ex.get("kind", "other"), {"n": 0, "correct": 0})
+        d = kinds.setdefault(ex.get("kind", "other"), {"n": 0, "correct": 0, "wrong": {}})
         d["n"] += 1
-        if pred and pred.get("label") == ex["label"]:
+        label = pred.get("label") if pred else None
+        if label == ex["label"]:
             d["correct"] += 1
-    return {k: {"n": d["n"], "accuracy": round(d["correct"] / d["n"], 3)} for k, d in sorted(kinds.items())}
+        else:
+            called = label if label in LABELS else "invalid"
+            d["wrong"][called] = d["wrong"].get(called, 0) + 1
+    return {k: {"n": d["n"], "accuracy": round(d["correct"] / d["n"], 3), "wrong": dict(sorted(d["wrong"].items()))}
+            for k, d in sorted(kinds.items())}
 
 
 def split_report(examples, answers):

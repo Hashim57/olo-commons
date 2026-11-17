@@ -145,9 +145,20 @@ export function arxivCandidates(xml: string): Candidate[] {
   return out;
 }
 
+/**
+ * A Gutenberg title as a reader would write it. gutendex copies the catalogue's MARC 245 field, and for about
+ * one book in fourteen the subtitle marker comes with it: "The unknown seven : $b A detective story",
+ * "Peter Pan : $b [Peter and Wendy]", "Liebe ist ewig : $b Roman" (49 of 665 stored titles on 17 November 2026).
+ * The marker becomes a colon; any other subfield code left in the title ($a, $c, $n, $p) goes. Gutenberg only:
+ * an arXiv title's "$p$" is mathematics.
+ */
+export function marcTitle(title: unknown): string {
+  return clean(title).replace(/\s*:\s*\$b\s+/g, ': ').replace(/\s*\$[a-z]\s+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 /** Project Gutenberg (gutendex) books -> candidates. */
 export function gutenbergCandidates(books: any[]): Candidate[] {
-  return (books || []).filter((b: any) => b && b.title && (b.summaries?.length || b.subjects?.length)).map((b: any) => ({ external_id: String(b.id), url: `https://www.gutenberg.org/ebooks/${b.id}`, title: clean(b.title).slice(0, 200), summary: clean(b.summaries?.[0] || `${b.title}. Subjects: ${(b.subjects || []).slice(0, 6).join('; ')}`).slice(0, 600), content: clean(b.summaries?.[0] || '') + ' Subjects: ' + (b.subjects || []).join('; '), authors: (b.authors || []).map((a: any) => a.name), published_at: undefined, licence: 'Public domain' }));
+  return (books || []).filter((b: any) => b && b.title && (b.summaries?.length || b.subjects?.length)).map((b: any) => { const title = marcTitle(b.title); return { external_id: String(b.id), url: `https://www.gutenberg.org/ebooks/${b.id}`, title: title.slice(0, 200), summary: clean(b.summaries?.[0] || `${title}. Subjects: ${(b.subjects || []).slice(0, 6).join('; ')}`).slice(0, 600), content: clean(b.summaries?.[0] || '') + ' Subjects: ' + (b.subjects || []).join('; '), authors: (b.authors || []).map((a: any) => a.name), published_at: undefined, licence: 'Public domain' }; });
 }
 
 /** PubMed efetch XML -> candidates (abstract of at least 150 characters). */

@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { ARXIV_GAP_MS, DEFAULT_TIMEOUT_MS, SLOW_TIMEOUT_MS, archiveCandidates, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataHousekeeping, wikidataSearchIds, wikiSearchTitles, waitBefore } from '../functions/olo-ingest/sources.ts';
+import { ARXIV_GAP_MS, DEFAULT_TIMEOUT_MS, SLOW_TIMEOUT_MS, archiveCandidates, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, marcTitle, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataHousekeeping, wikidataSearchIds, wikiSearchTitles, waitBefore } from '../functions/olo-ingest/sources.ts';
 
 const EXTRACT = 'Project Gutenberg is a volunteer effort to digitize and archive cultural works, as well as to encourage the creation and distribution of eBooks. It was founded in 1971 by American writer Michael S. Hart and is the oldest digital library.';
 
@@ -72,6 +72,21 @@ Deno.test('archive and gutenberg mappers keep provenance and drop incomplete row
   assertEquals(g[0].url, 'https://www.gutenberg.org/ebooks/7');
   assertEquals(g[0].authors, ['Dickens, Charles']);
   assertEquals(g[0].licence, 'Public domain');
+});
+
+Deno.test('a Gutenberg title loses the MARC subtitle marker gutendex copies from the catalogue', () => {
+  assertEquals(marcTitle('The unknown seven : $b A detective story'), 'The unknown seven: A detective story');
+  assertEquals(marcTitle('Peter Pan : $b [Peter and Wendy]'), 'Peter Pan: [Peter and Wendy]');
+  assertEquals(marcTitle('Liebe ist ewig : $b Roman'), 'Liebe ist ewig: Roman');
+  assertEquals(marcTitle('How they loved him, Vol. 2 (of 3) : $b A novel'), 'How they loved him, Vol. 2 (of 3): A novel');
+  assertEquals(marcTitle('The letters of Queen Victoria $c edited by A. C. Benson'), 'The letters of Queen Victoria edited by A. C. Benson', 'another subfield code goes, with its spaces');
+  assertEquals(marcTitle('Frankenstein; or, The modern Prometheus'), 'Frankenstein; or, The modern Prometheus', 'a title without a marker is unchanged');
+  assertEquals(marcTitle('Cost: $5 a day'), 'Cost: $5 a day', 'a dollar amount is not a subfield code');
+  assertEquals(marcTitle(' <i>Tale</i> '), 'Tale', 'cleaned like every other title');
+  // The marker never reaches the stored title or the fallback summary.
+  const g = gutenbergCandidates([{ id: 9, title: 'Black Beauty : $b The autobiography of a horse', subjects: ['Horses -- Juvenile fiction'] }]);
+  assertEquals(g[0].title, 'Black Beauty: The autobiography of a horse');
+  assertEquals(g[0].summary, 'Black Beauty: The autobiography of a horse. Subjects: Horses -- Juvenile fiction');
 });
 
 Deno.test('arxivCandidates parses entries and delatexes titles', () => {
