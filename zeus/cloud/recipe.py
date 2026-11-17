@@ -198,3 +198,46 @@ def merge_pool(pool, new, cap=MISTAKE_POOL_CAP):
         if len(out) >= cap:
             break
     return out
+
+
+# ---------------------------------------------------------------------------
+# Focused training (since 2026-11-17). v23 answered 96 percent of a sample of its own training rows correctly
+# after training, and doubling the time from 60 to 120 minutes (v22 to v23) did not lift the held-out VitaminC
+# score (0.733 to 0.69): most of the extra hour was spent re-reading rule-made rows the model already gets
+# right. A run now reads every row that teaches something a rule cannot (gold, imported human-written claims,
+# the mistake pool, composed and long-document examples) and a fresh, label-balanced sample of the plain
+# rule-made and hard-v1 rows. The sample is seeded by the version, so over a week the whole set is still read.
+# On 17 November 2026 Hashim set the budget back to one hour; the caps below are sized so a whole focused pass
+# (about 17,000 rows, about 1,050 steps at v23's pace of 17 steps a minute) fits in it.
+# ---------------------------------------------------------------------------
+FOCUS_CAPS = {"rules": 4000, "hard-v1": 3000}   # rows kept per sampled group; every other group is kept whole
+
+
+def focus_group(ex, is_priority):
+    """The group a training row belongs to for focus_indices: "priority" (gold, imported, mistakes), its
+    generator name (compose-v2, longdoc-v1, hard-v1), or "rules" for the plain rule-made rows."""
+    if is_priority:
+        return "priority"
+    return ex.get("generator") or "rules"
+
+
+def focus_indices(train, priority, rng, caps=None):
+    """Indices of the rows a focused run trains on, in their original order. Groups named in caps are sampled
+    down to their cap, keeping each label's share of the group; every other group is kept whole."""
+    caps = FOCUS_CAPS if caps is None else caps
+    groups = {}
+    for i, ex in enumerate(train):
+        groups.setdefault(focus_group(ex, priority[i]), []).append(i)
+    keep = []
+    for g, idx in sorted(groups.items()):
+        cap = caps.get(g)
+        if cap is None or len(idx) <= cap:
+            keep.extend(idx)
+            continue
+        by_label = {}
+        for i in idx:
+            by_label.setdefault(train[i].get("label"), []).append(i)
+        for lab, li in sorted(by_label.items(), key=lambda kv: str(kv[0])):
+            take = round(cap * len(li) / len(idx))
+            keep.extend(rng.sample(li, min(take, len(li))))
+    return sorted(keep)

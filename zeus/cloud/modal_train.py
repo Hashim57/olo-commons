@@ -11,10 +11,15 @@ numbers. Outputs land in zeus/out/zeus-<v>/ (eval.json, train_summary.json) and
 zeus/out/zeus-<v>-peft/ (the two files Cloudflare accepts).
 
 Cost: Modal bills per second (an A100 40 GB is about $2.10 an hour) and gives
-$30 of free credit a month. Since 2026-11-17 the optimiser loop stops at
---max-minutes (default 120, the two hours a day Hashim asked for, up from 60), so
-a daily run is about two and a half hours of GPU with loading, evaluation and the
-mistake probe, about $5 to $6 a day.
+$30 of free credit a month. The optimiser loop stops at --max-minutes. For one
+run on 2026-11-17 (v23) it was 120, and reading everything took two and a half
+hours of GPU with loading, evaluation and the mistake probe, about $5 to $6.
+Since the same day a run
+trains on a focused set (recipe.focus_indices: every gold, imported, mistake,
+composed and long-document row, and a fresh sample of the easy rule-made rows),
+about 17,000 rows instead of 39,000, and Hashim set the budget back to one hour
+(--max-minutes default 60), which a whole focused pass fits: about $3 a day
+with loading, evaluation and the mistake probe.
 
 Learning from mistakes (since 2026-11-17): every version starts from the base
 model, so the rows zeus/data/mistakes/pool.jsonl holds (what earlier versions got
@@ -58,7 +63,7 @@ def _tar(paths):
 
 
 @app.function(image=image, gpu=GPU, timeout=4 * 3600, volumes={"/cache": cache})
-def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 120.0) -> bytes:
+def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 60.0) -> bytes:
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -92,6 +97,12 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     train += pool_rows
     # The gold, imported and mistake rows: under the time budget they always come inside the part of the list a run reads (recipe.budgeted_order).
     priority = [i >= rule_made for i in range(len(train))]
+    # Focused training (recipe.focus_indices): every gold, imported, mistake, composed and long-document row, and a
+    # version-seeded, label-balanced sample of the plain rule-made and hard-v1 rows. The mistake probe after
+    # training still samples the whole set, so it also finds what the model gets wrong in rows this run did not read.
+    import random as _random
+    focus = recipe.focus_indices(train, priority, _random.Random(recipe.shuffle_seed(version) + 2))
+    focused, focused_priority = [train[i] for i in focus], [priority[i] for i in focus]
     evals = load(os.path.join(data, "eval.jsonl"))[:eval_limit]
 
     base, tok, model = None, None, None
@@ -109,7 +120,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
     max_len = 2048
     rows = []
-    for ex in train:
+    for ex in focused:
         p = tok.apply_chat_template(recipe.prompt_messages(ex), add_generation_prompt=True)
         a = tok(recipe.render_answer(ex), add_special_tokens=False)["input_ids"] + [tok.eos_token_id]
         rows.append(recipe.mask_labels(p, a, max_len))
@@ -134,7 +145,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     rng = random.Random(recipe.shuffle_seed(version))
     step = 0
     while step < steps:
-        order = recipe.budgeted_order(priority, rng)
+        order = recipe.budgeted_order(focused_priority, rng)
         for i in range(0, len(order) - batch + 1, batch):
             chunk = [rows[j] for j in order[i:i + batch]]
             L = max(len(x[0]) for x in chunk)
@@ -192,7 +203,8 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True,
                # how many of the gold and imported rows the budgeted part of the order held (all of them unless the hour allowed less than PRIORITY_FRONT of the list)
                "priority_rows": sum(priority), "priority_front": recipe.PRIORITY_FRONT, "mistake_pool_rows": len(pool_rows),
-               "priority_seen": sum(1 for pos in range(min(len(order), step * batch * accum)) if priority[order[pos]]) if step < planned_steps else sum(priority)}
+               "rows_available": len(train), "rows_focused": len(focused), "focus_caps": recipe.FOCUS_CAPS,
+               "priority_seen": sum(1 for pos in range(min(len(order), step * batch * accum)) if focused_priority[order[pos]]) if step < planned_steps else sum(focused_priority)}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
     print(json.dumps(report), flush=True)
@@ -296,7 +308,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 4000, aggrefact_n: int = 600, max_minutes: float = 120.0):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 4000, aggrefact_n: int = 600, max_minutes: float = 60.0):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)

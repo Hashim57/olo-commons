@@ -6,8 +6,10 @@
 # (zeus/cloud/due.py: new feedback, a tenth more data, a changed recipe, a week since the
 # last version, or, since 2026-11-13, simply a day since it and a training set that is
 # not the one it saw, so Zeus trains every day). The optimiser loop stops at the
-# max_minutes budget (default 120 since 2026-11-17: two hours of training, about two and a
-# half hours of GPU and $5 to $6 a day with loading, evaluation and the mistake probe).
+# max_minutes budget, default 60. (One run on 2026-11-17, v23, used 120 and read everything,
+# about $5 to $6; since then a run trains on a focused set, recipe.focus_indices, about 17,000
+# rows, which a whole pass fits in the hour: about $3 a day with loading, evaluation and the
+# mistake probe.)
 # Each version also answers a sample of its own training rows; what it gets wrong goes into
 # zeus/data/mistakes/pool.jsonl, which the next version trains again (modal_train.py). It also starts when a training request (zeus/TRAIN_REQUEST.json) is
 # pushed, or by hand with a version.
@@ -43,7 +45,7 @@ on:
         default: true
       max_minutes:
         description: 'Minutes the optimiser loop may run (0: the whole pass)'
-        default: '120'
+        default: '60'
 permissions:
   contents: write
 concurrency:
@@ -110,7 +112,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo "Training ${{ steps.v.outputs.version }}: ${{ steps.v.outputs.reason }}"
-          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '120' }}"
+          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '60' }}"
       - name: Record, promote, scorecard, commit
         if: steps.v.outputs.due == '1'
         run: |
