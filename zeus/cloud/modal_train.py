@@ -17,9 +17,10 @@ hours of GPU with loading, evaluation and the mistake probe, about $5 to $6.
 Since the same day a run
 trains on a focused set (recipe.focus_indices: every gold, imported, mistake,
 composed and long-document row, and a fresh sample of the easy rule-made rows),
-about 17,000 rows instead of 39,000, and Hashim set the budget back to one hour
-(--max-minutes default 60), which a whole focused pass fits: about $3 a day
-with loading, evaluation and the mistake probe.
+about 13,700 rows instead of 39,000 (caps resized after v24 measured the pace of
+long-document rows), and Hashim set the budget back to one hour (--max-minutes
+default 60), which a whole focused pass fits: about $3 a day with loading,
+evaluation and the mistake probe.
 
 Learning from mistakes (since 2026-11-17): every version starts from the base
 model, so the rows zeus/data/mistakes/pool.jsonl holds (what earlier versions got

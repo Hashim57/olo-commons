@@ -110,8 +110,10 @@ def last_measured(zeus_dir=ZEUS):
     try:
         with open(os.path.join(out, f"zeus-v{n}", "train_summary.json"), encoding="utf-8") as f:
             summary = json.load(f)
-        if summary.get("train_examples"):
-            last["train_examples"] = summary["train_examples"]
+        # A focused run (since 2026-11-17) trains on a sample of the rows it had; the set it was built from is
+        # rows_available, which is what a fresh build's size is compared with.
+        if summary.get("rows_available") or summary.get("train_examples"):
+            last["train_examples"] = summary.get("rows_available") or summary["train_examples"]
         if summary.get("train_generators"):
             last["train_generators"] = summary["train_generators"]
     except (OSError, ValueError):

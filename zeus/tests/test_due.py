@@ -127,3 +127,13 @@ def test_last_measured_leaves_out_what_is_not_on_record(tmp_path):
 def test_last_measured_on_this_repository_is_at_least_v18():
     last = last_measured()
     assert version_number(last["version"]) >= 18 and last.get("train_examples") and last.get("date")
+
+
+def test_a_focused_run_is_compared_by_the_set_it_was_built_from(tmp_path):
+    out = tmp_path / "out" / "zeus-v24"
+    out.mkdir(parents=True)
+    (out / "eval.json").write_text("{}")
+    (out / "train_summary.json").write_text(json.dumps({"train_examples": 16790, "rows_available": 37087, "train_generators": ["rules-v1"]}))
+    assert last_measured(str(tmp_path))["train_examples"] == 37087
+    (out / "train_summary.json").write_text(json.dumps({"train_examples": 36255}))
+    assert last_measured(str(tmp_path))["train_examples"] == 36255, "an unfocused run still counts what it trained on"

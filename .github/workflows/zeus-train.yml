@@ -7,7 +7,7 @@
 # last version, or, since 2026-11-13, simply a day since it and a training set that is
 # not the one it saw, so Zeus trains every day). The optimiser loop stops at the
 # max_minutes budget, default 60. (One run on 2026-11-17, v23, used 120 and read everything,
-# about $5 to $6; since then a run trains on a focused set, recipe.focus_indices, about 17,000
+# about $5 to $6; since then a run trains on a focused set, recipe.focus_indices, about 13,700
 # rows, which a whole pass fits in the hour: about $3 a day with loading, evaluation and the
 # mistake probe.)
 # Each version also answers a sample of its own training rows; what it gets wrong goes into
