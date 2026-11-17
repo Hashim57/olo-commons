@@ -147,3 +147,15 @@ jobs:
             git add -f "zeus/out/zeus-$V/eval-cloudflare.json" docs/ZEUS_SCORECARD.md
             git commit -q -m "zeus: $V served on Cloudflare, measured there" && git pull -q --rebase && git push -q
           fi
+      - name: Publish on Hugging Face when it is the best servable version
+        if: steps.v.outputs.due == '1'
+        env:
+          HF_WRITE_TOKEN: ${{ secrets.HF_WRITE_TOKEN }}
+          HF_MODEL_REPO: ${{ vars.HF_MODEL_REPO }}
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          CF="$(python3 -c 'import json; print((json.load(open("zeus/BEST.json")).get("cloudflare") or {}).get("version",""))')"
+          if [ "$CF" != "$V" ]; then echo "$V is not the best servable version ($CF is); not publishing on Hugging Face"; exit 0; fi
+          if [ -z "$HF_WRITE_TOKEN" ]; then echo "::warning::HF_WRITE_TOKEN not set; $V is not uploaded to Hugging Face"; exit 0; fi
+          python3 -m pip install --quiet huggingface_hub==0.26.2
+          python3 zeus/cloud/publish_hf.py "$V" --upload
