@@ -1,0 +1,45 @@
+# Publish a measured Zeus version on the Hugging Face Hub, by hand (Actions > Zeus on Hugging Face > Run workflow).
+# The training workflow does this by itself whenever a new version becomes the best servable one; this is for
+# publishing the current best (or any measured version) without waiting for that. The adapter comes from the
+# zeus-<version>-peft artifact the training run kept (90 days); the model card is written from the measured files
+# by zeus/cloud/publish_hf.py. Secrets: HF_WRITE_TOKEN (a Hugging Face token with write access). Variable:
+# HF_MODEL_REPO (default Heliusnetwork/zeus).
+name: Zeus on Hugging Face
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, e.g. v16 (blank: the best servable version in BEST.json)'
+        required: false
+        default: ''
+permissions:
+  contents: read
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HF_WRITE_TOKEN: ${{ secrets.HF_WRITE_TOKEN }}
+          HF_MODEL_REPO: ${{ vars.HF_MODEL_REPO }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -z "$HF_WRITE_TOKEN" ]; then echo "::error::Add the HF_WRITE_TOKEN repository secret first (a Hugging Face token with write access)."; exit 1; fi
+          V="$INPUT_VERSION"
+          if [ -z "$V" ]; then V="$(python3 -c 'import json; print((json.load(open("zeus/BEST.json")).get("cloudflare") or {}).get("version",""))')"; fi
+          case "$V" in v[0-9]|v[0-9][0-9]|v[0-9][0-9][0-9]) ;; *) echo "::error::no valid version ($V)"; exit 1 ;; esac
+          ID="$(gh api "repos/${{ github.repository }}/actions/artifacts?name=zeus-$V-peft&per_page=1" --jq '.artifacts[0].id // empty')"
+          if [ -z "$ID" ]; then echo "::error::no zeus-$V-peft artifact (training runs keep adapters for 90 days)"; exit 1; fi
+          mkdir -p "zeus/out/zeus-$V-peft"
+          gh api "repos/${{ github.repository }}/actions/artifacts/$ID/zip" > /tmp/adapter.zip
+          unzip -o -q /tmp/adapter.zip -d "zeus/out/zeus-$V-peft"
+          ls -la "zeus/out/zeus-$V-peft"
+          python3 -m pip install --quiet huggingface_hub==0.26.2
+          python3 zeus/cloud/publish_hf.py "$V" --upload
