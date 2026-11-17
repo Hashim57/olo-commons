@@ -96,3 +96,26 @@ def test_best_carries_the_train_generators_of_the_chosen_version(tmp_path):
     cands = {c["version"]: c for c in promote.candidates(str(tmp_path / "out"), promote.measured_rows(str(p)))}
     assert cands["v5"]["train_generators"] == ["rules-v1", "hard-v1"]
     assert "train_generators" not in cands["v2"]  # no train_summary.json: the key is left out, not invented
+
+
+def test_above_the_floor_held_out_claims_decide_not_one_answer_on_the_frozen_split():
+    v16 = {"version": "v16", "label_accuracy": 1.0, "evidence_hit": 1.0, "held_out_accuracy": 0.717, "eval3_accuracy": 0.66}
+    v22 = {"version": "v22", "label_accuracy": 0.995, "evidence_hit": 0.995, "held_out_accuracy": 0.733, "eval3_accuracy": 0.92}
+    assert promote.choose([v16, v22], {"version": "v16"})["version"] == "v22"
+    # below the floor a better held-out score does not win
+    weak = {"version": "v30", "label_accuracy": 0.95, "evidence_hit": 0.95, "held_out_accuracy": 0.90, "eval3_accuracy": 0.95}
+    assert promote.choose([v22, weak], {"version": "v22"})["version"] == "v22"
+    # equal VitaminC: the hard patterns decide
+    v23 = dict(v22, version="v23", eval3_accuracy=0.95)
+    assert promote.choose([v22, v23])["version"] == "v23"
+
+
+def test_the_repository_promotes_the_best_held_out_version_above_the_floor():
+    import os
+    zeus = os.path.join(os.path.dirname(__file__), "..")
+    cands = promote.candidates(os.path.join(zeus, "out"), promote.measured_rows(os.path.join(zeus, "STATUS.md")))
+    cf = [c for c in cands if promote.cloudflare_servable(c)]
+    above = [c for c in cf if c["label_accuracy"] >= promote.FROZEN_FLOOR and c.get("held_out_accuracy") is not None]
+    pick = promote.choose(cf, {"version": "v16"})
+    assert pick["held_out_accuracy"] == max(c["held_out_accuracy"] for c in above)
+    assert pick["version"] != "v16", "v22 (and any later version better on held-out claims) outranks v16"
