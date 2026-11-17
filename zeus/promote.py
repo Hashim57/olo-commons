@@ -5,8 +5,9 @@
   python3 zeus/promote.py --dry-run  # prints what would be written
 
 Reads every zeus/out/zeus-vN/eval.json that has a measured row in STATUS.md
-and chooses the best by label accuracy, then evidence hit, then the newer
-version. A version is only promoted when it is at least as good as the one
+and chooses the best: a version must score at least FROZEN_FLOOR on the frozen
+split, and above it the held-out VitaminC accuracy decides, then Commons eval
+v3, then evidence hit, then the newer version (rank_key). A version is only promoted when it is at least as good as the one
 in BEST.json already (so a worse training run never replaces a better one),
 unless --force is given. The page and the serving scripts read BEST.json;
 nothing here trains, serves or uploads.
@@ -46,13 +47,15 @@ def candidates(out_dir, rows):
         except (OSError, ValueError):
             continue
         ext_path = os.path.join(out_dir, f"zeus-{v}", "eval-external.json")
-        held_out = None
+        held_out = eval3 = None
         if os.path.exists(ext_path):
             try:
-                vit = (json.load(open(ext_path, encoding="utf-8")).get("vitaminc_dev") or {})
+                ext = json.load(open(ext_path, encoding="utf-8"))
+                vit, e3 = ext.get("vitaminc_dev") or {}, ext.get("eval_v3") or {}
                 held_out = float(vit["label_accuracy"]) if "label_accuracy" in vit else None
-            except (OSError, ValueError, TypeError):
-                held_out = None
+                eval3 = float(e3["label_accuracy"]) if "label_accuracy" in e3 else None
+            except (OSError, ValueError, TypeError, AttributeError):
+                held_out = eval3 = None
         # The train generators (rules-v1, hard-v1, compose-v1, ...) the version was built with, as record.py
         # copied them from meta.json into train_summary.json; due.py retrains when the recipe changes.
         gens = None
@@ -64,7 +67,7 @@ def candidates(out_dir, rows):
                 gens = None
         out.append({"version": v, "date": row["date"], "base": ev.get("base") or row["base"], "train_examples": row["train_examples"],
                     "label_accuracy": float(ev.get("label_accuracy", row["label_accuracy"])), "evidence_hit": float(ev.get("evidence_hit", row["evidence_hit"])),
-                    "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1"), "held_out_accuracy": held_out,
+                    "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1"), "held_out_accuracy": held_out, "eval3_accuracy": eval3,
                     **({"train_generators": gens} if gens else {})})
     return out
 
@@ -73,10 +76,22 @@ def cloudflare_servable(c):
     return "mistral-7b-instruct-v0.2" in str(c.get("base", "")).lower()
 
 
+# Since 2026-11-17 the frozen split is a floor, not the first key. Every cloud version scores 0.99 to 1.0 on it,
+# so ranking by it first let one answer in 200 decide: v22 (0.995, rounded by float to 0.99) lost to v16 (1.0)
+# although v22 was better on everything that still measures something (VitaminC dev 0.733 against 0.717,
+# Commons eval v3 0.92 against 0.66), and Olo kept serving v16. Above the floor, versions are ranked by the
+# held-out human-written claims (VitaminC dev), then the hard patterns (eval v3), then evidence hit, then age.
+FROZEN_FLOOR = 0.98
+
+
 def rank_key(c):
-    """The frozen split first, rounded to two places because a 7B model saturates it (0.99 and 0.995 tie);
-    then the held-out VitaminC accuracy, which a saturated split cannot give; then evidence hit; then the newer version."""
-    return (round(c["label_accuracy"], 2), c.get("held_out_accuracy") if c.get("held_out_accuracy") is not None else -1.0, c["evidence_hit"], int(c["version"][1:]))
+    """Whether the version clears FROZEN_FLOOR on the frozen split; then the held-out VitaminC accuracy; then
+    Commons eval v3; then, for versions below the floor or without held-out numbers, the frozen split itself;
+    then evidence hit; then the newer version."""
+    ho = c.get("held_out_accuracy")
+    e3 = c.get("eval3_accuracy")
+    return (c["label_accuracy"] >= FROZEN_FLOOR - 1e-9, ho if ho is not None else -1.0, e3 if e3 is not None else -1.0,
+            round(c["label_accuracy"], 3), c["evidence_hit"], int(c["version"][1:]))
 
 
 def choose(cands, current=None, force=False):
