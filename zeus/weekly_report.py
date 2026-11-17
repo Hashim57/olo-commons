@@ -12,7 +12,8 @@ What the report leads with, and why: the Commons eval split has been at or near 
 no longer shows learning. The numbers that can still move are the ones built from claims people wrote or
 from patterns no rule writes: VitaminC dev (held out; since 2026-11-17 Zeus also trains on 4,000 VitaminC
 training rows, so part of a gain there is in-distribution, and the report says so), Commons eval v3 and its
-patterns, and LLM-AggreFact, the public benchmark, once the Hugging Face token is set.
+patterns, and LLM-AggreFact, the public benchmark, which the report shows only once it has been measured
+(it needs the Hugging Face token; until then it is left out of the PDF and the post).
 """
 import argparse
 import json
@@ -120,6 +121,15 @@ def delta(now, then):
     return f"{'+' if d >= 0 else ''}{d:.1f} pts"
 
 
+def headline_keys(history):
+    """The benchmarks the report shows. LLM-AggreFact appears only once a version has measured it (it needs the
+    Hugging Face token); until then it is left out of the report and the post altogether, at Hashim's request."""
+    keys = ["vitaminc_dev", "eval3"]
+    if any(h.get("aggrefact") is not None for h in history):
+        keys.append("aggrefact")
+    return keys
+
+
 def summarise(end, rows=None):
     rows = rows if rows is not None else measured_versions()
     start, _ = week_window(end)
@@ -134,7 +144,7 @@ def summarise(end, rows=None):
         "latest": latest, "reference": ref,
         "versions_this_week": [r[1] for r in week],
         "latest_scores": s_latest, "reference_scores": s_ref,
-        "headline": {k: {"now": s_latest.get(k), "week_ago": s_ref.get(k), "change": delta(s_latest.get(k), s_ref.get(k))} for k in ("vitaminc_dev", "eval3", "aggrefact")},
+        "headline": {k: {"now": s_latest.get(k), "week_ago": s_ref.get(k), "change": delta(s_latest.get(k), s_ref.get(k))} for k in headline_keys(history)},
         "history": history,
         "commits": commits(start, end),
         "base": week[-1][2] if week else (rows[-1][2] if rows else None),
@@ -247,27 +257,28 @@ def build_pdf(summary, path, workdir):
         sub = f"{ch} on the week" if ch else ("first measurement" if now is not None and hl[key]["week_ago"] is None else "")
         return [Paragraph(label, LAB), Paragraph(val if now is not None else "not measured", BIG if now is not None else P), Paragraph(sub, LAB), Paragraph(note, S)]
 
-    agg_note = (f"public grounding benchmark, sample of {L.get('aggrefact_n')}" if L.get("aggrefact") is not None
-                else "public benchmark; needs the Hugging Face token (see Open problems)")
     tiles = [tile("VitaminC dev (human-written claims)", "vitaminc_dev", f"held out, n={L.get('vitaminc_n') or '?'}"),
-             tile("Commons eval v3 (hard patterns)", "eval3", f"frozen, n={L.get('eval3_n') or '?'}"),
-             tile("LLM-AggreFact", "aggrefact", agg_note)]
-    t = Table([[tiles[0], tiles[1], tiles[2]]], colWidths=[58 * mm] * 3)
-    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("BOX", (0, 0), (0, 0), 0.6, colors.HexColor(GRID)), ("BOX", (1, 0), (1, 0), 0.6, colors.HexColor(GRID)),
-                           ("BOX", (2, 0), (2, 0), 0.6, colors.HexColor(GRID)), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
+             tile("Commons eval v3 (hard patterns)", "eval3", f"frozen, n={L.get('eval3_n') or '?'}")]
+    if "aggrefact" in hl:
+        tiles.append(tile("LLM-AggreFact", "aggrefact", f"public grounding benchmark, sample of {L.get('aggrefact_n')}"))
+    t = Table([tiles], colWidths=[174 * mm / len(tiles)] * len(tiles))
+    t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]
+                          + [("BOX", (i, 0), (i, 0), 0.6, colors.HexColor(GRID)) for i in range(len(tiles))]))
     story.append(t)
     story.append(Spacer(1, 6))
     story.append(Paragraph(f"The Commons eval split, the first test set, reads {pct(L.get('commons_eval'))}. It has been at or near 100 percent for weeks, "
-                           "so it no longer shows learning and is not the headline. The three numbers above can still move.", S))
+                           "so it no longer shows learning and is not the headline. The numbers above can still move.", S))
 
     img1 = os.path.join(workdir, "history.png")
     chart_history(summary, img1)
     story.append(Paragraph("Held-out accuracy by version", H2))
     story.append(Image(img1, width=180 * mm, height=80 * mm))
-    hist_rows = [["Version", "Measured", "VitaminC dev", "Commons eval v3", "LLM-AggreFact", "Training minutes"]]
+    agg = "aggrefact" in hl
+    hist_rows = [["Version", "Measured", "VitaminC dev", "Commons eval v3"] + (["LLM-AggreFact"] if agg else []) + ["Training minutes"]]
     for h in summary["history"][-8:]:
-        hist_rows.append([h["version"], h["date"], pct(h.get("vitaminc_dev")), pct(h.get("eval3")), pct(h.get("aggrefact")), str(h.get("minutes") or "")])
-    story.append(_table(hist_rows, [20 * mm, 24 * mm, 30 * mm, 32 * mm, 30 * mm, 30 * mm], colors, Table, TableStyle))
+        hist_rows.append([h["version"], h["date"], pct(h.get("vitaminc_dev")), pct(h.get("eval3"))] + ([pct(h.get("aggrefact"))] if agg else []) + [str(h.get("minutes") or "")])
+    widths = [20 * mm, 24 * mm, 30 * mm, 32 * mm] + ([30 * mm] if agg else []) + [30 * mm]
+    story.append(_table(hist_rows, widths, colors, Table, TableStyle))
     story.append(Paragraph("The last eight measured versions. The chart and this table carry the same numbers.", S))
 
     story.append(PageBreak())
@@ -330,14 +341,11 @@ def build_pdf(summary, path, workdir):
     story.append(Paragraph("How to read this, and open problems", H2))
     notes = [
         "VitaminC dev is 300 human-written claims over Wikipedia revisions that Zeus never trains on. Since 17 November 2026 it does train on "
-        "4,000 VitaminC training rows from the same corpus, so part of any gain there is in-distribution; LLM-AggreFact is the out-of-distribution check.",
+        "4,000 VitaminC training rows from the same corpus, so part of any gain there is in-distribution.",
         "Commons eval v3 is frozen and versioned (eval3-v1): 200 claims in six patterns no rule in the training data writes in the same form.",
         "A version trains for up to two hours a day on one A100 GPU (60 minutes until 17 November 2026). Scores move a few points from one "
         "version to the next on sets of 200 to 300 claims, so a single week's change of one or two points is within that noise.",
     ]
-    if L.get("aggrefact") is None:
-        notes.append("LLM-AggreFact is not measured yet: " + _esc((L.get("aggrefact_error") or "no result recorded")[:160]) +
-                     " It needs a Hugging Face token with access to the dataset, set as the repository secret HF_TOKEN.")
     for n in notes:
         story.append(Paragraph(n, S))
         story.append(Spacer(1, 3))
@@ -386,7 +394,12 @@ def main():
     build_pdf(summary, out, work)
     js = os.path.splitext(out)[0] + ".json"
     slim = {k: v for k, v in summary.items() if k != "history"}
-    slim["history_tail"] = [{k: h.get(k) for k in ("version", "date", "vitaminc_dev", "eval3", "aggrefact", "minutes")} for h in summary["history"][-8:]]
+    shown = ["version", "date"] + list(summary["headline"]) + ["minutes"]
+    slim["history_tail"] = [{k: h.get(k) for k in shown} for h in summary["history"][-8:]]
+    if "aggrefact" not in summary["headline"]:
+        # left out of the report until measured, so it is left out of what the post is written from too
+        for side in ("latest_scores", "reference_scores"):
+            slim[side] = {k: v for k, v in (slim.get(side) or {}).items() if not k.startswith("aggrefact")}
     with open(js, "w", encoding="utf-8") as f:
         json.dump(slim, f, indent=2)
     for p in os.listdir(work):

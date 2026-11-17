@@ -34,3 +34,8 @@ def test_a_report_builds_from_the_repository(tmp_path):
     wr.build_pdf(summary, str(out), str(tmp_path))
     assert out.read_bytes()[:5] == b"%PDF-" and out.stat().st_size > 20000
     assert summary["latest"] == rows[-1][1]
+
+
+def test_aggrefact_is_left_out_until_it_is_measured():
+    assert wr.headline_keys([{"aggrefact": None}, {}]) == ["vitaminc_dev", "eval3"]
+    assert wr.headline_keys([{"aggrefact": None}, {"aggrefact": 0.71}]) == ["vitaminc_dev", "eval3", "aggrefact"]
