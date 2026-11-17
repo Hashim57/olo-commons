@@ -138,7 +138,7 @@ Page with `p_after` = the `next_after` you received (`p_limit` up to 500; start 
 
 ### Stats
 
-`olo_stats()` returns `atoms`, `links`, `sources`, `atoms_24h`, `links_24h`, `queries_24h`, `queries_total`, `projects`, `last_run` and `by_source` (one entry per enabled source with `slug`, `name`, `kind`, `licence`, `homepage`, `atoms`, `trust`, `last_run_at`). It is what the live page shows.
+`olo_stats()` returns `atoms`, `links`, `sources`, `atoms_24h`, `links_24h`, `queries_24h`, `queries_total`, `projects`, `last_run` and `by_source` (one entry per enabled source with `slug`, `name`, `kind`, `licence`, `homepage`, `atoms`, `trust`, `last_run_at`). It is what the live page shows. `last_run_at` is when the ingester last asked that source, whether or not it answered (a failed call is recorded in the run's note, the `?status=1` call above); the ingester asks the least recently asked source first, so a source that keeps failing does not keep the head of the queue.
 
 ## Using it in an assistant
 

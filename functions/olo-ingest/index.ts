@@ -491,9 +491,14 @@ Deno.serve(async (req) => {
   for (const src of sources || []) {
     if (outOfTime()) { cutShort = true; break; }
     const fn = discover[src.slug]; if (!fn) continue;
-    let cands: Candidate[] = [];
-    try { cands = await fn(perSource, src); } catch (e) { fail(src.slug, e); continue; }
-    await ingest(src, cands);
+    let cands: Candidate[] | null = null;
+    try { cands = await fn(perSource, src); } catch (e) { fail(src.slug, e); }
+    if (cands) await ingest(src, cands);
+    // An attempt is a run, whether or not the source answered. Until 17 November 2026 a source whose call failed kept
+    // its old last_run_at, so it was first in the queue again next time; with arXiv and gutendex both allowed 20 s
+    // (fetchTimeoutMs), two timeouts at the head of the queue were the whole 40 s deadline, and 3 of 12 runs that
+    // morning ended with 0 or 1 atoms and "time budget reached" before any other source was asked. The failure itself
+    // stays in the run note (errors clause); the source goes to the back of the queue for the next run.
     await sb.from('olo_sources').update({ last_run_at: new Date().toISOString() }).eq('id', src.id);
     await checkpoint();
     if (cutShort) break;
