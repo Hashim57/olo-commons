@@ -260,7 +260,7 @@ def build_pdf(summary, path, workdir):
     tiles = [tile("VitaminC dev (human-written claims)", "vitaminc_dev", f"held out, n={L.get('vitaminc_n') or '?'}"),
              tile("Commons eval v3 (hard patterns)", "eval3", f"frozen, n={L.get('eval3_n') or '?'}")]
     if "aggrefact" in hl:
-        tiles.append(tile("LLM-AggreFact", "aggrefact", f"public grounding benchmark, sample of {L.get('aggrefact_n')}"))
+        tiles.append(tile("LLM-AggreFact (public benchmark)", "aggrefact", f"balanced accuracy, where 50% is chance; sample of {L.get('aggrefact_n')}"))
     t = Table([tiles], colWidths=[174 * mm / len(tiles)] * len(tiles))
     t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 7), ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]
                           + [("BOX", (i, 0), (i, 0), 0.6, colors.HexColor(GRID)) for i in range(len(tiles))]))
@@ -346,6 +346,11 @@ def build_pdf(summary, path, workdir):
         "A version trains for up to two hours a day on one A100 GPU (60 minutes until 17 November 2026). Scores move a few points from one "
         "version to the next on sets of 200 to 300 claims, so a single week's change of one or two points is within that noise.",
     ]
+    if "aggrefact" in hl:
+        notes.append("LLM-AggreFact (Tang, Laban and Durrett 2024) is scored differently: two labels (supported or not), long documents such as news "
+                     "summaries, meeting transcripts and RAG answers, and balanced accuracy, where always giving the same answer scores 50%. "
+                     "It is the hardest test here because nothing like it is in Zeus's training data, so it shows how far Zeus carries over to "
+                     "text it has not seen. The per-dataset scores are in the JSON summary beside this PDF.")
     for n in notes:
         story.append(Paragraph(n, S))
         story.append(Spacer(1, 3))
