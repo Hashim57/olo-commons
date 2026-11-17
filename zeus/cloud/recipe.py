@@ -207,9 +207,10 @@ def merge_pool(pool, new, cap=MISTAKE_POOL_CAP):
 # right. A run now reads every row that teaches something a rule cannot (gold, imported human-written claims,
 # the mistake pool, composed and long-document examples) and a fresh, label-balanced sample of the plain
 # rule-made and hard-v1 rows. The sample is seeded by the version, so over a week the whole set is still read.
-# A run then finishes in about 80 minutes inside the 120-minute ceiling, which roughly halves the extra cost.
+# On 17 November 2026 Hashim set the budget back to one hour; the caps below are sized so a whole focused pass
+# (about 17,000 rows, about 1,050 steps at v23's pace of 17 steps a minute) fits in it.
 # ---------------------------------------------------------------------------
-FOCUS_CAPS = {"rules": 7000, "hard-v1": 5000}   # rows kept per sampled group; every other group is kept whole
+FOCUS_CAPS = {"rules": 4000, "hard-v1": 3000}   # rows kept per sampled group; every other group is kept whole
 
 
 def focus_group(ex, is_priority):

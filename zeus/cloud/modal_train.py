@@ -11,14 +11,15 @@ numbers. Outputs land in zeus/out/zeus-<v>/ (eval.json, train_summary.json) and
 zeus/out/zeus-<v>-peft/ (the two files Cloudflare accepts).
 
 Cost: Modal bills per second (an A100 40 GB is about $2.10 an hour) and gives
-$30 of free credit a month. Since 2026-11-17 the optimiser loop stops at
---max-minutes (default 120, the two hours a day Hashim asked for, up from 60), so
-a run that read everything took two and a half hours of GPU with loading,
-evaluation and the mistake probe, about $5 to $6 a day. Since the same day a run
+$30 of free credit a month. The optimiser loop stops at --max-minutes. For one
+run on 2026-11-17 (v23) it was 120, and reading everything took two and a half
+hours of GPU with loading, evaluation and the mistake probe, about $5 to $6.
+Since the same day a run
 trains on a focused set (recipe.focus_indices: every gold, imported, mistake,
 composed and long-document row, and a fresh sample of the easy rule-made rows),
-about 22,000 rows instead of 39,000, so it finishes in about 80 to 90 minutes
-under the 120-minute ceiling: about $3.50 to $4 a day.
+about 17,000 rows instead of 39,000, and Hashim set the budget back to one hour
+(--max-minutes default 60), which a whole focused pass fits: about $3 a day
+with loading, evaluation and the mistake probe.
 
 Learning from mistakes (since 2026-11-17): every version starts from the base
 model, so the rows zeus/data/mistakes/pool.jsonl holds (what earlier versions got
@@ -62,7 +63,7 @@ def _tar(paths):
 
 
 @app.function(image=image, gpu=GPU, timeout=4 * 3600, volumes={"/cache": cache})
-def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 120.0) -> bytes:
+def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 60.0) -> bytes:
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -307,7 +308,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 4000, aggrefact_n: int = 600, max_minutes: float = 120.0):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 4000, aggrefact_n: int = 600, max_minutes: float = 60.0):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)
