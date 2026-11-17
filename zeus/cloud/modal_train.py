@@ -240,11 +240,19 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
             idx = list(range(len(ds)))
             rng.shuffle(idx)
             rows = [ds[i] for i in idx[:aggrefact_n]]
-            exs = [{"claim": r["claim"], "passages": [{"id": "p1", "source": r.get("dataset", "doc"), "text": str(r["doc"])[:12000]}], "label": "supported" if int(r["label"]) == 1 else "not_covered", "evidence": [], "rationale": ""} for r in rows]
+            # Long documents are cut in the document, by tokens, so the prompt's end (the claim's instruction and the
+            # answer marker of the chat template) is never what truncation removes (since 2026-11-17).
+            def fit(doc, room=3000):
+                ids = tok(str(doc), add_special_tokens=False)["input_ids"]
+                return str(doc) if len(ids) <= room else tok.decode(ids[:room], skip_special_tokens=True)
+            exs = [{"claim": r["claim"], "passages": [{"id": "p1", "source": r.get("dataset", "doc"), "text": fit(r["doc"])}], "label": "supported" if int(r["label"]) == 1 else "not_covered", "evidence": [], "rationale": ""} for r in rows]
             a, cut = run(exs)
-            per = {}
+            per, said_by = {}, {}
             for r, ex, ans in zip(rows, exs, a):
                 d = per.setdefault(r.get("dataset", "all"), {"tp": 0, "fn": 0, "tn": 0, "fp": 0})
+                said = ans.get("label") if ans and ans.get("label") in ("supported", "contradicted", "not_covered") else "invalid"
+                sd = said_by.setdefault(r.get("dataset", "all"), {})
+                sd[said] = sd.get(said, 0) + 1
                 pred_sup = bool(ans) and ans.get("label") == "supported"
                 truth = int(r["label"]) == 1
                 d["tp" if truth and pred_sup else "fn" if truth else "fp" if pred_sup else "tn"] += 1
@@ -253,7 +261,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                 tnr = d["tn"] / (d["tn"] + d["fp"]) if d["tn"] + d["fp"] else 0
                 return round(100 * (tpr + tnr) / 2, 1)
             tot = {k: sum(d[k] for d in per.values()) for k in ("tp", "fn", "tn", "fp")}
-            external["llm_aggrefact"] = {"n": len(exs), "balanced_accuracy": bacc(tot), "per_dataset": {k: {"n": sum(d.values()), "balanced_accuracy": bacc(d)} for k, d in sorted(per.items())}, "truncated_docs": cut,
+            external["llm_aggrefact"] = {"n": len(exs), "balanced_accuracy": bacc(tot), "per_dataset": {k: {"n": sum(d.values()), "balanced_accuracy": bacc(d), "confusion": d, "said": dict(sorted(said_by.get(k, {}).items()))} for k, d in sorted(per.items())}, "truncated_docs": cut,
                                         "mapping": "supported=1; contradicted or not_covered=0", "sample": f"random {len(exs)} of the test split, seed 0", "cite": "Tang, Laban, Durrett 2024, arXiv:2404.10774"}
         except Exception as e:  # the benchmark is a bonus measurement; a download failure must not lose the training run
             external["llm_aggrefact"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
