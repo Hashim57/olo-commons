@@ -11,9 +11,18 @@ numbers. Outputs land in zeus/out/zeus-<v>/ (eval.json, train_summary.json) and
 zeus/out/zeus-<v>-peft/ (the two files Cloudflare accepts).
 
 Cost: Modal bills per second (an A100 40 GB is about $2.10 an hour) and gives
-$30 of free credit a month; one run of about 40 minutes is about $1.50. Since
-2026-11-13 the optimiser loop stops at --max-minutes (default 60, the hour a day
-Hashim asked for), so a daily run costs about $3 with loading and evaluation.
+$30 of free credit a month. Since 2026-11-17 the optimiser loop stops at
+--max-minutes (default 120, the two hours a day Hashim asked for, up from 60), so
+a daily run is about two and a half hours of GPU with loading, evaluation and the
+mistake probe, about $5 to $6 a day.
+
+Learning from mistakes (since 2026-11-17): every version starts from the base
+model, so the rows zeus/data/mistakes/pool.jsonl holds (what earlier versions got
+wrong on their own training rows) are trained as priority rows, early in the
+order and so twice in all. After the held-out measurements the new version
+answers a sample of its training rows (recipe.MISTAKE_PROBE_N, never a held-out
+row) and its wrong answers come back as mistakes.jsonl with learning.json, which
+the local part merges into the pool for the next version.
 Secrets on Modal's side: none; the Hugging Face token, if the base is gated for
 you, comes from the HF_TOKEN environment variable of the caller.
 """
@@ -49,7 +58,7 @@ def _tar(paths):
 
 
 @app.function(image=image, gpu=GPU, timeout=4 * 3600, volumes={"/cache": cache})
-def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 60.0) -> bytes:
+def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 120.0) -> bytes:
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -78,7 +87,10 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
             for f in sorted(os.listdir(d)):
                 if f.endswith(".jsonl") and not f.endswith("-eval.jsonl"):
                     train += load(os.path.join(d, f))
-    # The gold and imported rows: under the time budget they always come inside the part of the list a run reads (recipe.budgeted_order).
+    # What earlier versions got wrong (recipe.merge_pool): trained again as priority rows, so read twice in all.
+    pool_rows = load(os.path.join(data, "mistakes", "pool.jsonl"))
+    train += pool_rows
+    # The gold, imported and mistake rows: under the time budget they always come inside the part of the list a run reads (recipe.budgeted_order).
     priority = [i >= rule_made for i in range(len(train))]
     evals = load(os.path.join(data, "eval.jsonl"))[:eval_limit]
 
@@ -179,7 +191,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                "steps": step, "planned_steps": planned_steps, "time_budget_minutes": max_minutes, "time_capped": step < planned_steps,
                "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True,
                # how many of the gold and imported rows the budgeted part of the order held (all of them unless the hour allowed less than PRIORITY_FRONT of the list)
-               "priority_rows": sum(priority), "priority_front": recipe.PRIORITY_FRONT,
+               "priority_rows": sum(priority), "priority_front": recipe.PRIORITY_FRONT, "mistake_pool_rows": len(pool_rows),
                "priority_seen": sum(1 for pos in range(min(len(order), step * batch * accum)) if priority[order[pos]]) if step < planned_steps else sum(priority)}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
@@ -248,11 +260,35 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
     json.dump(external, open(os.path.join(out, "eval-external.json"), "w"), indent=2)
     print(json.dumps(external), flush=True)
+
+    # Learning from mistakes: answer a sample of this version's own training rows, keep the wrong ones for the
+    # next version (recipe.mistakes_from). Last, so a failure here never loses the adapter or a measurement.
+    try:
+        held = {ex.get("claim") for split in (evals, ev2, ev3, vit) for ex in split}
+        pick = recipe.probe_indices(len(train), random.Random(recipe.shuffle_seed(version) + 1))
+        probe = [train[i] for i in pick if train[i].get("claim") not in held]
+        a, _ = run(probe)
+        wrong = recipe.mistakes_from(probe, a, version, held)
+        with open(os.path.join(out, "mistakes.jsonl"), "w") as f:
+            for row in wrong:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        said = {}
+        for row in wrong:
+            k = f"{row['label']}->{row['mistake']['said']}"
+            said[k] = said.get(k, 0) + 1
+        from_pool = sum(1 for i in pick if i >= len(train) - len(pool_rows))
+        learning = {"probe_n": len(probe), "probe_accuracy": round(1 - len(wrong) / len(probe), 3) if probe else None, "mistakes": len(wrong),
+                    "mistakes_by_kind_of_error": dict(sorted(said.items())), "pool_rows_trained": len(pool_rows), "pool_rows_in_probe": from_pool,
+                    "note": "a sample of this version's own training rows, never a held-out row; the wrong ones are trained again by the next version"}
+    except Exception as e:
+        learning = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    json.dump(learning, open(os.path.join(out, "learning.json"), "w"), indent=2)
+    print(json.dumps(learning), flush=True)
     return _tar([(out, "out")])
 
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 1500, aggrefact_n: int = 600, max_minutes: float = 60.0):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 4000, aggrefact_n: int = 600, max_minutes: float = 120.0):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)
@@ -263,7 +299,7 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
     subprocess.run([py, "zeus/build_dataset.py"], check=True)
     # Only what training needs: the splits, gold and imported sets, and the helpers (not the corpus cache).
     parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl", "eval2.jsonl", "eval3.jsonl", "eval3.manifest.json") if os.path.exists(f"zeus/data/{f}")]
-    parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported") if os.path.isdir(f"zeus/data/{d}")]
+    parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported", "mistakes") if os.path.isdir(f"zeus/data/{d}")]
     parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
     payload = _tar(parts)
     result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n, max_minutes)
@@ -274,9 +310,22 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
     peft = dest + "-peft"
     os.makedirs(dest, exist_ok=True)
     os.makedirs(peft, exist_ok=True)
-    for f in ("eval.json", "train_summary.json", "eval-external.json"):
+    for f in ("eval.json", "train_summary.json", "eval-external.json", "learning.json", "mistakes.jsonl"):
         if os.path.exists(os.path.join(tmp, "out", f)):
             os.replace(os.path.join(tmp, "out", f), os.path.join(dest, f))
+    # The next version trains what this one got wrong: merge into the pool (newest first, capped).
+    new = os.path.join(dest, "mistakes.jsonl")
+    if os.path.exists(new):
+        pool_path = os.path.join(REPO, "zeus", "data", "mistakes", "pool.jsonl")
+        os.makedirs(os.path.dirname(pool_path), exist_ok=True)
+        load = lambda p: [json.loads(l) for l in open(p) if l.strip()] if os.path.exists(p) else []
+        sys.path.insert(0, HERE)
+        import recipe
+        merged = recipe.merge_pool(load(pool_path), load(new))
+        with open(pool_path, "w") as f:
+            for row in merged:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        print(f"mistake pool: {len(merged)} rows ({len(load(new))} new from {version})")
     for f in os.listdir(os.path.join(tmp, "out", "peft")):
         os.replace(os.path.join(tmp, "out", "peft", f), os.path.join(peft, f))
     print(open(os.path.join(dest, "eval.json")).read())

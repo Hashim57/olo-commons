@@ -23,3 +23,10 @@ def test_note_generators_leaves_a_summary_alone_without_meta(tmp_path):
     summary.write_text(json.dumps({"base": "b"}))
     assert record.note_generators(str(summary), {"base": "b"}, str(tmp_path / "missing.json")) is None
     assert json.load(open(summary)) == {"base": "b"}
+
+
+def test_learning_note_reports_only_measured_numbers():
+    import record
+    note = record.learning_note({"probe_n": 800, "probe_accuracy": 0.962, "mistakes": 30, "pool_rows_trained": 0}, {"mistake_pool_rows": 120})
+    assert note == "Learning from mistakes: trained 120 earlier mistakes again; probe of 800 own training rows accuracy 0.962, 30 new mistakes kept for the next version."
+    assert record.learning_note({"error": "OutOfMemoryError: x"}, {}).startswith("Mistake probe failed (OutOfMemoryError")

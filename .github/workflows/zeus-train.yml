@@ -6,8 +6,10 @@
 # (zeus/cloud/due.py: new feedback, a tenth more data, a changed recipe, a week since the
 # last version, or, since 2026-11-13, simply a day since it and a training set that is
 # not the one it saw, so Zeus trains every day). The optimiser loop stops at the
-# max_minutes budget (default 60: about an hour of GPU, $3 a day with loading and
-# evaluation). It also starts when a training request (zeus/TRAIN_REQUEST.json) is
+# max_minutes budget (default 120 since 2026-11-17: two hours of training, about two and a
+# half hours of GPU and $5 to $6 a day with loading, evaluation and the mistake probe).
+# Each version also answers a sample of its own training rows; what it gets wrong goes into
+# zeus/data/mistakes/pool.jsonl, which the next version trains again (modal_train.py). It also starts when a training request (zeus/TRAIN_REQUEST.json) is
 # pushed, or by hand with a version.
 #
 # A trained version is measured on the frozen split, on held-out VitaminC dev and on an
@@ -41,7 +43,7 @@ on:
         default: true
       max_minutes:
         description: 'Minutes the optimiser loop may run (0: the whole pass)'
-        default: '60'
+        default: '120'
 permissions:
   contents: write
 concurrency:
@@ -108,7 +110,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo "Training ${{ steps.v.outputs.version }}: ${{ steps.v.outputs.reason }}"
-          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '60' }}"
+          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '120' }}"
       - name: Record, promote, scorecard, commit
         if: steps.v.outputs.due == '1'
         run: |
@@ -117,6 +119,7 @@ jobs:
           git config user.name "zeus-cloud"; git config user.email "zeus-cloud@heliusnetwork.app"
           git add -f "zeus/out/zeus-$V/eval.json" "zeus/out/zeus-$V/train_summary.json" zeus/STATUS.md zeus/BEST.json docs/ZEUS_SCORECARD.md
           git add -f "zeus/out/zeus-$V/eval-external.json" 2>/dev/null || true
+          git add -f "zeus/out/zeus-$V/learning.json" zeus/data/mistakes/pool.jsonl 2>/dev/null || true
           git rm -q --cached zeus/TRAIN_REQUEST.json 2>/dev/null || true
           git commit -q -m "zeus: $V trained and measured in the cloud (${{ steps.v.outputs.reason }})" && git pull -q --rebase && git push -q || echo "nothing to commit"
       - name: Keep the adapter
