@@ -254,7 +254,7 @@ def build_pdf(summary, path, workdir):
         now = hl[key]["now"]
         ch = hl[key]["change"]
         val = pct(now)
-        sub = f"{ch} on the week" if ch else ("first measurement" if now is not None and hl[key]["week_ago"] is None else "")
+        sub = f"{ch} on the week" if ch else ("not measured a week ago" if now is not None and hl[key]["week_ago"] is None else "")
         return [Paragraph(label, LAB), Paragraph(val if now is not None else "not measured", BIG if now is not None else P), Paragraph(sub, LAB), Paragraph(note, S)]
 
     tiles = [tile("VitaminC dev (human-written claims)", "vitaminc_dev", f"held out, n={L.get('vitaminc_n') or '?'}"),
