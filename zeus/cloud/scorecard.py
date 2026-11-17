@@ -40,6 +40,14 @@ def pct(x):
     return "not measured" if x is None else f"{100 * x:.1f}%" if isinstance(x, float) and x <= 1 else str(x)
 
 
+def wrong_calls(d):
+    """The `wrong` counts of a by_kind entry as text ("contradicted 12, invalid 1"); "none" when every answer was
+    right, and "not recorded" for a report written before eval.py counted them."""
+    if "wrong" not in d:
+        return "not recorded"
+    return ", ".join(f"{label} {n}" for label, n in d["wrong"].items()) or "none"
+
+
 EVAL3_SET = "Commons eval v3 (frozen, versioned: near misses naming everything, relation and before/after flips, modal shifts, two-passage support, decade paraphrases)"
 
 
@@ -82,16 +90,16 @@ def main():
         L.append("| LLM-AggreFact | not measured | | | | |")
     L.append("")
     if ev2.get("by_kind"):
-        L.append("Commons eval v2 by pattern (label accuracy):\n")
-        L.append("| Pattern | n | Accuracy |\n| --- | --- | --- |")
+        L.append("Commons eval v2 by pattern (label accuracy; what the wrong answers called the claim):\n")
+        L.append("| Pattern | n | Accuracy | Wrong calls |\n| --- | --- | --- | --- |")
         for k, d in ev2["by_kind"].items():
-            L.append(f"| {k} | {d['n']} | {pct(d['accuracy'])} |")
+            L.append(f"| {k} | {d['n']} | {pct(d['accuracy'])} | {wrong_calls(d)} |")
         L.append("")
     if ev3.get("by_kind"):
-        L.append(f"Commons eval v3 ({ev3.get('version') or 'version not recorded'}) by pattern (label accuracy):\n")
-        L.append("| Pattern | n | Accuracy |\n| --- | --- | --- |")
+        L.append(f"Commons eval v3 ({ev3.get('version') or 'version not recorded'}) by pattern (label accuracy; what the wrong answers called the claim):\n")
+        L.append("| Pattern | n | Accuracy | Wrong calls |\n| --- | --- | --- | --- |")
         for k, d in ev3["by_kind"].items():
-            L.append(f"| {k} | {d['n']} | {pct(d['accuracy'])} |")
+            L.append(f"| {k} | {d['n']} | {pct(d['accuracy'])} | {wrong_calls(d)} |")
         L.append("")
     if agg.get("per_dataset"):
         L.append("LLM-AggreFact by dataset (balanced accuracy, %):\n")

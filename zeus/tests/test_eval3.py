@@ -177,7 +177,11 @@ def test_score_by_kind_and_split_report():
            {"claim": "c", "passages": [], "label": "not_covered", "evidence": [], "kind": "modal_shift", "version": "eval3-v1"},
            {"claim": "c", "passages": [], "label": "not_covered", "evidence": [], "kind": "modal_shift", "version": "eval3-v1"}]
     answers = ['{"label": "supported", "evidence": [], "rationale": "r"}', {"label": "supported"}, "not json"]
-    assert ev.score_by_kind(exs, answers) == {"modal_shift": {"n": 2, "accuracy": 0.0}, "two_passage": {"n": 1, "accuracy": 1.0}}
+    assert ev.score_by_kind(exs, answers) == {"modal_shift": {"n": 2, "accuracy": 0.0, "wrong": {"invalid": 1, "supported": 1}},
+                                             "two_passage": {"n": 1, "accuracy": 1.0, "wrong": {}}}
+    # a wrong answer with a label outside the three is counted as invalid, like one that does not parse
+    odd = ev.score_by_kind(exs[:1], [{"label": "maybe"}])
+    assert odd == {"two_passage": {"n": 1, "accuracy": 0.0, "wrong": {"invalid": 1}}}
     r = ev.split_report(exs, answers)
     assert r["version"] == "eval3-v1" and r["by_kind"]["two_passage"]["n"] == 1 and r["n"] == 3
     plain = [{k: v for k, v in e.items() if k not in ("kind", "version")} for e in exs]
@@ -192,3 +196,10 @@ def test_scorecard_shows_eval3_as_not_yet_measured_until_a_run_scores_it():
     row = scorecard.eval3_row({"n": 10, "version": "eval3-v1", "label_accuracy": 0.5, "evidence_hit": 0.4, "json_valid": 1.0, "binary_balanced_accuracy": 0.6})
     assert "eval3-v1" in row and "50.0%" in row
     assert "not measured (boom)" in scorecard.eval3_row({"error": "boom"})
+
+
+def test_scorecard_names_what_the_wrong_answers_called_the_claim():
+    import scorecard
+    assert scorecard.wrong_calls({"n": 16, "accuracy": 0.25, "wrong": {"contradicted": 11, "invalid": 1}}) == "contradicted 11, invalid 1"
+    assert scorecard.wrong_calls({"n": 3, "accuracy": 1.0, "wrong": {}}) == "none"
+    assert scorecard.wrong_calls({"n": 3, "accuracy": 0.5}) == "not recorded", "a report written before eval.py counted them"
