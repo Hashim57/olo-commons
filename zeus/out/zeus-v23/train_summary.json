@@ -1,0 +1,38 @@
+{
+  "base": "mistralai/Mistral-7B-Instruct-v0.2",
+  "framework": "peft-cloud",
+  "gpu": "A100-40GB",
+  "train_examples": 39225,
+  "eval_examples": 200,
+  "epochs": 1.0,
+  "steps": 2093,
+  "planned_steps": 2451,
+  "time_budget_minutes": 120.0,
+  "time_capped": true,
+  "examples_seen": 33488,
+  "shuffle_seed": 1867942526,
+  "batch": 16,
+  "lr": 0.0002,
+  "lora": {
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "target_modules": [
+      "q_proj",
+      "v_proj"
+    ],
+    "bias": "none",
+    "task_type": "CAUSAL_LM"
+  },
+  "minutes": 120.0,
+  "system_folded": true,
+  "priority_rows": 4259,
+  "priority_front": 0.4,
+  "mistake_pool_rows": 0,
+  "priority_seen": 4259,
+  "train_generators": [
+    "rules-v1",
+    "hard-v1",
+    "compose-v2"
+  ]
+}
