@@ -1,0 +1,68 @@
+# Put the best servable Zeus version on Cloudflare by hand (Actions > Zeus on Cloudflare > Run workflow).
+# The training workflow does this by itself when a newly trained version becomes the best; this is for
+# serving the current best (zeus/BEST.json "cloudflare") without waiting for that, for example after the
+# ranking rule changed. It takes the zeus-<version>-peft adapter the training run kept (90 days) and runs
+# zeus/cloud/publish_ci.sh, the same script the training workflow uses: upload the adapter, point the
+# Worker at it with the version's measured scores, then score the served model. Only the version in
+# BEST.json can be published here, because the Worker is given that version's scores.
+# Uses the "production" environment, so it waits for a person to approve, like every other deploy.
+# Secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, ZEUS_KEY. Variable: ZEUS_URL.
+name: Zeus on Cloudflare
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: zeus-train
+  cancel-in-progress: false
+jobs:
+  publish:
+    name: Publish the best version (waits for approval)
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch the adapter of the best version
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="$(python3 -c 'import json; print((json.load(open("zeus/BEST.json")).get("cloudflare") or {}).get("version",""))')"
+          case "$V" in v[0-9]|v[0-9][0-9]|v[0-9][0-9][0-9]) ;; *) echo "::error::no valid best servable version in BEST.json ($V)"; exit 1 ;; esac
+          ID="$(gh api "repos/${{ github.repository }}/actions/artifacts?name=zeus-$V-peft&per_page=1" --jq '.artifacts[0].id // empty')"
+          if [ -z "$ID" ]; then echo "::error::no zeus-$V-peft artifact (training runs keep adapters for 90 days)"; exit 1; fi
+          mkdir -p "zeus/out/zeus-$V-peft"
+          gh api "repos/${{ github.repository }}/actions/artifacts/$ID/zip" > /tmp/adapter.zip
+          unzip -o -q /tmp/adapter.zip -d "zeus/out/zeus-$V-peft"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Publishing $V"
+      - name: Build the frozen eval split the served model is scored on
+        run: |
+          python3 -m pip install --quiet requests numpy
+          python3 zeus/build_dataset.py || python3 zeus/build_dataset.py --snapshot
+      - name: Upload to Cloudflare and point the Worker at it
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ZEUS_URL: ${{ vars.ZEUS_URL }}
+          ZEUS_KEY: ${{ secrets.ZEUS_KEY }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "::error::CLOUDFLARE_API_TOKEN is not set"; exit 1; fi
+          bash zeus/cloud/publish_ci.sh "${{ steps.v.outputs.version }}"
+      - name: Record the served model's scores
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          if [ -f "zeus/out/zeus-$V/eval-cloudflare.json" ]; then
+            python3 zeus/cloud/scorecard.py "$V" || true
+            git config user.name "zeus-cloud"; git config user.email "zeus-cloud@heliusnetwork.app"
+            git add -f "zeus/out/zeus-$V/eval-cloudflare.json" docs/ZEUS_SCORECARD.md
+            git commit -q -m "zeus: $V served on Cloudflare, measured there" && git pull -q --rebase && git push -q || echo "nothing to commit"
+          fi
