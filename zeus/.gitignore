@@ -4,3 +4,4 @@ out/*
 !out/*/learning.json
 !out/*/FAILED.txt
 __pycache__/
+reports/
