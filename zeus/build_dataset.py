@@ -1034,6 +1034,12 @@ def add_composed_train(train, atoms, eval_share, seed=7):
     return compose.add_composed(train, atoms, eval_share, compose_contra, seed)
 
 
+def add_longdoc_train(train, atoms, eval_share, seed=7):
+    """longdoc-v1 (zeus/longdoc.py): claims inside long documents of several atoms, train atoms only."""
+    import longdoc
+    return longdoc.add_longdoc(train, atoms, eval_share, compose_contra, seed)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", "https://bfldflbkebyapfagsxnr.supabase.co"))
@@ -1046,6 +1052,7 @@ def main():
     ap.add_argument("--no-near-miss", action="store_true", help="leave out the near-miss not_covered examples (train only)")
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
     ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v2 train examples (two-passage claims, century and decade paraphrases; train only)")
+    ap.add_argument("--no-longdoc", action="store_true", help="leave out the longdoc-v1 train examples (claims inside long documents; train only)")
     ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
                     help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
     args = ap.parse_args()
@@ -1067,6 +1074,7 @@ def main():
     data = build(atoms, args.eval_share, near_miss=not args.no_near_miss)
     hard = [] if args.no_hard_negatives else add_hard_negatives(data["train"], atoms, args.eval_share)
     composed = [] if args.no_compose else add_composed_train(data["train"], atoms, args.eval_share)
+    longdocs = [] if args.no_longdoc else add_longdoc_train(data["train"], atoms, args.eval_share)
     data["eval2"] = build_eval2(atoms, args.eval_share)
     os.makedirs(args.out, exist_ok=True)
     for split in ("train", "eval", "eval2"):
@@ -1093,8 +1101,11 @@ def main():
     meta["train_generators"] = ["rules-v1"] + ([] if args.no_hard_negatives else [HARD_NEGATIVES_VERSION])
     import compose
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_compose else [compose.COMPOSE_VERSION])
+    import longdoc
+    meta["train_generators"] = meta["train_generators"] + ([] if args.no_longdoc else [longdoc.LONGDOC_VERSION])
     meta["train_hard_by_kind"] = {k: sum(1 for ex in hard if ex["kind"] == k) for k in sorted({ex["kind"] for ex in hard})}
     meta["train_composed_by_kind"] = {k: sum(1 for ex in composed if ex["kind"] == k) for k in sorted({ex["kind"] for ex in composed})}
+    meta["train_longdoc_by_kind"] = {k: sum(1 for ex in longdocs if ex["kind"] == k) for k in sorted({ex["kind"] for ex in longdocs})}
     with open(os.path.join(args.out, "meta.json"), "w") as f:
         json.dump(meta, f, indent=2)
     print(json.dumps(meta))

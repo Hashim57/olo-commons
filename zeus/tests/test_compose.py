@@ -163,7 +163,8 @@ def test_main_keeps_eval_files_identical_and_no_compose_reproduces_train(tmp_pat
     sp.write_text(json.dumps(snap))
     script = os.path.join(HERE, "..", "build_dataset.py")
     outs = {}
-    for name, extra in (("on", []), ("off", ["--no-compose"])):
+    # --no-longdoc in both runs: this test is about compose alone (test_longdoc.py covers longdoc-v1)
+    for name, extra in (("on", ["--no-longdoc"]), ("off", ["--no-compose", "--no-longdoc"])):
         out = tmp_path / name
         subprocess.run([sys.executable, script, "--snapshot", str(sp), "--out", str(out), "--eval-share", "0.2"] + extra, check=True, capture_output=True)
         outs[name] = out
