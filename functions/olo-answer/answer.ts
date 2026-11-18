@@ -35,22 +35,43 @@ export function publishedLine(source: string, published: unknown): string {
 }
 
 /**
- * Short ids for the model to cite: p1, p2, ... in retrieval order. A dated source's text starts with
- * its publication date ("Published 1 May 2005. ..."), so the writer, Zeus and the figure check all
- * read the same date, and a quote of it is a quote of the passage.
+ * True when a body already opens with its title (a Wikidata description, a Gutenberg summary that opens
+ * with the quoted title), compared without case, quotes or punctuation.
+ */
+export function opensWithTitle(title: string, body: string): boolean {
+  const k = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const t = k(title);
+  return !t || k(body.slice(0, title.length + 40)).startsWith(t);
+}
+
+/** "Title." for the start of a passage: the title as written, with a full stop unless it ends in one. */
+function titleLine(title: string): string {
+  const t = title.replace(/\s+/g, ' ').trim();
+  return t ? (/[.!?]$/.test(t) ? t : t + '.') : '';
+}
+
+/**
+ * Short ids for the model to cite: p1, p2, ... in retrieval order. Each passage's text starts with its
+ * title, then, for a dated source, its publication date ("TUTTI: Parallel CKKS Bootstrapping in under
+ * 3 ms on CPU. Published 9 November 2026. ..."), so the writer, Zeus and the figure check all read the
+ * same text, and a quote of the title or the date is a quote of the passage. The writer used to see the
+ * title and Zeus not: TUTTI's "under 3 ms" is in its title only, and Zeus could not check it (answer eval
+ * of 2026-11-18, q063); a Wikinews headline often holds the story's main figure.
  */
 export function labelPassages(results: { id: string; source_slug?: string; source?: string; url?: string; title?: string; summary?: string; content?: string; published_at?: string | null }[], maxChars = 900): Passage[] {
   return results.map((r, i) => {
     const source = String(r.source_slug || r.source || '');
     const body = String(r.content || r.summary || '').replace(/\s+/g, ' ').trim();
     const dated = body ? publishedLine(source, r.published_at) : '';
+    const title = String(r.title || '');
+    const lead = body && title && !opensWithTitle(title, body) ? titleLine(title) : '';
     return {
       id: `p${i + 1}`,
       source,
       url: String(r.url || ''),
-      title: String(r.title || ''),
+      title,
       ...(dated ? { published: String(r.published_at).slice(0, 10) } : {}),
-      text: (dated ? dated + ' ' + body : body).slice(0, maxChars),
+      text: [lead, dated, body].filter(Boolean).join(' ').slice(0, maxChars),
     };
   }).filter(p => p.text.length > 0);
 }
@@ -61,13 +82,16 @@ export const ANSWER_SYSTEM = [
   'Use only facts stated in the passages. Do not add background knowledge. If the passages do not answer the question, write exactly: The Commons does not cover this yet.',
   // Each sentence is checked on its own, without the one before it: "She established it in 1924" cannot be
   // checked, "Ada Mackenzie founded the Ladies Golf Club of Toronto in 1924" can (answer eval, 2026-11-18).
-  'Every sentence is checked on its own, so begin each one with the name of the person, place or thing it is about, never with a pronoun such as he, she, it, they, his or this, in whatever language you answer.',
+  // A paper's title used as a name ("When will androids outnumber humans paper states that...") read as a name
+  // swap to the verifier (q061); a plain noun phrase ("The study of humanoid robot populations") does not.
+  'Every sentence is checked on its own, so begin each one with a plain noun phrase that names what it is about: a person, a place, a work, or for a study a phrase such as "The meta-analysis of facial botulinum toxin injections". Never begin with a pronoun such as he, she, it, they, his or this, and never use a title as if it were a name. This holds in whatever language you answer.',
   'Give a date or year only when the passage states it; a passage that begins "Published ..." states that date.',
   'No headings, no lists, no markdown.',
 ].join(' ');
 
 export function renderAnswerPrompt(q: string, passages: Passage[]): string {
-  const ps = passages.map(p => `[${p.id}] (${p.source}${p.title ? `: ${p.title}` : ''}) ${p.text}`).join('\n\n');
+  // The title is in the text now (labelPassages); it is named in the label only for a passage built elsewhere without it.
+  const ps = passages.map(p => `[${p.id}] (${p.source}${p.title && !opensWithTitle(p.title, p.text) ? `: ${p.title}` : ''}) ${p.text}`).join('\n\n');
   return `Question: ${q}\n\nPassages:\n${ps}`;
 }
 
@@ -112,7 +136,8 @@ export function zeusReads(text: string): boolean {
  * and "William F. Buckley" were each split in two by the answer eval of 2026-11-18 (q024, q029, q046),
  * and the verifier rightly found neither half in the passage. A lone capital letter is an initial.
  */
-const NO_BREAK_AFTER = /(?:^|[\s(])(?:\p{Lu}|St|Mt|Ft|Dr|Mr|Mrs|Ms|Mme|Jr|Sr|Prof|Gen|Col|Capt|Lt|Sgt|Gov|Sen|Rep|Rev|Hon|Fr|Sra|Dña|No|Nos|Vol|vs|etc|approx|ca|cf|e\.g|i\.e|Inc|Co|Corp|Ltd|Bros|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.$/u;
+// "U.S.", "U.K.", "D.C.", "Ph.D.": letters and stops with no space; "the U.S. Census Bureau" was split in two (q064).
+const NO_BREAK_AFTER = /(?:^|[\s(])(?:(?:\p{L}\.)+\p{L}|\p{Lu}|St|Mt|Ft|Dr|Mr|Mrs|Ms|Mme|Jr|Sr|Prof|Gen|Col|Capt|Lt|Sgt|Gov|Sen|Rep|Rev|Hon|Fr|Sra|Dña|No|Nos|Vol|vs|etc|approx|ca|cf|e\.g|i\.e|Inc|Co|Corp|Ltd|Bros|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.$/u;
 
 export function splitSentences(answer: string): { text: string; citations: string[] }[] {
   let flat = String(answer || '').replace(/\s+/g, ' ').trim();
@@ -162,8 +187,17 @@ export function parseVerdict(text: string): Verdict | null {
  * passage's own, in its order.
  */
 export function quoteKey(t: string): string {
-  return String(t || '').toLowerCase().replace(/[\u2018\u2019\u201a\u2032`]/g, "'").replace(/[\u201c\u201d\u201e\u2033«»]/g, '"')
+  return checkText(t).toLowerCase().replace(/[\u2018\u2019\u201a\u2032`]/g, "'").replace(/[\u201c\u201d\u201e\u2033«»]/g, '"')
     .replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[\u00a0\u2009\u202f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.,;:]+$/, '');
+}
+
+/**
+ * A sentence as the checks read it: a multiplication sign after a number is the letter x ("10×" is "10x",
+ * as abstracts write it; Zeus called the writer's "10×" a different value, q059), and a no-break or thin
+ * space is a space. What the reader sees is not changed.
+ */
+export function checkText(t: string): string {
+  return String(t || '').replace(/(\d)\s?\u00d7/g, '$1x').replace(/[\u00a0\u2009\u202f]/g, ' ');
 }
 
 export function checkEvidence(v: Verdict, passages: Passage[]): Verdict & { evidence_checked: boolean } {
@@ -206,6 +240,8 @@ export function extractiveAnswer(q: string, passages: Passage[], max = 3): { tex
     for (const s of p.text.split(/(?<=[.!?])(?<!\b[A-Z]\.)(?<!\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|Prof|No|vs|etc|e\.g|i\.e)\.)\s+(?=["'(\[]?[\p{Lu}0-9])/u)) {
       const t = s.trim();
       if (t.length < 40 || t.length > 320) continue;
+      // the title and the publication line that labelPassages puts first are labels, not statements to quote
+      if ((p.title && quoteKey(t) === quoteKey(titleLine(p.title))) || /^Published \d/.test(t)) continue;
       const hit = new Set(words(t).filter(w => qw.has(w)));
       if (!hit.size || new Set([...hit, ...inTitle]).size < need) continue;
       const score = [...hit].reduce((n, w) => n + (inTitle.has(w) ? 0.4 : 1), 0);

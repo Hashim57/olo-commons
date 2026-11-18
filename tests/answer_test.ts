@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { ANSWER_SYSTEM, checkEvidence, labelPassages, parseVerdict, publishedLine, quoteKey, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM } from '../functions/olo-answer/answer.ts';
+import { ANSWER_SYSTEM, checkEvidence, checkText, labelPassages, opensWithTitle, parseVerdict, publishedLine, quoteKey, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM } from '../functions/olo-answer/answer.ts';
 
 const P = [
   { id: 'p1', source: 'wikipedia', url: 'https://x/1', text: 'Project Gutenberg was founded in 1971 by Michael Hart. It offers free books.' },
@@ -14,7 +14,7 @@ Deno.test('labelPassages gives short ids in order, prefers content, drops emptie
     { id: 'uuid-c', source_slug: 'arxiv', url: 'https://x/c' },
   ]);
   assertEquals(ps.map(p => p.id), ['p1', 'p2']);
-  assertEquals(ps[0].text, 'long content here');
+  assertEquals(ps[0].text, 'A. long content here');  // the title leads the text (since 2026-11-18)
   assertEquals(ps[1].text, 'only summary');
   assertEquals(labelPassages([{ id: 'x', content: 'y'.repeat(2000) }])[0].text.length, 900);
 });
@@ -126,18 +126,19 @@ Deno.test('a dated source starts with its publication date, others do not (q037,
     { id: 'c', source_slug: 'pubmed', title: 'Review', summary: 'A review of trials.', published_at: '2026-01-01' },
     { id: 'd', source_slug: 'wikinews', title: 'Undated', summary: 'A story.', published_at: null },
   ]);
-  assertEquals(ps[0].text, 'Published 1 May 2005. On April 30th Niue held its eleventh general election.');
+  assertEquals(ps[0].text, 'Niue votes. Published 1 May 2005. On April 30th Niue held its eleventh general election.');
   assertEquals(ps[0].published, '2005-05-01');
   assertEquals(ps[1].text, 'Reino is a comune in Campania.');
-  assertEquals(ps[2].text, 'Published 2026. A review of trials.');  // a paper's 1 January means the year alone
-  assertEquals(ps[3].text, 'A story.');
+  assertEquals(ps[2].text, 'Review. Published 2026. A review of trials.');  // a paper's 1 January means the year alone
+  assertEquals(ps[3].text, 'Undated. A story.');
   assertEquals(publishedLine('wikinews', '2005-13-01'), '');
   assertEquals(publishedLine('wikinews', 'yesterday'), '');
   assertEquals(publishedLine('arxiv', '2026-11-06T00:00:00Z'), 'Published 6 November 2026.');
 });
 
 Deno.test('the writer is told to name each subject and to date only from the passages', () => {
-  assertEquals(/never with a pronoun/.test(ANSWER_SYSTEM), true);
+  assertEquals(/Never begin with a pronoun/.test(ANSWER_SYSTEM), true);
+  assertEquals(/never use a title as if it were a name/.test(ANSWER_SYSTEM), true);
   assertEquals(/begins "Published/.test(ANSWER_SYSTEM), true);
 });
 
@@ -159,4 +160,42 @@ Deno.test('zeusReads sends English to Zeus and Spanish to the fallback verifier'
   assertEquals(zeusReads('La Cabalgata de Reyes Magos que se celebra el 5 de enero en Alcoy se considera la más antigua de España.'), false);
   assertEquals(zeusReads('El obispo de la diócesis de Niigata es Paul Daisuke Narui.'), false);
   assertEquals(zeusReads('Kerrie Tucker, Molonglo, 1995.'), true);  // no marker words: English by default
+});
+
+// Second round, from the papers and data.gov questions of the same eval (q036 to q070).
+
+Deno.test('a passage leads with its title, once, so Zeus reads what the writer reads (q063)', () => {
+  const ps = labelPassages([
+    { id: 'a', source_slug: 'arxiv', title: 'TUTTI: Parallel CKKS Bootstrapping in under 3 ms on CPU', summary: 'This paper introduces TUTTI, a new CKKS bootstrapping procedure.', published_at: '2026-11-09' },
+    { id: 'b', source_slug: 'wikidata', title: 'Nazar battu', summary: 'Nazar battu. an icon used to ward off the evil eye.' },
+    { id: 'c', source_slug: 'gutenberg', title: 'A Study in Scarlet', summary: '"A Study in Scarlet" by Arthur Conan Doyle is a detective novel.' },
+    { id: 'd', source_slug: 'wikinews', title: 'Will it rain?', summary: 'Forecasters disagree.', published_at: '2006-03-11' },
+  ]);
+  assertEquals(ps[0].text, 'TUTTI: Parallel CKKS Bootstrapping in under 3 ms on CPU. Published 9 November 2026. This paper introduces TUTTI, a new CKKS bootstrapping procedure.');
+  assertEquals(ps[1].text, 'Nazar battu. an icon used to ward off the evil eye.');  // already opens with its title
+  assertEquals(ps[2].text.startsWith('"A Study in Scarlet" by'), true);              // quoted title counts
+  assertEquals(ps[3].text.startsWith('Will it rain? Published 11 March 2006.'), true); // no stop added after "?"
+  assertEquals(opensWithTitle('Review', 'A review of trials.'), false);              // a title word inside is not the title
+  // the writer's label does not repeat a title the text already leads with
+  assertEquals(renderAnswerPrompt('q', ps).includes('(arxiv) TUTTI'), true);
+  // and an extractive answer never quotes the title or the date line as a fact
+  const ex = extractiveAnswer('TUTTI CKKS bootstrapping procedure parallel CPU', ps);
+  assertEquals(ex.some(e => e.text.startsWith('TUTTI: Parallel') || e.text.startsWith('Published')), false);
+});
+
+Deno.test('splitSentences keeps dotted abbreviations together (q064)', () => {
+  assertEquals(splitSentences('The survey is conducted by the U.S. Census Bureau for HUD. [p1] It has run biennially since 1983. [p1]').map(s => s.text),
+    ['The survey is conducted by the U.S. Census Bureau for HUD.', 'It has run biennially since 1983.']);
+  assertEquals(splitSentences('The office is in Washington, D.C. and opened in 1973. [p1]').length, 1);
+  // a citation after the abbreviation still closes the sentence
+  assertEquals(splitSentences('It is the largest survey in the U.S. [p1] The Census Bureau runs it. [p1]').length, 2);
+});
+
+Deno.test('checks read a multiplication sign after a number as x, and leave the shown text alone (q059)', () => {
+  assertEquals(checkText('Premiums reach 10\u00d7 for Amharic, and 2 \u00d7 for others.'), 'Premiums reach 10x for Amharic, and 2x for others.');
+  assertEquals(checkText('3 \u00d7 4 grid'), '3x 4 grid');
+  const s = splitSentences('Amharic reaches a 10\u00d7 premium in older tokenizers. [p1]');
+  assertEquals(s[0].text.includes('\u00d7'), true);
+  const ps = [{ id: 'p1', source: 'arxiv', url: '', text: 'Premiums reach 10x for Amharic in older tokenizers.' }];
+  assertEquals(checkEvidence({ label: 'supported', evidence: [{ passage: 'p1', quote: 'Premiums reach 10\u00d7 for Amharic' }], rationale: 'r' }, ps).label, 'supported');
 });
