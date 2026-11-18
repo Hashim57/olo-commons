@@ -35,7 +35,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, looseQuery, rank } from './rank.ts';
-import { ANSWER_SYSTEM, checkEvidence, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
+import { ANSWER_SYSTEM, checkEvidence, checkText, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
 import { applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -187,14 +187,14 @@ Deno.serve(async (req) => {
     for (const ver of verifiers) {
       if (!english && ver.name.startsWith('zeus:')) continue;
       try {
-        v = parseVerdict(await chat(ver.base, ver.key, ver.model, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), ver.tokens, VERIFY_TIMEOUT_MS));
+        v = parseVerdict(await chat(ver.base, ver.key, ver.model, ZEUS_SYSTEM, renderZeusPrompt(checkText(s.text), scope), ver.tokens, VERIFY_TIMEOUT_MS));
         if (v) { usedBy.push(ver.name); checkedBy = ver.name; break; }
         verifyError = `${ver.name} gave unreadable output`;
       } catch (e) { verifyError = String((e as Error).message || e).slice(0, 80); }
     }
     const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
     // Figures and dates in the sentence must be in its sources, whatever the verifier said.
-    return { ...applyFigureCheck({ text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, s.text, scope),
+    return { ...applyFigureCheck({ text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, checkText(s.text), scope),
       checked_by: checkedBy, ...(english ? {} : { language: 'not_english' }) };
   }));
   const counts = usedBy.reduce((m, n) => m.set(n, (m.get(n) || 0) + 1), new Map<string, number>());
