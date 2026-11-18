@@ -211,14 +211,20 @@ def merge_pool(pool, new, cap=MISTAKE_POOL_CAP):
 # planned steps in the hour (about 14 steps a minute: long-document rows take longer), so the caps below are
 # sized for a whole focused pass of about 13,600 rows, about 850 steps.
 # ---------------------------------------------------------------------------
-FOCUS_CAPS = {"rules": 2500, "hard-v1": 1600}   # rows kept per sampled group; every other group is kept whole
+FOCUS_CAPS = {"rules": 2500, "hard-v1": 1600, "hard-v2": 1600}   # rows kept per sampled group; every other group is kept whole
+# Hard rows of these kinds form their own group and are kept whole: they are the few hundred rows that teach
+# the pattern eval3 scores lowest (modal_shift, 0.667 in v24), and a 1,600-row sample of 8,000 would see a fifth of them.
+FOCUS_WHOLE_KINDS = {"hard_modal_shift", "hard_hedge_drop"}
 
 
 def focus_group(ex, is_priority):
     """The group a training row belongs to for focus_indices: "priority" (gold, imported, mistakes), its
-    generator name (compose-v2, longdoc-v1, hard-v1), or "rules" for the plain rule-made rows."""
+    generator name (compose-v2, longdoc-v1, hard-v2), "<generator>:<kind>" for the hard kinds kept whole
+    (FOCUS_WHOLE_KINDS), or "rules" for the plain rule-made rows."""
     if is_priority:
         return "priority"
+    if ex.get("kind") in FOCUS_WHOLE_KINDS:
+        return f"{ex.get('generator') or 'rules'}:{ex['kind']}"
     return ex.get("generator") or "rules"
 
 

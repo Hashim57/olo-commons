@@ -157,6 +157,20 @@ def test_focus_keeps_every_valuable_row_and_samples_the_easy_ones_by_label():
     assert keep == sorted(keep) and len(set(keep)) == len(keep)
 
 
+def test_focus_keeps_the_hedge_and_modal_hard_rows_whole():
+    import random
+    from collections import Counter
+    train = ([{"label": "supported", "generator": "hard-v2", "kind": "hard_twin_supported"}] * 400
+             + [{"label": "not_covered", "generator": "hard-v2", "kind": "hard_hedge_drop"}] * 30
+             + [{"label": "not_covered", "generator": "hard-v2", "kind": "hard_modal_shift"}] * 20
+             + [{"label": "not_covered", "generator": "hard-v2", "kind": "hard_scope_shift"}] * 100)
+    priority = [False] * len(train)
+    keep = recipe.focus_indices(train, priority, random.Random(3), caps={"hard-v2": 50})
+    groups = Counter(recipe.focus_group(train[i], priority[i]) for i in keep)
+    assert groups == {"hard-v2": 50, "hard-v2:hard_hedge_drop": 30, "hard-v2:hard_modal_shift": 20}
+    assert "hard-v2" in recipe.FOCUS_CAPS and recipe.FOCUS_CAPS["hard-v2"] == recipe.FOCUS_CAPS["hard-v1"]
+
+
 def test_focus_sample_differs_between_versions_and_holds_for_one():
     import random
     train = [{"label": "supported"}] * 3000
