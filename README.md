@@ -42,7 +42,7 @@ Language models are good at reasoning and bad at remembering. The fix is not a b
 - `examples/notebook.py`: a topic's atoms as a pandas DataFrame with provenance.
 - `examples/graph-export.mjs`: the whole graph as GraphML or JSON.
 - `docs/API.md`: the read API; `docs/ARCHITECTURE.md`: how it works inside.
-- `tests/answers/questions-v1.jsonl` and `scripts/answer_eval.py`: 70 hand-written questions over Commons atoms, and a read-only scorer that asks olo-answer each one and measures retrieval, citation, verification and the facts shown (issue #76). Run it before and after a change to retrieval or answering.
+- `tests/answers/questions-v1.jsonl` and `scripts/answer_eval.py`: 70 hand-written questions over Commons atoms, and a read-only scorer that asks olo-answer each one and measures retrieval, citation, verification and the facts shown (issue #76). Run it before and after a change to retrieval or answering; measured runs are in `docs/OLO_ANSWERS.md`.
 
 ## Starting points for contributors
 
