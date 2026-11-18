@@ -8,7 +8,7 @@ How well olo-answer answers the frozen question set `tests/answers/questions-v1.
 | 2026-11-18 11:54 | 50 of 70 (stopped by the hourly limit) | written, checked by Zeus v22 | 1.000 | 0.780 | 0.670 | 0.673 | 8 |
 | 2026-11-18 12:21 and 13:42 | 70 of 70 (two halves of 35) | written, checked by Zeus v22 (fallback verifier for Spanish); after PR #87 | 1.000 | 0.921 | 0.795 | 0.781 | 5 |
 
-Like for like, the first 50 questions before and after PR #87: facts shown 0.673 to 0.833, sentences supported 0.670 to 0.837, abstentions 8 to 1. In the fixed run the writer was the main provider for 64 answers and the Cloudflare fallback for 6 (the main provider's per-minute limit); Zeus checked 56 answers' sentences and the fallback verifier 8 (the Spanish ones, as designed).
+Like for like, the first 50 questions before and after PR #87: facts shown 0.673 to 0.833, sentences supported 0.670 to 0.837, abstentions 8 to 1. In the fixed run the writer was the main provider for 64 answers and the Cloudflare fallback for 6 (the main provider's per-minute limit); Zeus checked most of the sentences in 59 answers and the fallback verifier in 11 (the 10 Spanish answers, as designed, and one other).
 
 By source, facts found in the shown answer:
 
