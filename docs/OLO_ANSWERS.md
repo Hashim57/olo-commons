@@ -7,21 +7,22 @@ How well olo-answer answers the frozen question set `tests/answers/questions-v1.
 | 2026-11-18 11:10 | 70 of 70 | extractive (no writer reachable) | 1.000 | 0.936 | 1.000 (by construction) | 0.607 | 0 |
 | 2026-11-18 11:54 | 50 of 70 (stopped by the hourly limit) | written, checked by Zeus v22 | 1.000 | 0.780 | 0.670 | 0.673 | 8 |
 | 2026-11-18 12:21 and 13:42 | 70 of 70 (two halves of 35) | written, checked by Zeus v22 (fallback verifier for Spanish); after PR #87 | 1.000 | 0.921 | 0.795 | 0.781 | 5 |
+| 2026-11-18 14:17 and 14:33 | 70 of 70 (two halves of 35) | written, checked by Zeus v22; after PR #89; 24 of the second half's 35 answers written by the Cloudflare fallback (see below) | 1.000 | 0.979 | 0.867 | 0.871 | 1 |
 
 Like for like, the first 50 questions before and after PR #87: facts shown 0.673 to 0.833, sentences supported 0.670 to 0.837, abstentions 8 to 1. In the fixed run the writer was the main provider for 64 answers and the Cloudflare fallback for 6 (the main provider's per-minute limit); Zeus checked most of the sentences in 59 answers and the fallback verifier in 11 (the 10 Spanish answers, as designed, and one other).
 
 By source, facts found in the shown answer:
 
-| Source | Extractive (n) | Written + Zeus, before PR #87 (n) | Written + Zeus, after PR #87 (n) |
-|---|---|---|---|
-| Wikipedia | 0.615 (26) | 0.846 (26) | 0.865 (26) |
-| Wikinews | 0.536 (14) | 0.500 (14) | 0.714 (14) |
-| Wikipedia en español | 0.667 (10) | 0.467 (10) | 0.916 (10) |
-| PubMed | 0.548 (7) | not run | 0.714 (7) |
-| arXiv | 0.750 (6) | not run | 0.583 (6) |
-| data.gov | 0.500 (4) | not run | 0.625 (4) |
-| Wikidata | 1.000 (2) | not run | 1.000 (2) |
-| OpenAlex | 0.000 (1) | not run | 0.000 (1) |
+| Source | Extractive (n) | Written + Zeus, before PR #87 (n) | After PR #87 (n) | After PR #89 (n) |
+|---|---|---|---|---|
+| Wikipedia | 0.615 (26) | 0.846 (26) | 0.865 (26) | 0.865 (26) |
+| Wikinews | 0.536 (14) | 0.500 (14) | 0.714 (14) | 0.857 (14) |
+| Wikipedia en español | 0.667 (10) | 0.467 (10) | 0.916 (10) | 0.900 (10) |
+| PubMed | 0.548 (7) | not run | 0.714 (7) | 0.786 (7) |
+| arXiv | 0.750 (6) | not run | 0.583 (6) | 1.000 (6) |
+| data.gov | 0.500 (4) | not run | 0.625 (4) | 1.000 (4) |
+| Wikidata | 1.000 (2) | not run | 1.000 (2) | 1.000 (2) |
+| OpenAlex | 0.000 (1) | not run | 0.000 (1) | 0.000 (1) |
 
 ## What the two runs showed
 
@@ -55,3 +56,9 @@ The 22 sentences hidden in questions q036 to q070 (papers, datasets, Wikinews) p
 | Zeus wrong on numbers its abstract states | "Eight RCTs comprising 636 participants" (q053), "320 sites" (q067), "biennially since 1983" (q064) | gold-2026-11-18-papers.jsonl, 16 lines over other abstracts and datasets |
 
 Fair to hide in that half: q037 (the question's wording invited "20 seats contested"; it will be reworded in questions-v2, v1 stays frozen), q049 (the writer's own subtraction), q069 ("in the region" for North India and Pakistan), q042 (borderline: a year read from the story's date by inference).
+
+## After round two (PR #89, deployed 18 November)
+
+Questions q036 to q070, the half round two aimed at: facts shown 0.686 to 0.871, supported sentences 0.700 to 0.824, citation 0.871 to 0.957, abstentions 4 to 1; arXiv facts 0.583 to 1.000, data.gov 0.625 to 1.000, PubMed 0.714 to 0.786, Wikinews 0.714 to 0.857. The first half (q001 to q035), which round two did not aim at, held level (facts 0.876 and 0.871, citation 0.971 to 1.000, the one abstention gone: q008's passage now opens with "Ernst Lecher").
+
+A confound, stated plainly: in the second half the main writer stopped answering and the Cloudflare fallback wrote 24 of the 35 answers (none in the first half). The likeliest cause is the main provider's daily free-tier limit after six full runs that day. So part of the second-half gain may be the writer, not the fixes, and this run cannot separate the two. A rerun with the main writer answering every question is the clean comparison.
