@@ -35,7 +35,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, looseQuery, rank } from './rank.ts';
-import { ANSWER_SYSTEM, checkEvidence, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
+import { ANSWER_SYSTEM, checkEvidence, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
 import { applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -171,7 +171,8 @@ Deno.serve(async (req) => {
   const sentences = covered ? splitSentences(answer).slice(0, MAX_SENTENCES) : [];
 
   // Verifiers, tried in order for each sentence: Zeus, then the writers with the Zeus prompt. The response
-  // names the one that answered most sentences, and each sentence says if it could not be checked at all.
+  // names the one that answered most sentences, and each sentence says which one checked it (checked_by)
+  // or that none could. Zeus has only been trained on English, so a sentence in another language skips it.
   const zeusKey = Deno.env.get('OLO_ZEUS_API_KEY') || '';
   const verifiers = [
     ...(zeusUrl ? [{ name: `zeus:${zeusModel}`, base: zeusUrl, key: zeusKey, model: zeusModel, tokens: 200 }] : []),
@@ -181,17 +182,20 @@ Deno.serve(async (req) => {
   const verdicts = await Promise.all(sentences.map(async (s) => {
     const cited = passages.filter(p => s.citations.includes(p.id));
     const scope = cited.length ? cited : passages;
-    let v: Verdict | null = null, verifyError = '';
+    let v: Verdict | null = null, verifyError = '', checkedBy: string | null = null;
+    const english = zeusReads(s.text);
     for (const ver of verifiers) {
+      if (!english && ver.name.startsWith('zeus:')) continue;
       try {
         v = parseVerdict(await chat(ver.base, ver.key, ver.model, ZEUS_SYSTEM, renderZeusPrompt(s.text, scope), ver.tokens, VERIFY_TIMEOUT_MS));
-        if (v) { usedBy.push(ver.name); break; }
+        if (v) { usedBy.push(ver.name); checkedBy = ver.name; break; }
         verifyError = `${ver.name} gave unreadable output`;
       } catch (e) { verifyError = String((e as Error).message || e).slice(0, 80); }
     }
     const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
     // Figures and dates in the sentence must be in its sources, whatever the verifier said.
-    return applyFigureCheck({ text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, s.text, scope);
+    return { ...applyFigureCheck({ text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, s.text, scope),
+      checked_by: checkedBy, ...(english ? {} : { language: 'not_english' }) };
   }));
   const counts = usedBy.reduce((m, n) => m.set(n, (m.get(n) || 0) + 1), new Map<string, number>());
   const verifier = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || (zeusUrl ? `zeus:${zeusModel}` : 'llm-fallback');
