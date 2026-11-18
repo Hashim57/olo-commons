@@ -41,3 +41,17 @@ In the second run Zeus and the figure check hid 37 sentences. Read one by one, a
 ## After the fixes (PR #87, deployed 18 November)
 
 Spanish gained most (facts 0.467 to 0.916) once its sentences went to the fallback verifier instead of a Zeus that has never read Spanish; Wikinews gained from the publication dates (facts 0.500 to 0.714, citation 0.643 to 0.893); the split names ("St. Mark's", "George A. Romero") now score in full. The weakest sources are now research abstracts, which this run reached for the first time on the written path: arXiv 0.583 facts (below the extractive 0.750) and PubMed 0.714, with four of the five abstentions on paper questions. Why is not yet read from the saved responses; Zeus has not yet trained on gold-2026-11-18-answers.jsonl either, so the English Zeus mistakes of the first written run are still in this one.
+
+## Second round (18 November, after the 13:42 run)
+
+The 22 sentences hidden in questions q036 to q070 (papers, datasets, Wikinews) pointed at three more checking problems and one Zeus weakness, fixed in the pull request after PR #88:
+
+| Cause | Example | Fixed by |
+|---|---|---|
+| The writer saw each passage's title and Zeus did not | TUTTI's "under 3 ms on CPU" is in its title only (q063) | every passage now leads with its title, for the writer, Zeus and the figure check |
+| The "name the subject" rule made the writer use paper titles as names | "When will androids outnumber humans paper states that..." read as a name swap (q061) | the writer names a study with a plain noun phrase ("The meta-analysis of ...") |
+| A multiplication sign against a letter x | "10×" called a different value from the abstract's "10x" (q059) | the checks read a number's × as x; the shown text is unchanged |
+| "U.S." split in two | "the U.S. Census Bureau" (q064) | the splitter keeps dotted abbreviations together |
+| Zeus wrong on numbers its abstract states | "Eight RCTs comprising 636 participants" (q053), "320 sites" (q067), "biennially since 1983" (q064) | gold-2026-11-18-papers.jsonl, 16 lines over other abstracts and datasets |
+
+Fair to hide in that half: q037 (the question's wording invited "20 seats contested"; it will be reworded in questions-v2, v1 stays frozen), q049 (the writer's own subtraction), q069 ("in the region" for North India and Pakistan), q042 (borderline: a year read from the story's date by inference).
