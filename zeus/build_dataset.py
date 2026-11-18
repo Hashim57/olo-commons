@@ -406,7 +406,7 @@ def count_gold(gold_dir, skip_eval=False):
 
 
 # ---------------------------------------------------------------------------
-# Harder train negatives (generator "hard-v1"). Train split only.
+# Harder train negatives (generator "hard-v2"; "hard-v1" until 2026-11-18). Train split only.
 #
 # The rule-made negatives in build() change one token, and their not_covered
 # passages come from unrelated atoms. What VitaminC tests is closer: minimal,
@@ -424,8 +424,12 @@ def count_gold(gold_dir, skip_eval=False):
 # (only its two distractor passages can). Every hard example carries
 # "generator": HARD_NEGATIVES_VERSION; bump it when a rule changes, so a
 # training run says which generator made its data (meta.json records it too).
+# hard-v2 (2026-11-18): the hedge_drop not_covered rule joined the family. Every
+# atom's draw changes with it (a fifth name in the sample), so the whole hard set
+# is new; cloud/recipe.py caps hard-v2 as it capped hard-v1 and keeps the hedge
+# and modal rows whole.
 # ---------------------------------------------------------------------------
-HARD_NEGATIVES_VERSION = "hard-v1"
+HARD_NEGATIVES_VERSION = "hard-v2"
 MAX_YEAR = 2026  # a fixed bound for shifted years (not today's date), so builds are deterministic
 
 # Antonym pairs that FLIPS does not have. Symmetric pairs flip both ways; one-way
@@ -858,6 +862,78 @@ def hard_modal_shift(s, texts, rng):
     return None
 
 
+# The hedges of encyclopedic prose (Wikipedia, Wikinews), as opposed to MODAL_SHIFTS' research
+# register: an adverb or an attribution that says the writer does not vouch for the fact.
+# Dropping it turns "Reputedly, she was the model for Diana Scott" into "She was the model for
+# Diana Scott", which the passage does not establish: not_covered, never contradicted. Added on
+# 2026-11-18 after eval3's modal_shift pattern stayed the weakest at 0.667 in v24 and the gold
+# set kept needing hand-written hedge examples (gold-2026-11-17 and -18).
+HEDGE_ADVERBS = ["reputedly", "allegedly", "reportedly", "supposedly", "purportedly", "apparently", "presumably", "possibly",
+                 "probably", "arguably", "seemingly", "ostensibly"]
+HEDGE_LEADS = ["according to legend", "according to tradition", "according to some sources", "according to some accounts",
+               "according to local tradition", "by some accounts", "legend has it that", "tradition holds that", "it is said that",
+               "it is believed that", "it is thought that", "it is claimed that"]
+# (pattern, replacement): a hedged verb group and the plain one it stands in for
+HEDGE_WORDS = r"(?:said|believed|thought|reputed|claimed|rumou?red|supposed|alleged)"
+# "allegedly" in a news sentence usually hedges an accusation; dropping it would state a named person's guilt
+# as fact, so sentences about violent crime are left alone whatever the label would be.
+CRIME_RE = re.compile(r"\b(kill(?:ed|ing)?|murder\w*|slit|stabb\w*|shot|shoot\w*|rap(?:e|ed|ing)|assault\w*|abus\w*|molest\w*|strangl\w*|beat(?:en|ing)?|attack(?:ed|ing)?)\b", re.I)
+HEDGE_VERBS = [(r"\b(is|are|was|were) " + HEDGE_WORDS + r" to be\b", r"\1"),
+               (r"\bis " + HEDGE_WORDS + r" to have been\b", "was"), (r"\bare " + HEDGE_WORDS + r" to have been\b", "were"),
+               (r"\b(?:was|were) " + HEDGE_WORDS + r" to have been\b", "had been"),
+               (r"\b(?:is|are) " + HEDGE_WORDS + r" to have ([a-z]+ed)\b", r"\1"),
+               (r"\b(?:may|might|could) have been\b", "was"), (r"\b(?:may|might) have ([a-z]+ed)\b", r"\1")]
+
+
+def hard_hedge_drop(s, texts, rng):
+    """An encyclopedic hedge removed, so the claim states as fact what the passage only reports as
+    reputed, alleged, believed or possible: "Reputedly, she was the model" -> "She was the model",
+    "is believed to have been built in 1847" -> "was built in 1847", "may have been born in Leeds" ->
+    "was born in Leeds". Refused inside a quotation, when the sentence is negated (a dropped hedge
+    next to a negation does not reliably weaken it), when more than one hedge is present (dropping one
+    leaves the claim hedged), when a passage states the plain sentence anyway, and in a sentence about
+    violent crime (an "allegedly" dropped there states a named person's guilt as fact)."""
+    if _negated(s) or CRIME_RE.search(s):
+        return None
+    hits = []
+    for w in HEDGE_ADVERBS:
+        for m in re.finditer(r"(^|, |\s)(" + w + r")(, |\s|(?=[.;:,])|$)", s, re.I):
+            hits.append(("adverb", m, w))
+    for lead in HEDGE_LEADS:
+        for m in re.finditer(r"^" + re.escape(lead) + r",? ", s, re.I):
+            hits.append(("lead", m, lead))
+    for pat, repl in HEDGE_VERBS:
+        for m in re.finditer(pat, s):
+            hits.append(("verb", m, m.group(0), m.expand(repl)))
+    other_hedges = [w for w in _words(s) if w in HEDGES and w not in HEDGE_ADVERBS and w not in ("may", "might", "could")]
+    if len(hits) != 1 or other_hedges:
+        return None  # none, or more than one hedge, or a hedge of another kind the drop would leave in place
+    kind, m = hits[0][0], hits[0][1]
+    if _in_quote(s, m.start(), m.end()):
+        return None
+    if kind == "adverb":
+        left, right = m.group(1), m.group(3)
+        if m.start() == 0:
+            new = s[m.end():]
+        else:
+            joiner = (", " if left == " " else " ") if right.startswith(",") else (" " if right.strip(" ") == "" and right else "")
+            new = s[:m.start()] + joiner + s[m.end():]
+    elif kind == "lead":
+        new = s[m.end():]
+    else:
+        new = s[:m.start()] + hits[0][3] + s[m.end():]
+    new = re.sub(r"\s+", " ", new).strip()
+    new = re.sub(r"\s+([,.;:])", r"\1", new)
+    if not new or new == s:
+        return None
+    new = new[0].upper() + new[1:]
+    # the plain sentence is a substring of the hedged one when the hedge led it, so the check
+    # for a passage that states it anyway looks at the texts with the hedged sentence taken out
+    if len(_words(new)) < 5 or _in_any(new, [t.replace(s, " ") for t in texts]):
+        return None
+    return new, f"hedge dropped: {hits[0][2]}"
+
+
 def hard_scope_shift(s, texts, rng):
     """The finding carried to a group or place the passage never mentions: "in mice" -> "in humans",
     "in adults" -> "in children", "in France" -> "in France and Japan" (the added country is in no passage)."""
@@ -919,7 +995,7 @@ def hard_added_clause(s, texts, rng, source=""):
 
 
 CONTRA_GENERATORS = ["antonym_flip", "order_swap", "negation", "value_shift", "entity_swap", "quantifier"]
-NC_GENERATORS = ["modal_shift", "scope_shift", "relation_shift", "added_clause"]
+NC_GENERATORS = ["modal_shift", "scope_shift", "relation_shift", "added_clause", "hedge_drop"]
 HARD_RATIONALE = {
     "antonym_flip": "The passage says the opposite ({}).",
     "order_swap": "The passage gives the same values or names the other way round ({}).",
@@ -931,6 +1007,7 @@ HARD_RATIONALE = {
     "scope_shift": "The passage is about a different group or place; it says nothing about the one in the claim.",
     "relation_shift": "The passage names the same people and things but does not state this relation between them.",
     "added_clause": "The passage supports the first part of the claim, but nothing in it supports the added part.",
+    "hedge_drop": "The passage reports this only as reputed, alleged, believed or possible; the claim states it as fact, which the passage does not establish.",
 }
 
 

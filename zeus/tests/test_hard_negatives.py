@@ -166,6 +166,56 @@ def test_modal_shift_states_hedges_as_certain():
     assert bd.hard_modal_shift(s, [s], rng()) is None                    # negated: refused
 
 
+def test_hedge_drop_states_a_reputed_fact_as_fact():
+    s = "Reputedly, she was the model for Diana Scott, the central character in the film Darling."
+    assert bd.hard_hedge_drop(s, [s], rng()) == ("She was the model for Diana Scott, the central character in the film Darling.", "hedge dropped: reputedly")
+    s = "She was, allegedly, the model for the central character in the film Darling (1965)."
+    assert bd.hard_hedge_drop(s, [s], rng())[0] == "She was the model for the central character in the film Darling (1965)."
+    s = "The match was reportedly watched by 40,000 people at the ground in Leeds."
+    assert bd.hard_hedge_drop(s, [s], rng())[0] == "The match was watched by 40,000 people at the ground in Leeds."
+    s = "According to legend, the town was founded by a shepherd in the ninth century."
+    assert bd.hard_hedge_drop(s, [s], rng())[0] == "The town was founded by a shepherd in the ninth century."
+    for s, want in [("The house is believed to have been built around 1847 for a local merchant.", "The house was built around 1847 for a local merchant."),
+                    ("The brothers are said to have founded the first school in the valley in 1820.", "The brothers founded the first school in the valley in 1820."),
+                    ("The towers are believed to be the oldest in the region, dating from the 1200s.", "The towers are the oldest in the region, dating from the 1200s."),
+                    ("He may have been born in Leeds in the spring of 1811, the son of a weaver.", "He was born in Leeds in the spring of 1811, the son of a weaver."),
+                    ("The hall may have hosted the first meeting of the society in 1870.", "The hall hosted the first meeting of the society in 1870.")]:
+        assert bd.hard_hedge_drop(s, [s], rng())[0] == want
+
+
+def test_hedge_drop_refuses_negation_quotes_double_hedges_and_plain_statements():
+    s = "The tower was not, reputedly, the tallest building in the city in 1900."
+    assert bd.hard_hedge_drop(s, [s], rng()) is None                      # negated
+    s = "He said the design was \"probably the best\" the firm had produced since 1950."
+    assert bd.hard_hedge_drop(s, [s], rng()) is None                      # inside a quotation
+    s = "She was reputedly the model, and possibly the muse, for the central character."
+    assert bd.hard_hedge_drop(s, [s], rng()) is None                      # two hedges: one drop leaves a hedge
+    s = "The chapel is said to be the oldest building in the village of Baddeck."
+    assert bd.hard_hedge_drop(s, [s, "Records show the chapel is the oldest building in the village of Baddeck."], rng()) is None  # stated plainly elsewhere
+    s = "The club was founded in 1885 by English railway engineers in Aalborg."
+    assert bd.hard_hedge_drop(s, [s], rng()) is None                      # nothing to drop
+    s = "The driver allegedly attacked the guard outside the depot shortly after midnight on Tuesday."
+    assert bd.hard_hedge_drop(s, [s], rng()) is None                      # an accusation: never stated as fact
+    assert "hedge_drop" in bd.NC_GENERATORS and "hedge_drop" in bd.HARD_RATIONALE and bd.HARD_NEGATIVES_VERSION == "hard-v2"
+
+
+def test_hedge_drop_twin_is_not_covered_over_the_same_passages():
+    atom = {"id": "h1", "title": "Beth Rogan", "source": "wikipedia", "url": "https://en.wikipedia.org/wiki/Beth_Rogan",
+            "summary": "Beth Rogan was a British film actress of the 1950s and 60s. Reputedly, she was the model for Diana Scott, the central character in the film Darling.", "content": ""}
+    others = [{"id": f"d{i}", "title": f"Other {i}", "source": "wikipedia", "url": f"https://example.org/{i}", "summary": f"An unrelated passage number {i} about a bridge opened in 19{i}0 in a northern town.", "content": ""} for i in range(2)]
+    for seed in range(20):
+        out = bd.hard_examples_for_atom(atom, bd.sentences(atom["summary"]), others, rng(seed))
+        nc = [e for e in out if e["kind"] == "hard_hedge_drop"]
+        if nc:
+            e = nc[0]
+            assert e["label"] == "not_covered" and e["evidence"] == [] and e["generator"] == "hard-v2"
+            assert e["claim"] == "She was the model for Diana Scott, the central character in the film Darling."
+            assert any(p["id"] == "h1" for p in e["passages"])
+            break
+    else:
+        raise AssertionError("hedge_drop never chosen in 20 draws")
+
+
 def test_scope_shift_adds_a_group_or_place_absent_from_all_passages():
     s = "The compound slowed tumour growth in mice over twelve weeks of treatment."
     new, what = bd.hard_scope_shift(s, [s], rng())
