@@ -25,7 +25,7 @@ import { clean, hasEmailAddress, isCourtRecord, isStub } from './text.ts';
 import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl } from './datagov.ts';
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
-import { composeNote, type RunError } from './runlog.ts';
+import { composeNote, restingNote, restingSources, type RunError } from './runlog.ts';
 import { archiveCandidates, archiveSearchUrl, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, waitBefore, type Candidate } from './sources.ts';
 import { isNotFound, permalink, planRecheck, retireUpdate, wikidataEntityState, wikiPageState, wikiPageStateUrl, wikiSummaryUrl } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
@@ -263,7 +263,10 @@ Deno.serve(async (req) => {
   let cutShort = false;
   // The clauses the run note is made of (runlog.ts composeNote), filled in as the run goes.
   let gapNote = '', recheckNote = '', sightings = 0, stubs = 0, withEmail = 0, courtRecords = 0;
-  const noteSoFar = () => composeNote({ source: body.source || 'manual', gap: gapNote, recheck: recheckNote, sightings, stubs, withEmail, courtRecords, cutShort, errors });
+  // A source that failed each of the last few finished runs rests, except for one probe an hour (runlog.ts restingSources).
+  const { data: recentRuns } = await sb.from('olo_ingest_runs').select('note').not('finished_at', 'is', null).order('started_at', { ascending: false }).limit(4);
+  const resting = restingSources((recentRuns || []).map((r: any) => r.note), (sources || []).map((s: Source) => s.slug), new Date());
+  const noteSoFar = () => composeNote({ source: body.source || 'manual', gap: gapNote, recheck: recheckNote, sightings, stubs, withEmail, courtRecords, resting: restingNote(resting), cutShort, errors });
   // Counts and the note so far, so a run the runtime kills still leaves an accurate record (closed by run_olo_ingest, sql/001).
   const checkpoint = () => sb.from('olo_ingest_runs').update({ ...stats, note: noteSoFar() }).eq('id', run?.id);
 
@@ -457,7 +460,7 @@ Deno.serve(async (req) => {
   }
 
   // 1. Gap filling: the most-asked open topic, searched across the sources that can search.
-  const searchable = (sources || []).filter((s: Source) => search[s.slug]);
+  const searchable = (sources || []).filter((s: Source) => search[s.slug] && !resting.has(s.slug));
   if (budget >= 6 && searchable.length) {
     const { data: gap } = await sb.rpc('olo_next_gap');
     if (gap && gap.topic) {
@@ -491,6 +494,8 @@ Deno.serve(async (req) => {
   for (const src of sources || []) {
     if (outOfTime()) { cutShort = true; break; }
     const fn = discover[src.slug]; if (!fn) continue;
+    // Resting: not asked, and last_run_at stays as it was, because this was not an attempt.
+    if (resting.has(src.slug)) continue;
     let cands: Candidate[] | null = null;
     try { cands = await fn(perSource, src); } catch (e) { fail(src.slug, e); }
     if (cands) await ingest(src, cands);

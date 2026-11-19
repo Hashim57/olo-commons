@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { collect, composeNote, errorNote, errorText, redactSecrets } from '../functions/olo-ingest/runlog.ts';
+import { collect, composeNote, errorNote, errorText, failedInNote, redactSecrets, restingNote, restingSources } from '../functions/olo-ingest/runlog.ts';
 
 Deno.test('errorText flattens an Error to one bounded line', () => {
   assertEquals(errorText(new Error('403 https://catalog.data.gov/api/3/action/package_search?rows=9')), '403 https://catalog.data.gov/api/3/action/package_search?rows=9');
@@ -54,4 +54,37 @@ Deno.test('composeNote builds the run note from its parts, in the order the page
 Deno.test('composeNote leaves out every clause that is zero or empty, so a checkpoint early in the run reads cleanly', () => {
   assertEquals(composeNote({ source: 'cron', gap: '', recheck: '', sightings: 0, stubs: 0, withEmail: 0, courtRecords: 0, cutShort: false, errors: [] }), 'cron');
   assertEquals(composeNote({ source: 'cron', errors: [{ slug: 'gutenberg', message: 'TimeoutError' }] }), 'cron errors: gutenberg: TimeoutError');
+});
+
+Deno.test('failedInNote reads the random-walk failures and ignores gap searches and message text', () => {
+  const slugs = ['arxiv', 'gutenberg', 'data_gov', 'pubmed'];
+  const note = 'cron (wikipedia re-check: 2 unchanged, 0 updated) errors: arxiv (gap search): 429; gutenberg: Signal timed out.; data_gov: data.gov v4 429 (see pubmed: docs)';
+  assertEquals(Array.from(failedInNote(note, slugs)).sort(), ['data_gov', 'gutenberg']);
+  assertEquals(failedInNote('cron (1 stubs skipped)', slugs).size, 0);
+  assertEquals(failedInNote(null, slugs).size, 0);
+  assertEquals(Array.from(failedInNote('manual errors: arxiv: Signal timed out.', slugs)), ['arxiv']);
+});
+
+Deno.test('restingSources rests a source that failed the last four runs, and probes it once an hour', () => {
+  const slugs = ['arxiv', 'gutenberg', 'data_gov'];
+  const notes = [
+    'cron errors: arxiv: Signal timed out.; gutenberg: Signal timed out.',
+    'cron errors: gutenberg: Signal timed out.',
+    'cron errors: data_gov: 429; gutenberg: Signal timed out.',
+    'cron errors: arxiv: 429; gutenberg: Signal timed out.',
+    'cron',
+  ];
+  assertEquals(Array.from(restingSources(notes, slugs, new Date('2026-11-19T07:33:00Z'))), ['gutenberg']);
+  // The run in the first quarter of the hour asks every source, so a recovered source is back within the hour.
+  assertEquals(restingSources(notes, slugs, new Date('2026-11-19T08:03:00Z')).size, 0);
+  // One good run in the last four ends the rest.
+  assertEquals(restingSources(['cron', ...notes], slugs, new Date('2026-11-19T07:48:00Z')).size, 0);
+  // Too little history: nobody rests.
+  assertEquals(restingSources(notes.slice(0, 3), slugs, new Date('2026-11-19T07:33:00Z')).size, 0);
+});
+
+Deno.test('the resting clause goes into the run note', () => {
+  assertEquals(restingNote(new Set(['gutenberg', 'arxiv'])), ' (resting after 4 failed runs: arxiv, gutenberg)');
+  assertEquals(restingNote([]), '');
+  assertEquals(composeNote({ source: 'cron', resting: restingNote(['gutenberg']), errors: [] }), 'cron (resting after 4 failed runs: gutenberg)');
 });
