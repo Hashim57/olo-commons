@@ -428,6 +428,10 @@ def count_gold(gold_dir, skip_eval=False):
 # atom's draw changes with it (a fifth name in the sample), so the whole hard set
 # is new; cloud/recipe.py caps hard-v2 as it capped hard-v1 and keeps the hedge
 # and modal rows whole.
+# 2026-11-19: order_swap gained a role pattern ("A defeated B" -> "B defeated A"). It touches only sentences
+# that match it (4 of 36,857 train rows on the 2026-11-19 snapshot; every other atom's draw is unchanged,
+# because the shuffle sees the same list), so the generator stays hard-v2 rather than make a retrain due
+# for a handful of rows; bump it with the next rule that moves the set.
 # ---------------------------------------------------------------------------
 HARD_NEGATIVES_VERSION = "hard-v2"
 MAX_YEAR = 2026  # a fixed bound for shifted years (not today's date), so builds are deterministic
@@ -570,10 +574,15 @@ VAL = r"\$?\d[\d,]*(?:\.\d+)?%?"
 NAME = r"(?!(?:The|This|That|These|Those|Its|Their|Each|Our|Such|Both|All|Most|One)\b)[A-Z][a-z]{2,}(?: [A-Z][a-z]{2,}){0,2}"
 
 
+# Capitalised words that open a clause and are not part of a name ("After Smith defeated Jones").
+LEAD_WORDS = {"After", "Before", "When", "While", "Since", "During", "Later", "Then", "However", "Although", "Under", "With", "From", "Following", "Eventually", "Finally"}
+
+
 def hard_order_swap(s, texts, rng):
     """Two values or names that both stay in the sentence trade places, so nothing new appears
     and only the order carries the fact: "rose from 10 to 20" -> "rose from 20 to 10",
-    "10 and 20, respectively" -> "20 and 10, respectively", "A is larger than B" -> "B is larger than A"."""
+    "10 and 20, respectively" -> "20 and 10, respectively", "A is larger than B" -> "B is larger than A",
+    "A defeated B" -> "B defeated A" (a role swap)."""
     pats = []
     m = re.search(r"\bfrom (" + VAL + r") to (" + VAL + r")(?![\w])", s)
     if m and CHANGE_VERBS.search(s) and m.group(1) != m.group(2):
@@ -584,6 +593,12 @@ def hard_order_swap(s, texts, rng):
     m = re.search(r"\b(" + NAME + r") (?:is|was|are|were) (?:\w+er|more \w+|less \w+) than (?:the )?(" + NAME + r")\b", s)
     if m and not set(m.group(1).split()) & set(m.group(2).split()):
         pats.append((m, "comparison"))
+    # Who did it to whom: "Lincoln defeated Douglas" -> "Douglas defeated Lincoln". Only verbs whose two sides cannot
+    # trade places and keep the fact (not "married" or "met"); the gold set's relation swaps are mostly this shape.
+    m = re.search(r"\b(" + NAME + r") (?:defeated|beat|succeeded|replaced|acquired|preceded|outpolled) (" + NAME + r")\b(?! (?:club|side|team|squad|player|forces|army)\b)", s)  # "beat Norwegian club Brann": an adjective, not the side
+    if m and not set(m.group(1).split()) & set(m.group(2).split()) \
+            and m.group(1).split()[0] not in LEAD_WORDS and m.group(2).split()[0] not in LEAD_WORDS:
+        pats.append((m, "role"))
     rng.shuffle(pats)
     for m, what in pats:
         a, b = m.group(1), m.group(2)
