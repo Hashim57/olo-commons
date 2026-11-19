@@ -68,6 +68,8 @@ export type NoteParts = {
   stubs?: number;
   withEmail?: number;
   courtRecords?: number;
+  /** The resting clause from restingNote, or ''. */
+  resting?: string;
   /** True when the forty-second budget stopped the run before every source had its turn. */
   cutShort?: boolean;
   errors: RunError[];
@@ -84,6 +86,49 @@ export function composeNote(p: NoteParts): string {
     + (p.stubs ? ` (${p.stubs} stubs skipped)` : '')
     + (p.withEmail ? ` (${p.withEmail} with an email address skipped)` : '')
     + (p.courtRecords ? ` (${p.courtRecords} court records skipped)` : '')
+    + (p.resting || '')
     + (p.cutShort ? ' (time budget reached, continues next run)' : '')
     + errorNote(p.errors);
+}
+
+/**
+ * The sources a finished run's note names as failed in the random walk, out of the slugs given. The errors clause
+ * reads ' errors: arxiv: Signal timed out.; gutenberg: Signal timed out.'; a gap-search failure is written
+ * 'arxiv (gap search): ...' and does not count, because it is a different call. Only known slugs are matched, so
+ * text inside an error message cannot name a source by accident.
+ */
+export function failedInNote(note: string | null | undefined, slugs: string[]): Set<string> {
+  const out = new Set<string>();
+  const at = (note || '').indexOf(' errors: ');
+  if (at < 0) return out;
+  const clause = (note || '').slice(at + ' errors: '.length);
+  for (const slug of slugs) {
+    if (clause.startsWith(`${slug}: `) || clause.includes(`; ${slug}: `)) out.add(slug);
+  }
+  return out;
+}
+
+/** How many finished runs in a row a source must fail before it rests. */
+export const REST_AFTER = 4;
+
+/**
+ * The sources to leave out of this run because each of the last REST_AFTER finished runs failed them. A resting
+ * source is still asked once an hour (the run that starts in the first quarter of the hour), so it comes back by
+ * itself within the hour once it answers again. Why: on 19 November 2026 Project Gutenberg was down for
+ * maintenance and gutendex timed out at 20 s in 9 of 12 runs, half of every forty-second run spent waiting on a
+ * call that could not answer while ten other sources queued behind it. `recentNotes` is newest first.
+ */
+export function restingSources(recentNotes: (string | null | undefined)[], slugs: string[], now: Date): Set<string> {
+  const out = new Set<string>();
+  if (recentNotes.length < REST_AFTER) return out;
+  if (now.getUTCMinutes() < 15) return out;
+  const last = recentNotes.slice(0, REST_AFTER).map((n) => failedInNote(n, slugs));
+  for (const slug of slugs) if (last.every((s) => s.has(slug))) out.add(slug);
+  return out;
+}
+
+/** The run-note clause for resting sources, ' (resting after 4 failed runs: gutenberg)', or ''. */
+export function restingNote(resting: Set<string> | string[]): string {
+  const list = Array.from(resting).sort();
+  return list.length ? ` (resting after ${REST_AFTER} failed runs: ${list.join(', ')})` : '';
 }

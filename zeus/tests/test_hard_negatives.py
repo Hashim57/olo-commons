@@ -66,6 +66,20 @@ def test_order_swap_patterns():
     assert bd.hard_order_swap(s, [s], rng()) is None  # no change verb: a period, not a change
 
 
+def test_order_swap_role():
+    s = "In the 1858 Senate race Stephen Douglas defeated Abraham Lincoln by a small margin."
+    assert bd.hard_order_swap(s, [s], rng())[0] == "In the 1858 Senate race Abraham Lincoln defeated Stephen Douglas by a small margin."
+    s = "After Smith defeated Jones in the final, the club moved to a new ground."
+    assert bd.hard_order_swap(s, [s], rng()) is None  # "After Smith" is not a name
+    s = "Mary Jones succeeded Mary Smith as head of the school."
+    assert bd.hard_order_swap(s, [s], rng()) is None  # the two sides share a word
+    s = "Microsoft acquired Mojang in a deal worth billions."
+    other = "Mojang acquired Microsoft in a deal worth billions."
+    assert bd.hard_order_swap(s, [s, other], rng()) is None  # the swapped sentence is in a passage
+    s = "Hamburg beat Norwegian club Brann to go top of the group."
+    assert bd.hard_order_swap(s, [s], rng()) is None  # "Norwegian" describes the club; it is not the other side
+
+
 def test_negation_insert_and_remove_grammatically():
     s = "The bridge has been rebuilt twice since the flood of the old town."
     assert bd.hard_negation(s, [s], rng())[0] == "The bridge has not been rebuilt twice since the flood of the old town."
