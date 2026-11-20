@@ -16,8 +16,10 @@ two passages, each with a unique id and a source, url and non-empty text;
 evidence a list of {passage, quote} where the passage id exists and the quote
 is an exact substring of that passage's text; supported and contradicted carry
 at least one evidence item, not_covered carries none; no claim repeated inside
-one file. Also runnable from CI; no network.
+one file; no evidence quoted from an atom of the eval split (see eval_atom).
+Also runnable from CI; no network.
 """
+import hashlib
 import json
 import os
 import sys
@@ -25,6 +27,19 @@ import sys
 LABELS = ("supported", "contradicted", "not_covered")
 REQUIRED = ("claim", "passages", "label", "evidence", "rationale")
 PASSAGE_KEYS = ("id", "source", "url", "text")
+# build_dataset.py's --eval-share default; tests/test_validate_gold.py checks the two agree.
+EVAL_SHARE = 0.1
+
+
+def eval_atom(atom_id, eval_share=EVAL_SHARE):
+    """True when build_dataset.stable_split puts this atom in the eval split. Every gold file trains, so a gold
+    line whose evidence is an eval atom teaches the model a sentence that eval.jsonl, eval2.jsonl or eval3.jsonl
+    then scores it on. Found on 2026-11-20: three gold lines (written 24, 25 and 28 October) quoted atoms that
+    the current eval splits hold. Copied here, not imported, so this script stays free of build_dataset's
+    dependencies."""
+    if not isinstance(atom_id, str) or len(atom_id) < 32:
+        return False  # only a full atom id can be placed; the 8-character passage id cannot
+    return int(hashlib.sha256(atom_id.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF < eval_share
 
 
 def check_example(ex):
@@ -47,7 +62,7 @@ def check_example(ex):
     if not isinstance(ps, list) or len(ps) < 2:
         bad.append("need at least two passages")
         ps = ps if isinstance(ps, list) else []
-    texts, ids = {}, set()
+    texts, ids, eval_ids = {}, set(), set()
     for i, p in enumerate(ps):
         if not isinstance(p, dict):
             bad.append(f"passage {i} is not an object")
@@ -62,6 +77,8 @@ def check_example(ex):
         if isinstance(p.get("url"), str) and not p["url"].startswith("https://"):
             bad.append(f"passage {pid!r} url is not https")
         texts[pid] = p.get("text") or ""
+        if eval_atom(p.get("atom_id")):
+            eval_ids.add(pid)
     ev = ex["evidence"]
     if not isinstance(ev, list):
         bad.append("evidence must be a list")
@@ -80,6 +97,8 @@ def check_example(ex):
             bad.append(f"evidence {j} quote is empty")
         elif e["quote"] not in texts[e["passage"]]:
             bad.append(f"evidence {j} quote is not an exact substring of passage {e['passage']!r}")
+        elif e["passage"] in eval_ids:
+            bad.append(f"evidence {j} quotes passage {e['passage']!r}, an atom of the eval split (it would train on what eval scores)")
     return bad
 
 

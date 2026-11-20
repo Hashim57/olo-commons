@@ -87,3 +87,33 @@ def test_repository_gold_files_are_valid():
             n_ok, problems = vg.check_file(os.path.join(GOLD_DIR, name))
             assert problems == [], problems
             assert n_ok > 0
+
+
+def test_evidence_from_an_eval_atom_is_refused():
+    import uuid
+    import build_dataset as bd
+    # find a full atom id of each split under the dataset's own rule
+    ids = [str(uuid.UUID(int=i * 7919 + 1)) for i in range(400)]
+    ev_id = next(i for i in ids if bd.stable_split(i, vg.EVAL_SHARE) == "eval")
+    tr_id = next(i for i in ids if bd.stable_split(i, vg.EVAL_SHARE) == "train")
+    ex = good()
+    ex["passages"][0]["atom_id"] = tr_id
+    assert vg.check_example(ex) == []
+    ex["passages"][0]["atom_id"] = ev_id
+    assert any("eval split" in p for p in vg.check_example(ex))
+    # an eval atom as a distractor, or behind a not_covered line, is not quoted, so it passes
+    ex = good()
+    ex["passages"][1]["atom_id"] = ev_id
+    assert vg.check_example(ex) == []
+    # a short id cannot be placed and is never refused for it
+    assert not vg.eval_atom(ev_id[:8])
+
+
+def test_eval_rule_matches_build_dataset():
+    import uuid
+    import build_dataset as bd
+    for i in range(300):
+        a = str(uuid.UUID(int=i * 104729 + 3))
+        assert vg.eval_atom(a) == (bd.stable_split(a, vg.EVAL_SHARE) == "eval")
+    src = open(os.path.join(os.path.dirname(__file__), "..", "build_dataset.py"), encoding="utf-8").read()
+    assert f'"--eval-share", type=float, default={vg.EVAL_SHARE})' in src
