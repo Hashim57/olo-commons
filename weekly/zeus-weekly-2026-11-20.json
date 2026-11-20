@@ -1,0 +1,347 @@
+{
+  "week_start": "2026-11-14",
+  "week_end": "2026-11-20",
+  "latest": "v26",
+  "reference": "v19",
+  "versions_this_week": [
+    "v20",
+    "v21",
+    "v22",
+    "v23",
+    "v24",
+    "v25",
+    "v26"
+  ],
+  "latest_scores": {
+    "version": "v26",
+    "commons_eval": 0.985,
+    "vitaminc_dev": 0.65,
+    "vitaminc_n": 300,
+    "eval3": 0.975,
+    "eval3_n": 200,
+    "eval3_patterns": {
+      "before_after": 1.0,
+      "modal_shift": 0.867,
+      "near_miss_names": 1.0,
+      "paraphrase_decade": 0.812,
+      "relation_flip": 1.0,
+      "two_passage": 1.0
+    },
+    "eval3_wrong": {
+      "before_after": {},
+      "modal_shift": {
+        "contradicted": 2
+      },
+      "near_miss_names": {},
+      "paraphrase_decade": {
+        "contradicted": 3
+      },
+      "relation_flip": {},
+      "two_passage": {}
+    },
+    "aggrefact": 0.564,
+    "aggrefact_n": 600,
+    "aggrefact_error": null,
+    "minutes": 60.1,
+    "steps": 826,
+    "planned_steps": 871,
+    "train_examples": 13946,
+    "priority_rows": 4406,
+    "learning": {
+      "probe_n": 800,
+      "probe_accuracy": 0.948,
+      "mistakes": 42,
+      "mistakes_by_kind_of_error": {
+        "contradicted->not_covered": 10,
+        "contradicted->supported": 4,
+        "not_covered->contradicted": 6,
+        "supported->contradicted": 8,
+        "supported->invalid": 1,
+        "supported->not_covered": 13
+      },
+      "pool_rows_trained": 91,
+      "pool_rows_in_probe": 2,
+      "note": "a sample of this version's own training rows, never a held-out row; the wrong ones are trained again by the next version"
+    }
+  },
+  "reference_scores": {
+    "version": "v19",
+    "commons_eval": 1.0,
+    "vitaminc_dev": 0.713,
+    "vitaminc_n": 300,
+    "eval3": 0.965,
+    "eval3_n": 200,
+    "eval3_patterns": {
+      "before_after": 1.0,
+      "modal_shift": 0.882,
+      "near_miss_names": 1.0,
+      "paraphrase_decade": 0.733,
+      "relation_flip": 1.0,
+      "two_passage": 0.977
+    },
+    "eval3_wrong": {},
+    "aggrefact": null,
+    "aggrefact_n": null,
+    "aggrefact_error": "DatasetNotFoundError: Dataset 'lytang/LLM-AggreFact' is a gated dataset on the Hub. You must be authenticated to access it.",
+    "minutes": 116.7,
+    "steps": 2008,
+    "planned_steps": null,
+    "train_examples": 32131,
+    "priority_rows": null,
+    "learning": null
+  },
+  "headline": {
+    "vitaminc_dev": {
+      "now": 0.65,
+      "week_ago": 0.713,
+      "change": "-6.3 pts"
+    },
+    "eval3": {
+      "now": 0.975,
+      "week_ago": 0.965,
+      "change": "+1.0 pts"
+    },
+    "aggrefact": {
+      "now": 0.564,
+      "week_ago": null,
+      "change": ""
+    }
+  },
+  "commits": [
+    [
+      "2026-11-19",
+      "zeus: status log for 2026-11-19 (snapshot build, gutenberg outage, v26 due in the cloud)"
+    ],
+    [
+      "2026-11-19",
+      "zeus: role swaps in hard order_swap (\"A defeated B\" -> \"B defeated A\")"
+    ],
+    [
+      "2026-11-19",
+      "zeus: 11 gold examples over atoms observed on 18 November"
+    ],
+    [
+      "2026-11-19",
+      "olo-ingest: rest a source that failed four runs in a row, probe it hourly"
+    ],
+    [
+      "2026-11-18",
+      "docs: record round two of Olo's answers (facts 0.871 on all 70), with the writer confound"
+    ],
+    [
+      "2026-11-18",
+      "zeus, docs: gold over research abstracts and datasets; second-round causes in the scorecard"
+    ],
+    [
+      "2026-11-18",
+      "olo-answer: Zeus reads the title too; plain noun phrases for studies; U.S. and 10x"
+    ],
+    [
+      "2026-11-18",
+      "docs: correct the verifier counts in the post-fix run (59 Zeus, 11 fallback, from the two run lines)"
+    ],
+    [
+      "2026-11-18",
+      "docs: record the first full post-fix run of Olo's answers (70 of 70, facts 0.781)"
+    ],
+    [
+      "2026-11-18",
+      "zeus, docs: gold for the patterns Zeus missed in the answer eval, first Spanish gold, and the measured answer runs"
+    ],
+    [
+      "2026-11-18",
+      "olo-answer: stop hiding correct sentences (splitter, pronouns, dates, Spanish, quote matching)"
+    ],
+    [
+      "2026-11-18",
+      "zeus: status log for 2026-11-18 (health, question set, hard-v2, training due in the cloud)"
+    ],
+    [
+      "2026-11-18",
+      "zeus: hard-v2 adds hedge_drop, the encyclopedic hedge stated as fact (not_covered)"
+    ],
+    [
+      "2026-11-18",
+      "zeus: gold-2026-11-18, 13 hand-written examples over 17 atoms of today's snapshot"
+    ],
+    [
+      "2026-11-17",
+      "zeus: rebalance the long documents (longdoc-v2) and size the focused set to the hour"
+    ],
+    [
+      "2026-11-17",
+      "zeus: report tile says \"not measured a week ago\" instead of \"first measurement\""
+    ],
+    [
+      "2026-11-17",
+      "zeus: back to one hour of training, with the focused set sized to fit it"
+    ],
+    [
+      "2026-11-17",
+      "zeus: train on a focused set, about half the GPU time, every valuable row kept"
+    ],
+    [
+      "2026-11-17",
+      "zeus: teach Zeus to read long documents (longdoc-v1), and see what it answers on LLM-AggreFact"
+    ],
+    [
+      "2026-11-17",
+      "zeus: the weekly report says what an LLM-AggreFact score means"
+    ],
+    [
+      "2026-11-17",
+      "zeus: rank versions by held-out claims above a floor, so v22 serves instead of v16"
+    ],
+    [
+      "2026-11-17",
+      "zeus: publish measured versions on the Hugging Face Hub"
+    ],
+    [
+      "2026-11-17",
+      "zeus: leave LLM-AggreFact out of the weekly report until it is measured"
+    ],
+    [
+      "2026-11-17",
+      "zeus: a weekly learning report as a PDF, built only from measured files"
+    ],
+    [
+      "2026-11-17",
+      "zeus: two hours of training a day, and each version trains what the last one got wrong"
+    ],
+    [
+      "2026-11-17",
+      "zeus: STATUS log for 2026-11-17 (health, queue order fix, MARC titles, 13 gold, wrong calls per pattern)"
+    ],
+    [
+      "2026-11-17",
+      "zeus: the per-pattern report says what the wrong answers called the claim"
+    ],
+    [
+      "2026-11-17",
+      "zeus: 13 gold examples over 26 Wikipedia and Wikinews atoms observed on 16 and 17 November"
+    ],
+    [
+      "2026-11-17",
+      "ingest: Gutenberg titles without the MARC subtitle marker gutendex copies (sql/021)"
+    ],
+    [
+      "2026-11-17",
+      "ingest: a failed source goes to the back of the queue, not the head of the next run"
+    ],
+    [
+      "2026-11-16",
+      "zeus: STATUS log for 2026-11-16 (health, item records, 12 gold, compose-v2, Monday base model check)"
+    ],
+    [
+      "2026-11-16",
+      "zeus: compose-v2 teaches the decade a year falls in, as a third of it (decade_supported, decade_wrong)"
+    ],
+    [
+      "2026-11-16",
+      "zeus: 12 gold examples over 18 Wikipedia and Wikinews atoms observed on 15 and 16 November"
+    ],
+    [
+      "2026-11-16",
+      "ingest: refuse item records, a scanned object described as an object (sql/020)"
+    ],
+    [
+      "2026-11-15",
+      "zeus: STATUS log for 2026-11-15 (health, file records, 13 gold, budgeted order, training due in the cloud)"
+    ],
+    [
+      "2026-11-15",
+      "zeus: a budgeted run always sees every gold and imported row (recipe.budgeted_order)"
+    ],
+    [
+      "2026-11-15",
+      "zeus: 13 gold examples over 24 Wikipedia atoms observed on 14 and 15 November"
+    ],
+    [
+      "2026-11-15",
+      "ingest: refuse file records, a quoted file name with the names of its collections (sql/019)"
+    ],
+    [
+      "2026-11-14",
+      "zeus: STATUS log for 2026-11-14 (health, court records, v20 read, shuffle seed, 12 gold, training not due)"
+    ],
+    [
+      "2026-11-14",
+      "zeus: the cloud trainer shuffles with a seed drawn from the version, so budgeted runs see different parts of the set"
+    ],
+    [
+      "2026-11-14",
+      "zeus: 12 gold examples from the 2026-11-14 snapshot (235 in all)"
+    ],
+    [
+      "2026-11-14",
+      "ingest: court records are refused (a court, a case and the parties), with sql/018 for the 78 stored"
+    ]
+  ],
+  "base": "mistralai/Mistral-7B-Instruct-v0.2",
+  "history_tail": [
+    {
+      "version": "v19",
+      "date": "2026-11-09",
+      "vitaminc_dev": 0.713,
+      "eval3": 0.965,
+      "aggrefact": null,
+      "minutes": 116.7
+    },
+    {
+      "version": "v20",
+      "date": "2026-11-14",
+      "vitaminc_dev": 0.65,
+      "eval3": 0.945,
+      "aggrefact": null,
+      "minutes": 60.0
+    },
+    {
+      "version": "v21",
+      "date": "2026-11-15",
+      "vitaminc_dev": 0.67,
+      "eval3": 0.95,
+      "aggrefact": null,
+      "minutes": 60.0
+    },
+    {
+      "version": "v22",
+      "date": "2026-11-16",
+      "vitaminc_dev": 0.733,
+      "eval3": 0.92,
+      "aggrefact": null,
+      "minutes": 60.0
+    },
+    {
+      "version": "v23",
+      "date": "2026-11-17",
+      "vitaminc_dev": 0.69,
+      "eval3": 0.97,
+      "aggrefact": 0.542,
+      "minutes": 120.0
+    },
+    {
+      "version": "v24",
+      "date": "2026-11-17",
+      "vitaminc_dev": 0.677,
+      "eval3": 0.945,
+      "aggrefact": 0.581,
+      "minutes": 60.0
+    },
+    {
+      "version": "v25",
+      "date": "2026-11-18",
+      "vitaminc_dev": 0.637,
+      "eval3": 0.96,
+      "aggrefact": 0.583,
+      "minutes": 60.0
+    },
+    {
+      "version": "v26",
+      "date": "2026-11-19",
+      "vitaminc_dev": 0.65,
+      "eval3": 0.975,
+      "aggrefact": 0.564,
+      "minutes": 60.1
+    }
+  ]
+}
