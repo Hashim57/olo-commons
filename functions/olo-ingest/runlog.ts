@@ -111,19 +111,42 @@ export function failedInNote(note: string | null | undefined, slugs: string[]): 
 /** How many finished runs in a row a source must fail before it rests. */
 export const REST_AFTER = 4;
 
+/** The sources a finished run's note names as resting, out of the slugs given (the clause restingNote writes). */
+export function restingInNote(note: string | null | undefined, slugs: string[]): Set<string> {
+  const out = new Set<string>();
+  const m = /\(resting after \d+ failed runs: ([^)]*)\)/.exec(note || '');
+  if (!m) return out;
+  const named = new Set(m[1].split(',').map((x) => x.trim()));
+  for (const slug of slugs) if (named.has(slug)) out.add(slug);
+  return out;
+}
+
 /**
- * The sources to leave out of this run because each of the last REST_AFTER finished runs failed them. A resting
- * source is still asked once an hour (the run that starts in the first quarter of the hour), so it comes back by
- * itself within the hour once it answers again. Why: on 19 November 2026 Project Gutenberg was down for
- * maintenance and gutendex timed out at 20 s in 9 of 12 runs, half of every forty-second run spent waiting on a
- * call that could not answer while ten other sources queued behind it. `recentNotes` is newest first.
+ * The sources to leave out of this run. A source starts resting when each of the last REST_AFTER finished runs
+ * failed it, and keeps resting while every run that asked it since has failed it. A resting source is still asked
+ * once an hour (the run that starts in the first quarter of the hour), so it comes back by itself within the hour
+ * once it answers again. Why: on 19 November 2026 Project Gutenberg was down for maintenance and gutendex timed out
+ * at 20 s in 9 of 12 runs, half of every forty-second run spent waiting on a call that could not answer while ten
+ * other sources queued behind it. `recentNotes` is newest first.
+ *
+ * A run in which a source rested is not a run in which it answered, so it neither ends the streak nor counts in
+ * it. Before 20 November 2026 the resting run itself ended the streak, so a source that never answered rested in
+ * only one run of five: OpenAlex answered 429 in 10 of the 12 runs between 09:33 and 12:18 UTC that day and
+ * rested in 2.
  */
 export function restingSources(recentNotes: (string | null | undefined)[], slugs: string[], now: Date): Set<string> {
   const out = new Set<string>();
-  if (recentNotes.length < REST_AFTER) return out;
   if (now.getUTCMinutes() < 15) return out;
-  const last = recentNotes.slice(0, REST_AFTER).map((n) => failedInNote(n, slugs));
-  for (const slug of slugs) if (last.every((s) => s.has(slug))) out.add(slug);
+  const parsed = recentNotes.map((n) => ({ failed: failedInNote(n, slugs), rested: restingInNote(n, slugs) }));
+  for (const slug of slugs) {
+    let failures = 0;
+    for (const p of parsed) {
+      // Reached only when every newer run failed it: the rest goes on.
+      if (p.rested.has(slug)) { out.add(slug); break; }
+      if (!p.failed.has(slug)) break;
+      if (++failures >= REST_AFTER) { out.add(slug); break; }
+    }
+  }
   return out;
 }
 
