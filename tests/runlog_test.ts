@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { collect, composeNote, errorNote, errorText, failedInNote, redactSecrets, restingNote, restingSources } from '../functions/olo-ingest/runlog.ts';
+import { collect, composeNote, errorNote, errorText, failedInNote, redactSecrets, restingInNote, restingNote, restingSources } from '../functions/olo-ingest/runlog.ts';
 
 Deno.test('errorText flattens an Error to one bounded line', () => {
   assertEquals(errorText(new Error('403 https://catalog.data.gov/api/3/action/package_search?rows=9')), '403 https://catalog.data.gov/api/3/action/package_search?rows=9');
@@ -87,4 +87,31 @@ Deno.test('the resting clause goes into the run note', () => {
   assertEquals(restingNote(new Set(['gutenberg', 'arxiv'])), ' (resting after 4 failed runs: arxiv, gutenberg)');
   assertEquals(restingNote([]), '');
   assertEquals(composeNote({ source: 'cron', resting: restingNote(['gutenberg']), errors: [] }), 'cron (resting after 4 failed runs: gutenberg)');
+});
+
+Deno.test('restingInNote reads the resting clause back', () => {
+  const slugs = ['arxiv', 'gutenberg', 'openalex'];
+  assertEquals(Array.from(restingInNote('cron (1 stubs skipped) (resting after 4 failed runs: gutenberg, openalex) errors: arxiv: 429', slugs)).sort(), ['gutenberg', 'openalex']);
+  assertEquals(restingInNote('cron errors: openalex: 429', slugs).size, 0);
+  assertEquals(restingInNote(null, slugs).size, 0);
+});
+
+Deno.test('a resting run neither ends nor counts in the streak, so a dead source stays rested between probes', () => {
+  const slugs = ['openalex', 'arxiv'];
+  // The pattern of 20 November 2026, newest first: the hourly probe at 11:03 failed again after a rest at 10:48.
+  const notes = [
+    'cron errors: openalex: 429',
+    'cron (resting after 4 failed runs: openalex)',
+    'cron errors: openalex: 429',
+    'cron errors: openalex: 429; arxiv: Signal timed out.',
+  ];
+  assertEquals(Array.from(restingSources(notes, slugs, new Date('2026-11-20T11:18:00Z'))), ['openalex']);
+  // Still resting in the run after a rest.
+  assertEquals(Array.from(restingSources(['cron (resting after 4 failed runs: openalex)', ...notes], slugs, new Date('2026-11-20T11:33:00Z'))), ['openalex']);
+  // The probe answered: the rest ends.
+  assertEquals(restingSources(['cron', ...notes], slugs, new Date('2026-11-20T12:18:00Z')).size, 0);
+  // The probe still runs in the first quarter of the hour.
+  assertEquals(restingSources(notes, slugs, new Date('2026-11-20T12:03:00Z')).size, 0);
+  // Three failures and no rest is not yet a streak.
+  assertEquals(restingSources(notes.slice(0, 1).concat(notes.slice(2)), slugs, new Date('2026-11-20T11:18:00Z')).size, 0);
 });
