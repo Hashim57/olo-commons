@@ -71,3 +71,33 @@ def test_empty_eval_set_does_not_divide_by_zero():
     r = ev.score([], [])
     assert r["n"] == 0 and r["label_accuracy"] == 0 and r["binary_balanced_accuracy"] is None
     assert r["rates"]["supported"] == {"tpr": None, "tnr": None}
+
+
+def test_by_edit_reads_the_rule_made_edit_from_the_rationale():
+    def made(what, label="contradicted"):
+        e = ex(label, claim="x")
+        e["rationale"] = f"The passage gives a different value ({what})." if not what.startswith("relation") else f"The passage says the opposite ({what})."
+        return e
+    exs = [made("year 1971 -> 1978"), made("year 1971 -> 1964"), made("number 12 -> 24"), made("name Hart -> Smith"),
+           made("relation before -> after"), ex("supported"), ex("not_covered", claim="Hart was born in Washington.")]
+    assert [ev.edit_kind(e) for e in exs] == ["year", "year", "number", "name", "relation", None, None]
+    answers = [ans("contradicted", "founded in 1971"), ans("not_covered"), ans("contradicted", "founded in 1971"), ans("supported", "founded in 1971"),
+               "no json here", ans("supported", "founded in 1971"), ans("not_covered")]
+    r = ev.score_by_edit(exs, answers)
+    assert r == {"name": {"n": 1, "accuracy": 0.0, "wrong": {"supported": 1}},
+                 "number": {"n": 1, "accuracy": 1.0, "wrong": {}},
+                 "relation": {"n": 1, "accuracy": 0.0, "wrong": {"invalid": 1}},
+                 "year": {"n": 2, "accuracy": 0.5, "wrong": {"not_covered": 1}}}
+    # split_report adds by_edit for the first split (no kinds) and by_kind, not by_edit, for a split with kinds
+    rep = ev.split_report(exs, answers)
+    assert rep["by_edit"] == r and "by_kind" not in rep
+    kinded = [dict(e, kind="relation_flip") for e in exs]
+    rep2 = ev.split_report(kinded, answers)
+    assert "by_kind" in rep2 and "by_edit" not in rep2
+
+
+def test_by_edit_is_absent_when_no_line_names_an_edit():
+    exs = [ex("supported"), ex("contradicted", claim="Project Gutenberg was founded in 1980."), ex("not_covered", claim="Hart was born in Washington.")]
+    answers = [ans("supported", "founded in 1971"), ans("contradicted", "founded in 1971"), ans("not_covered")]
+    assert ev.score_by_edit(exs, answers) == {}
+    assert "by_edit" not in ev.split_report(exs, answers)
