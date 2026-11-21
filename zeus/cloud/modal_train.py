@@ -78,7 +78,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     sys.path.insert(0, os.path.join(work, "zeus"))
     sys.path.insert(0, os.path.join(work, "zeus", "cloud"))
     import recipe  # noqa: E402
-    from eval import evidence_ok, parse, score, score_by_kind, LABELS  # noqa: E402
+    from eval import evidence_ok, parse, score, score_by_edit, score_by_kind, LABELS  # noqa: E402
 
     data = os.path.join(work, "zeus", "data")
 
@@ -193,6 +193,11 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
     answers, _ = run(evals)
     report = {"model": f"zeus/out/zeus-{version}", "base": base, **score(evals, answers)}
+    # the first split's contradicted lines name their edit (year, number, name, relation) in the rationale, so the
+    # report says which of the four the model misses, not only how many (eval.score_by_edit, since 2026-11-21)
+    by_edit = score_by_edit(evals, answers)
+    if by_edit:
+        report["by_edit"] = by_edit
 
     out = os.path.join(work, "out")
     model.save_pretrained(os.path.join(out, "peft"))

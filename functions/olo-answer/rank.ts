@@ -227,13 +227,77 @@ export function demoteDuplicates<T extends Hit>(list: T[]): T[] {
   return [...kept.map(k => k.t), ...dup];
 }
 
+// ---------------------------------------------------------------------------
+// Source diversity (issue #76, part 3).
+//
+// Six arXiv abstracts about coral reefs answer "how do coral reefs recover"
+// no better than two of them beside a Wikipedia article, a Wikinews story and
+// a PubMed abstract, and olo-answer's writer and Zeus both read better from
+// passages that do not all speak in one register. The top of the list keeps
+// at most DIVERSITY_PER_SOURCE atoms from one source within its first
+// DIVERSITY_WITHIN places; the atoms that would have been the third of a
+// source move to just after that block, in their order, ahead of the rest, so
+// with k of 8 they are still returned, only lower. Nothing moves when the
+// question names a source ("according to Wikipedia", "on arXiv", "pubmed"):
+// then the asker wants that source and gets it. The rule is skipped for lists
+// shorter than the block, and an atom without a source slug counts as its own
+// source.
+// ---------------------------------------------------------------------------
+
+/** At most this many atoms of one source in the first DIVERSITY_WITHIN results. */
+export const DIVERSITY_PER_SOURCE = 2;
+/** The block of results the per-source cap applies to. */
+export const DIVERSITY_WITHIN = 6;
+
+/** The source key a hit is counted under: its slug, else its name, else its own id (never grouped). */
+function sourceKey(h: Hit): string {
+  const slug = typeof h.source_slug === 'string' && h.source_slug.trim() ? h.source_slug.trim().toLowerCase() : '';
+  const name = typeof h.source === 'string' && h.source.trim() ? h.source.trim().toLowerCase() : '';
+  return slug || name || `id:${h.id}`;
+}
+
+/**
+ * Whether the question names this hit's source: a query term matches a word of
+ * the source's name or slug ("wikipedia" meets "Wikipedia (español)" and
+ * "wikipedia_es"; "data gov" meets "data_gov"; "archive" meets "Internet
+ * Archive"). Generic words in a source name ("internet", "project") do not
+ * count, so "internet speed" does not name the Internet Archive.
+ */
+const SOURCE_NAME_STOP = new Set(['internet', 'project', 'español', 'espanol', 'english', 'national', 'library', 'open', 'data']);
+export function namesSource(qterms: string[], h: Hit): boolean {
+  const words = [...terms(h.source), ...terms(String(h.source_slug ?? '').replace(/_/g, ' '))].filter(w => !SOURCE_NAME_STOP.has(w));
+  return words.some(w => qterms.some(t => termMatches(t, w)));
+}
+
+/**
+ * Apply the per-source cap to a ranked list (best first). Walks the list in
+ * order filling the first `within` places; an atom whose source already holds
+ * `perSource` of them is set aside unless the question names that source. The
+ * set-aside atoms follow the block in their order, then everything else as it
+ * was. Pure and stable: an atom never moves ahead of a better one of another
+ * source, and a list with no third same-source atom in the block is unchanged.
+ */
+export function diversify<T extends Hit>(list: T[], qterms: string[], perSource = DIVERSITY_PER_SOURCE, within = DIVERSITY_WITHIN): T[] {
+  if (list.length <= within || perSource < 1) return list;
+  const block: T[] = [], aside: T[] = [], seen = new Map<string, number>();
+  let i = 0;
+  for (; i < list.length && block.length < within; i++) {
+    const h = list[i], key = sourceKey(h), n = seen.get(key) || 0;
+    if (n >= perSource && !namesSource(qterms, h)) { aside.push(h); continue; }
+    seen.set(key, n + 1);
+    block.push(h);
+  }
+  return [...block, ...aside, ...list.slice(i)];
+}
+
 /**
  * The full ranking used by olo-query and olo-answer: fuse both retrievers over
  * their whole lists, rescore every candidate with the blend in RANK_WEIGHTS,
- * demote near duplicates and keep the best `k`. `score` on each result is the
- * blended score (0..1); `match` says which retrievers found it, as with fuse().
- * A question with no content words keeps the fusion order (duplicates still
- * demoted). Ties keep the fusion order, so the result is deterministic.
+ * demote near duplicates, spread the top over sources (diversify) and keep the
+ * best `k`. `score` on each result is the blended score (0..1); `match` says
+ * which retrievers found it, as with fuse(). A question with no content words
+ * keeps the fusion order (duplicates still demoted, sources still spread).
+ * Ties keep the fusion order, so the result is deterministic.
  */
 export function rank(q: string, semantic: Hit[], keyword: Hit[], k: number, w = RANK_WEIGHTS): Fused[] {
   const pool = fuse(semantic, keyword, Infinity);
@@ -250,5 +314,6 @@ export function rank(q: string, semantic: Hit[], keyword: Hit[], k: number, w = 
     return { p, s, i };
   });
   scored.sort((a, b) => b.s - a.s || a.i - b.i);
-  return demoteDuplicates(scored.map(({ p, s }) => ({ ...p, score: Math.round(s * 1e6) / 1e6 }))).slice(0, Math.max(0, k));
+  const ordered = demoteDuplicates(scored.map(({ p, s }) => ({ ...p, score: Math.round(s * 1e6) / 1e6 })));
+  return diversify(ordered, qterms).slice(0, Math.max(0, k));
 }
