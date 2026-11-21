@@ -140,11 +140,56 @@ def score_by_kind(examples, answers):
             for k, d in sorted(kinds.items())}
 
 
+EDIT_RE = re.compile(r"\((year|number|name|relation) [^)]*->")
+
+
+def edit_kind(ex):
+    """The rule that made a contradicted line of the first split, read from its rationale: build_dataset.py's
+    contradict() writes "The passage gives a different value (year 1968 -> 1975)." or "... (number 12 -> 24)",
+    "... (name Paris -> Lyon)", and flip_relation() "The passage says the opposite (relation before -> after)".
+    Returns "year", "number", "name" or "relation", or None for any other line (supported, not_covered, a line
+    whose rationale was written by hand). The split's lines carry no `kind`, and the file is frozen byte for
+    byte since v0, so the kind is read rather than stored."""
+    if ex.get("label") != "contradicted":
+        return None
+    m = EDIT_RE.search(ex.get("rationale") or "")
+    return m.group(1) if m else None
+
+
+def score_by_edit(examples, answers):
+    """Label accuracy of the contradicted lines of a split per rule-made edit ({"year" | "number" | "name" |
+    "relation": {"n", "accuracy", "wrong"}}), the same shape as score_by_kind, for a split whose lines carry
+    no `kind` but whose rationale names the edit (the first eval split). Lines with no readable edit are left
+    out. Added on 2026-11-21: contradicted recall on the first split went from 1.0 (v23, a whole pass) to
+    0.868 (v28, the fifth focused hour) and the confusion matrix could not say which of the four edits the
+    model stopped seeing; this does, so the sampled share of the plain rule-made rows (FOCUS_CAPS "rules")
+    can be judged against what it costs."""
+    kinds = {}
+    for ex, ans in zip(examples, answers):
+        k = edit_kind(ex)
+        if not k:
+            continue
+        pred = ans if isinstance(ans, dict) else parse(ans or "")
+        d = kinds.setdefault(k, {"n": 0, "correct": 0, "wrong": {}})
+        d["n"] += 1
+        label = pred.get("label") if pred else None
+        if label == ex["label"]:
+            d["correct"] += 1
+        else:
+            called = label if label in LABELS else "invalid"
+            d["wrong"][called] = d["wrong"].get(called, 0) + 1
+    return {k: {"n": d["n"], "accuracy": round(d["correct"] / d["n"], 3), "wrong": dict(sorted(d["wrong"].items()))}
+            for k, d in sorted(kinds.items())}
+
+
 def split_report(examples, answers):
-    """score() plus, for a split with patterns, by_kind, and the split's version when its lines carry one."""
+    """score() plus, for a split with patterns, by_kind (or by_edit for the first split, whose contradicted
+    lines name their edit in the rationale), and the split's version when its lines carry one."""
     r = score(examples, answers)
     if any("kind" in ex for ex in examples):
         r["by_kind"] = score_by_kind(examples, answers)
+    elif any(edit_kind(ex) for ex in examples):
+        r["by_edit"] = score_by_edit(examples, answers)
     versions = sorted({ex["version"] for ex in examples if ex.get("version")})
     if versions:
         r["version"] = versions[0] if len(versions) == 1 else versions
