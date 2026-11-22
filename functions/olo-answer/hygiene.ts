@@ -84,6 +84,34 @@ export function shownAnswer(sentences: { text: string; verdict: Label }[]): { te
 
 export const COULD_NOT_VERIFY = 'Olo could not verify an answer to this from the sources it has. The unverified draft is available, but not shown by default.';
 
+/** The arguments of olo_answer_record (sql/022): counts only, never text. */
+export type AnswerTally = {
+  p_covered: boolean; p_abstained: boolean; p_extractive: boolean;
+  p_supported: number; p_contradicted: number; p_not_covered: number;
+  p_zeus: number; p_fallback: number; p_unchecked: number; p_zeus_supported: number;
+};
+
+/**
+ * What one answer adds to the day's tally (issue #76, part 4): how many sentences were supported,
+ * contradicted or not covered after the figure check, how many of them Zeus checked (checked_by
+ * "zeus:<model>"), the fallback verifier checked ("llm-fallback") or nobody checked (null, and every
+ * quoted sentence of an extractive answer), and how many of Zeus's own sentences it supported.
+ * Pure: the caller sends the result to the database and ignores a failure.
+ */
+export function answerTally(sentences: { verdict: Label; checked_by?: string | null }[], covered: boolean, abstained: boolean, extractive = false): AnswerTally {
+  const t: AnswerTally = { p_covered: covered, p_abstained: abstained, p_extractive: extractive, p_supported: 0, p_contradicted: 0, p_not_covered: 0, p_zeus: 0, p_fallback: 0, p_unchecked: 0, p_zeus_supported: 0 };
+  for (const s of sentences) {
+    if (s.verdict === 'supported') t.p_supported++;
+    else if (s.verdict === 'contradicted') t.p_contradicted++;
+    else t.p_not_covered++;
+    const by = extractive ? null : s.checked_by || null;
+    if (by && by.startsWith('zeus:')) { t.p_zeus++; if (s.verdict === 'supported') t.p_zeus_supported++; }
+    else if (by === 'llm-fallback') t.p_fallback++;
+    else t.p_unchecked++;
+  }
+  return t;
+}
+
 /**
  * Check that a url still answers. HEAD first; some hosts refuse HEAD, so a 405 or 403 is retried as a
  * one-byte GET. Redirects count as fine (DOIs always redirect). Never throws; a timeout is "unknown".

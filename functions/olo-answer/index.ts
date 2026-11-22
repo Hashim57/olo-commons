@@ -36,7 +36,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, looseQuery, rank } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, checkText, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
-import { applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive } from './hygiene.ts';
+import { answerTally, applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive, type AnswerTally } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400, MAX_SENTENCES = 5;
@@ -136,10 +136,13 @@ Deno.serve(async (req) => {
   const markLinks = async () => { try { const ok = await linkCheck; for (const p of provenance) if (p.url in ok) p.url_ok = ok[p.url]; } catch { /* unknown stays null */ } };
 
   const logIt = (results_n: number) => sb.from('olo_query_log').insert({ ip_hash: ipHash, q_len: q.length, results: results_n, client: 'answer' + (keyed ? ':keyed' : '') }).then(() => {}, () => {});
+  // The day's tally of verdicts (sql/022, issue #76 part 4): counts only, no text. The RPC exists once sql/022 has run; until then the error is ignored.
+  const tally = (t: AnswerTally) => sb.rpc('olo_answer_record', t).then(() => {}, () => {});
 
   if (!passages.length) {
     await logIt(0);
     recordGap();
+    await tally(answerTally([], false, true));
     return new Response(JSON.stringify({ q, answer: NOT_COVERED_TEXT, answer_shown: NOT_COVERED_TEXT, shown: 0, hidden: 0, abstained: true, sentences: [], passages: [], verifier: null, model: null, summary: summarise([]), covered: false, sources, freshness_note: null, answered_by: { writer: null, writer_provider: null, verifier: null, mode: 'none' }, attribution: 'Olo Commons by Helius Network.' }), { headers: H });
   }
 
@@ -158,6 +161,7 @@ Deno.serve(async (req) => {
     if (!quoted.length) recordGap();
     await markLinks();
     const shownX = shownAnswer(quoted);
+    await tally(answerTally(quoted, quoted.length > 0, !quoted.length, true));
     return new Response(JSON.stringify({
       q, mode: 'extractive', answer: quoted.length ? quoted.map(s => s.text).join(' ') : NOT_COVERED_TEXT, answer_shown: quoted.length ? shownX.text : NOT_COVERED_TEXT, shown: shownX.shown, hidden: shownX.hidden, abstained: !quoted.length,
       covered: quoted.length > 0, sentences: quoted, summary: summarise(quoted), sources, freshness_note,
@@ -205,6 +209,7 @@ Deno.serve(async (req) => {
   if (!covered || (verdicts.length && verdicts.every(v => v.verdict === 'not_covered'))) recordGap();
   await markLinks();
   const shown = covered ? shownAnswer(verdicts) : { text: NOT_COVERED_TEXT, shown: 0, hidden: 0, abstained: true };
+  await tally(answerTally(verdicts, covered, shown.abstained));
   const mode = writer === writers[0] ? 'written' : 'written-fallback';
   let provider = ''; try { provider = new URL(writer.base).hostname; } catch { provider = writer.base; }
 

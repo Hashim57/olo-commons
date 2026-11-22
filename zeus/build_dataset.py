@@ -432,6 +432,8 @@ def count_gold(gold_dir, skip_eval=False):
 # that match it (4 of 36,857 train rows on the 2026-11-19 snapshot; every other atom's draw is unchanged,
 # because the shuffle sees the same list), so the generator stays hard-v2 rather than make a retrain due
 # for a handful of rows; bump it with the next rule that moves the set.
+# 2026-11-22: hedge_drop gained the hedges of a conclusion ("appears to be", "seems to be", "is likely to be"
+# and their past and perfect forms). Same reasoning: only sentences that match them change.
 # ---------------------------------------------------------------------------
 HARD_NEGATIVES_VERSION = "hard-v2"
 MAX_YEAR = 2026  # a fixed bound for shifted years (not today's date), so builds are deterministic
@@ -897,7 +899,12 @@ HEDGE_VERBS = [(r"\b(is|are|was|were) " + HEDGE_WORDS + r" to be\b", r"\1"),
                (r"\bis " + HEDGE_WORDS + r" to have been\b", "was"), (r"\bare " + HEDGE_WORDS + r" to have been\b", "were"),
                (r"\b(?:was|were) " + HEDGE_WORDS + r" to have been\b", "had been"),
                (r"\b(?:is|are) " + HEDGE_WORDS + r" to have ([a-z]+ed)\b", r"\1"),
-               (r"\b(?:may|might|could) have been\b", "was"), (r"\b(?:may|might) have ([a-z]+ed)\b", r"\1")]
+               (r"\b(?:may|might|could) have been\b", "was"), (r"\b(?:may|might) have ([a-z]+ed)\b", r"\1"),
+               # 2026-11-22: the hedges of a conclusion ("appears to be clinically applicable", "seems to be the oldest",
+               # "is likely to be"), which abstracts and articles both use; gold-2026-11-22 needed one by hand
+               (r"\b(?:appears|seems) to be\b", "is"), (r"\b(?:appear|seem) to be\b", "are"), (r"\b(?:appeared|seemed) to be\b", "was"),
+               (r"\b(?:appears|seems) to have been\b", "was"), (r"\b(?:appear|seem) to have been\b", "were"),
+               (r"\b(is|are|was|were) likely to be\b", r"\1"), (r"\b(?:is|are) likely to have been\b", "was")]
 
 
 def hard_hedge_drop(s, texts, rng):
@@ -920,9 +927,12 @@ def hard_hedge_drop(s, texts, rng):
     for pat, repl in HEDGE_VERBS:
         for m in re.finditer(pat, s):
             hits.append(("verb", m, m.group(0), m.expand(repl)))
-    other_hedges = [w for w in _words(s) if w in HEDGES and w not in HEDGE_ADVERBS and w not in ("may", "might", "could")]
-    if len(hits) != 1 or other_hedges:
-        return None  # none, or more than one hedge, or a hedge of another kind the drop would leave in place
+    if len(hits) != 1:
+        return None  # none, or more than one hedge
+    consumed = set(_words(hits[0][1].group(0)))  # the words the drop itself takes out ("likely" in "is likely to be")
+    other_hedges = [w for w in _words(s) if w in HEDGES and w not in HEDGE_ADVERBS and w not in ("may", "might", "could") and w not in consumed]
+    if other_hedges:
+        return None  # a hedge of another kind the drop would leave in place
     kind, m = hits[0][0], hits[0][1]
     if _in_quote(s, m.start(), m.end()):
         return None

@@ -195,6 +195,14 @@ def test_hedge_drop_states_a_reputed_fact_as_fact():
                     ("He may have been born in Leeds in the spring of 1811, the son of a weaver.", "He was born in Leeds in the spring of 1811, the son of a weaver."),
                     ("The hall may have hosted the first meeting of the society in 1870.", "The hall hosted the first meeting of the society in 1870.")]:
         assert bd.hard_hedge_drop(s, [s], rng())[0] == want
+    # 2026-11-22: the hedges of a conclusion, in abstracts and articles alike
+    for s, want in [("The proposed algorithm appears to be clinically applicable for the management of pediatric ovarian masses.", "The proposed algorithm is clinically applicable for the management of pediatric ovarian masses."),
+                    ("The two towers seem to be the oldest surviving parts of the castle, dating from about 1200.", "The two towers are the oldest surviving parts of the castle, dating from about 1200."),
+                    ("The bridge is likely to be the oldest of its kind in the county, built around 1790.", "The bridge is the oldest of its kind in the county, built around 1790."),
+                    ("The portrait appears to have been painted in Florence between 1503 and 1506.", "The portrait was painted in Florence between 1503 and 1506.")]:
+        assert bd.hard_hedge_drop(s, [s], rng()) == (want, "hedge dropped: " + re.search(r"appears to be|seem to be|is likely to be|appears to have been", s).group(0))
+    s = "The bridge is likely to be the oldest of its kind, and may have been built around 1790."
+    assert bd.hard_hedge_drop(s, [s], rng()) is None                      # two hedges again: "likely to be" and "may have been"
 
 
 def test_hedge_drop_refuses_negation_quotes_double_hedges_and_plain_statements():

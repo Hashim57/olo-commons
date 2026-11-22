@@ -39,3 +39,31 @@ def test_a_report_builds_from_the_repository(tmp_path):
 def test_aggrefact_is_left_out_until_it_is_measured():
     assert wr.headline_keys([{"aggrefact": None}, {}]) == ["vitaminc_dev", "eval3"]
     assert wr.headline_keys([{"aggrefact": None}, {"aggrefact": 0.71}]) == ["vitaminc_dev", "eval3", "aggrefact"]
+
+
+def test_olo_answer_runs_are_read_from_the_measured_table():
+    runs = wr.answer_runs()
+    assert len(runs) >= 4 and [r["date"] for r in runs] == sorted(r["date"] for r in runs)
+    first = runs[0]
+    assert first["asked"] == 70 and first["of"] == 70 and first["verification"] == 1.0 and "by construction" in first["verification_note"]
+    partial = next(r for r in runs if r["asked"] == 50)
+    assert partial["of"] == 70 and partial["abstained"] == 8
+    assert wr.answer_runs(path="/nonexistent/OLO_ANSWERS.md") == []
+
+
+def test_olo_answers_section_compares_only_full_runs():
+    def run(d, asked, facts, label=None):
+        return {"date": d, "label": label or d, "questions": f"{asked} of 70", "asked": asked, "of": 70, "answered_by": "x",
+                "retrieval": 1.0, "citation": 0.9, "verification": 0.8, "verification_note": "0.8", "facts": facts, "abstained": 1}
+    runs = [run("2026-11-10", 70, 0.60), run("2026-11-18", 50, 0.99), run("2026-11-18", 70, 0.871, "2026-11-18 14:17")]
+    s = wr.answers_summary(date(2026, 11, 21), runs)
+    assert s["latest"]["label"] == "2026-11-18 14:17" and s["reference"]["date"] == "2026-11-10"
+    assert s["change"]["facts"] == "+27.1 pts" and s["change"]["retrieval"] == "+0.0 pts"
+    assert [r["asked"] for r in s["runs_this_week"]] == [50, 70]
+    # a week before any run: nothing to show, nothing invented
+    empty = wr.answers_summary(date(2026, 11, 1), runs)
+    assert empty["latest"] is None and empty["reference"] is None and empty["change"] == {}
+    # the summary of the repository carries the section and the PDF builds with it
+    rows = wr.measured_versions()
+    summary = wr.summarise(date.fromisoformat(rows[-1][0]), rows)
+    assert summary["olo_answers"]["latest"]["facts"] == 0.871
