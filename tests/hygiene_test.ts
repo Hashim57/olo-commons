@@ -1,6 +1,6 @@
 // deno test tests/   (citation hygiene in olo-answer)
 import { assert, assertEquals } from './_assert.ts';
-import { applyFigureCheck, checkLinks, COULD_NOT_VERIFY, figures, linkOk, missingFigures, shownAnswer, sourceSummary, timeSensitive } from '../functions/olo-answer/hygiene.ts';
+import { answerTally, applyFigureCheck, checkLinks, COULD_NOT_VERIFY, figures, linkOk, missingFigures, shownAnswer, sourceSummary, timeSensitive } from '../functions/olo-answer/hygiene.ts';
 
 const P = (id: string, text: string) => ({ id, source: 'wikipedia', url: `https://x/${id}`, text });
 
@@ -68,4 +68,21 @@ Deno.test('linkOk: ok on 2xx and 3xx, retries HEAD refusals as GET, null on a ne
   assertEquals(await linkOk('https://a', 1000, boom), null);
   const map = await checkLinks(['https://a', 'https://a', 'ftp://b', 'https://c'], 6, fake(200));
   assertEquals(Object.keys(map).sort(), ['https://a', 'https://c']);
+});
+
+Deno.test('answerTally counts verdicts and who checked them, never text (sql/022)', () => {
+  const t = answerTally([
+    { verdict: 'supported', checked_by: 'zeus:zeus-v28' },
+    { verdict: 'supported', checked_by: 'llm-fallback' },
+    { verdict: 'contradicted', checked_by: 'zeus:zeus-v28' },
+    { verdict: 'not_covered', checked_by: null },
+  ], true, false);
+  assertEquals(t, { p_covered: true, p_abstained: false, p_extractive: false, p_supported: 2, p_contradicted: 1, p_not_covered: 1, p_zeus: 2, p_fallback: 1, p_unchecked: 1, p_zeus_supported: 1 });
+  assertEquals(Object.values(t).some(v => typeof v === 'string'), false);
+  // an uncovered answer has no sentences and counts as abstained
+  const u = answerTally([], false, true);
+  assertEquals([u.p_covered, u.p_abstained, u.p_supported + u.p_contradicted + u.p_not_covered], [false, true, 0]);
+  // extractive quotes are supported by construction and checked by nobody
+  const x = answerTally([{ verdict: 'supported' }, { verdict: 'supported' }], true, false, true);
+  assertEquals([x.p_extractive, x.p_supported, x.p_unchecked, x.p_zeus, x.p_zeus_supported], [true, 2, 2, 0, 0]);
 });

@@ -64,6 +64,8 @@ Since the trust update (sql/002 and the October 2026 functions) the response als
 - Every passage is given to the writer and the verifier with its title first (unless its text already opens with it), and a passage from a news or paper source (Wikinews, arXiv, PubMed, OpenAlex, Europe PMC, DOAJ) with its publication date next ("Will it rain? Published 11 March 2006. ..."), so a fact that only the title or the date states can be written, checked and quoted. The `passages` array in the response is unchanged.
 - Each passage has `status`, `credibility`, `corroboration`, `valid_from`, `valid_to`, `observed_at`, `source_revision`, `source_kind` (docs/TRUST.md) and `url_ok` (true, false, or null when the link check timed out; up to six distinct cited links are checked with a four-second HEAD while the model writes).
 
+What the verifier said is tallied per day (since sql/022, November 2026): `olo_answer_stats(p_days)` below returns the counts, and nothing else is kept of an answer, no question, answer or address. The tally is how the share of sentences Zeus supported in real use is measured rather than asserted (issue #76, part 4).
+
 `verifier` says what checked the sentences: `zeus:<model>` when a served Zeus adapter did (`OLO_ZEUS_URL` set), or `llm-fallback` when the drafting model ran the Zeus prompt instead. The page shows this, so nobody mistakes the fallback for Zeus. When the Commons has nothing on the question, `covered` is false, `answer` is "The Commons does not cover this yet." and the topic words of the question (never the question itself) are recorded as a gap for the ingester to fill (see Gaps below). Same limits as the query call; the two share one counter. A `503 answering_not_configured` means the project has no model key yet; a `502 model_unavailable` means the provider did not answer in time.
 
 ## Status
@@ -110,7 +112,7 @@ Limits: 120 requests per hour per address; 3,000 with a partner key sent as `x-o
 
 ## Direct SQL functions (anon key)
 
-Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_atom_sightings(p_id)` (other sources where the same atom was found), `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_atom_sightings`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
+Also callable through PostgREST with the project's anon key (public read key; the `ANON` constant in `examples/graph-export.mjs`): `olo_stats()`, `olo_growth(p_days)`, `olo_recent(p_k)`, `olo_search_text(p_q, p_k)`, `olo_graph_sample(p_n)`, `olo_atom(p_id)`, `olo_atom_sightings(p_id)` (other sources where the same atom was found), `olo_export(p_after, p_limit)`, `olo_links_export(p_after, p_limit)`, `olo_brain_recent(p_limit)`, `olo_brain_stats()`, `olo_answer_stats(p_days)`. The tables `olo_sources`, `olo_atoms`, `olo_links`, `olo_atom_sightings`, `olo_daily`, `olo_ingest_runs` and the view `olo_projects_public` are readable. Everything is read-only and bounded; `olo_match` and `olo_neighbours` are server-only.
 
 Call shape (PostgREST): `POST https://bfldflbkebyapfagsxnr.supabase.co/rest/v1/rpc/<function>` with headers `apikey: <anon key>`, `Authorization: Bearer <anon key>`, `Content-Type: application/json` and the arguments as a JSON object using the parameter names above.
 
@@ -137,6 +139,10 @@ Page with `p_after` = the `next_after` you received (`p_limit` up to 500; start 
 ### Gaps
 
 `olo_gaps_recent(p_k)` returns what Olo is learning from being used: `open` (topics people asked about that the Commons could not cover, with how often they were asked), `filled` (topics the ingester has since read sources for, with how many atoms it added), and the counters `open_count`, `filled_24h`, `atoms_added_24h`. A topic is a bag of at most six lower-case content words from the question, such as `founded gutenberg project`; the question itself is never stored. The table `olo_gaps` is readable too.
+
+### Answer verdicts
+
+`olo_answer_stats(p_days)` (default 28, at most 365) returns what the verifier said about Olo's answers, counted per UTC day and nothing else: `daily` (newest first; each day has `answers`, `uncovered`, `abstained`, `extractive`, `sentences`, `supported`, `contradicted`, `not_covered`, `zeus_checked`, `zeus_supported`, `fallback_checked`, `unchecked`), `totals` over the window, and three shares that are null until there is something to divide: `share_supported` (supported sentences over all sentences), `share_zeus_checked` (sentences a served Zeus adapter checked, over all sentences) and `share_zeus_supported` (of the sentences Zeus checked, the share it supported, which is the number the weekly report will show). An answer is `uncovered` when the Commons had nothing on the question, `abstained` when nothing was shown, `extractive` when no writer could be reached and the passages' own sentences were returned; those quoted sentences count as `unchecked`. The table behind it, `olo_answer_daily`, is written only by the service role and read only through this function.
 
 ### Stats
 
