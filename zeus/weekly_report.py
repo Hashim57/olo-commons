@@ -4,7 +4,8 @@
   python3 zeus/weekly_report.py [--date 2026-11-20] [--out zeus/reports/zeus-weekly-2026-11-20.pdf]
 
 Reads zeus/STATUS.md (the date each version was measured), zeus/out/zeus-v*/ (eval.json, eval-external.json,
-learning.json, train_summary.json) and the week's commits. Writes the PDF and, beside it, a JSON summary of
+learning.json, train_summary.json), the measured runs of Olo's answers in docs/OLO_ANSWERS.md (issue #76) and
+the week's commits. Writes the PDF and, beside it, a JSON summary of
 the same numbers (the post is written from that, so the post and the PDF cannot disagree). Nothing is
 estimated: a number that was not measured is printed as "not measured" with the reason when one is recorded.
 
@@ -83,6 +84,56 @@ def scores(version):
     }
 
 
+ANSWER_ROW = re.compile(r"^\| (\d{4}-\d{2}-\d{2})([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \| ([^|]*) \|")
+
+
+def _num(cell):
+    m = re.match(r"\s*(\d+(?:\.\d+)?)", cell)
+    return float(m.group(1)) if m else None
+
+
+def answer_runs(path=os.path.join(REPO, "docs", "OLO_ANSWERS.md")):
+    """The measured runs of scripts/answer_eval.py over the frozen question set, read from the results table in
+    docs/OLO_ANSWERS.md (issue #76, part 1), oldest first. Each run: date, the run's own label (times, halves),
+    questions asked, who answered, and the four scores plus abstentions. A cell that is not a number (such as
+    "1.000 (by construction)") keeps its leading number; the whole cell is kept as text too. Nothing is computed
+    from the responses here: the table is the record, and this reads it."""
+    runs = []
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        return runs
+    for line in lines:
+        m = ANSWER_ROW.match(line)
+        if not m:
+            continue
+        d, rest, questions, by, retrieval, citation, verification, facts, abstained = m.groups()
+        asked = re.match(r"\s*(\d+) of (\d+)", questions)
+        runs.append({
+            "date": d, "label": (d + rest).strip(), "questions": questions.strip(), "asked": int(asked.group(1)) if asked else None,
+            "of": int(asked.group(2)) if asked else None, "answered_by": re.sub(r"\s*\(see below\)", "", by).strip(),
+            "retrieval": _num(retrieval), "citation": _num(citation), "verification": _num(verification), "verification_note": verification.strip(),
+            "facts": _num(facts), "abstained": int(_num(abstained)) if _num(abstained) is not None else None,
+        })
+    return sorted(runs, key=lambda r: r["date"])
+
+
+def answers_summary(end, runs=None):
+    """The Olo answers section: the runs of the week over the whole set, the latest full run, and the latest full run
+    before the week as the comparison. A run that did not ask every question is listed but never compared."""
+    runs = runs if runs is not None else answer_runs()
+    start, _ = week_window(end)
+    full = [r for r in runs if r["asked"] is not None and r["asked"] == r["of"]]
+    week = [r for r in runs if start.isoformat() <= r["date"] <= end.isoformat()]
+    latest = next((r for r in reversed(full) if r["date"] <= end.isoformat()), None)
+    ref = next((r for r in reversed(full) if r["date"] < start.isoformat()), None)
+    keys = ["retrieval", "citation", "verification", "facts"]
+    return {
+        "runs_this_week": week, "latest": latest, "reference": ref, "set": "tests/answers/questions-v1.jsonl",
+        "change": {k: delta(latest.get(k), ref.get(k)) for k in keys} if latest and ref else {},
+    }
+
+
 def week_window(end):
     return end - timedelta(days=6), end
 
@@ -148,6 +199,7 @@ def summarise(end, rows=None):
         "history": history,
         "commits": commits(start, end),
         "base": week[-1][2] if week else (rows[-1][2] if rows else None),
+        "olo_answers": answers_summary(end),
     }
 
 
@@ -328,6 +380,34 @@ def build_pdf(summary, path, workdir):
     else:
         story.append(Paragraph("No version was measured this week.", P))
 
+    story.append(Paragraph("Olo's answers on the frozen question set", H2))
+    oa = summary.get("olo_answers") or {}
+    la, ra = oa.get("latest"), oa.get("reference")
+    story.append(Paragraph("Zeus is the checker; Olo is what people use. Since 18 November 2026 Olo's answers are measured the same way: the same "
+                           f"70 hand-written questions every time ({_esc(oa.get('set') or 'tests/answers/questions-v1.jsonl')}), scored by scripts/answer_eval.py "
+                           "for retrieval (the expected passages came back), citation (the shown answer cites them), verification (the share of "
+                           "sentences the verifier supported) and facts (the expected facts appear in the shown answer). Every row comes from a real "
+                           "run recorded in docs/OLO_ANSWERS.md.", P))
+    if la:
+        when = "this week" if oa.get("runs_this_week") and la in oa["runs_this_week"] else f"last measured {la['date']}"
+        ch = oa.get("change") or {}
+        line = (f"Latest full run ({_esc(la['label'])}, {when}): facts {pct(la.get('facts'))}, citation {pct(la.get('citation'))}, "
+                f"verification {pct(la.get('verification'))}, retrieval {pct(la.get('retrieval'))}, {la.get('abstained')} abstentions of {la.get('of')}. "
+                f"Answered by: {_esc(la['answered_by'])}.")
+        if ra and any(ch.values()):
+            line += f" Against the last full run before the week ({_esc(ra['label'])}): facts {ch.get('facts') or 'no change'}, citation {ch.get('citation') or 'no change'}, verification {ch.get('verification') or 'no change'}."
+        elif not ra:
+            line += " No full run before this week to compare with."
+        story.append(Paragraph(line, P))
+        a_rows = [["Run (UTC)", "Questions", "Retrieval", "Citation", "Verification", "Facts", "Abstained"]]
+        shown_runs = oa.get("runs_this_week") or [la]
+        for r in shown_runs[-6:]:
+            a_rows.append([r["label"], r["questions"][:28], pct(r.get("retrieval")), pct(r.get("citation")), pct(r.get("verification")), pct(r.get("facts")), str(r.get("abstained") if r.get("abstained") is not None else "")])
+        story.append(_table(a_rows, [38 * mm, 40 * mm, 20 * mm, 20 * mm, 24 * mm, 18 * mm, 18 * mm], colors, Table, TableStyle))
+        story.append(Paragraph("A run that asked fewer than all 70 questions is listed when it fell in the week but is never the comparison.", S))
+    else:
+        story.append(Paragraph("No full run of the question set has been recorded yet.", P))
+
     story.append(Paragraph("What changed this week", H2))
     cs = summary["commits"]
     if cs:
@@ -355,7 +435,7 @@ def build_pdf(summary, path, workdir):
         story.append(Paragraph(n, S))
         story.append(Spacer(1, 3))
     story.append(Spacer(1, 6))
-    story.append(Paragraph(f"Generated by zeus/weekly_report.py on {date.today().isoformat()} from zeus/STATUS.md and zeus/out/. "
+    story.append(Paragraph(f"Generated by zeus/weekly_report.py on {date.today().isoformat()} from zeus/STATUS.md, zeus/out/ and docs/OLO_ANSWERS.md. "
                            "Open source under Apache 2.0; the Commons compilation is CC BY-SA 4.0.", S))
 
     def footer(canvas, doc):
