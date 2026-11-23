@@ -101,3 +101,17 @@ def test_by_edit_is_absent_when_no_line_names_an_edit():
     answers = [ans("supported", "founded in 1971"), ans("contradicted", "founded in 1971"), ans("not_covered")]
     assert ev.score_by_edit(exs, answers) == {}
     assert "by_edit" not in ev.split_report(exs, answers)
+
+
+def test_by_edit_scores_a_name_edit_that_is_no_name_swap_apart():
+    def made(what, passage):
+        e = ex("contradicted", claim="x")
+        e["rationale"] = f"The passage gives a different value ({what})."
+        e["passages"] = [{"id": "p1", "source": "s", "url": "u", "text": passage}]
+        return e
+    exs = [made("name Hart -> Smith", "Founded by Hart in 1971."),
+           made("name However -> Utah Man pleads guilty in wife's death", "It grew. However, it stalled."),
+           made("name Rathcoole -> Gaitana (singer", "The depot in Rathcoole closed.")]
+    answers = [ans("contradicted", "founded in 1971"), ans("not_covered"), ans("not_covered")]
+    r = ev.score_by_edit(exs, answers)
+    assert r == {"name": {"n": 1, "accuracy": 1.0, "wrong": {}}, "name_malformed": {"n": 2, "accuracy": 0.0, "wrong": {"not_covered": 2}}}

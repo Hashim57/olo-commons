@@ -287,3 +287,19 @@ def test_near_misses_index_matches_a_full_scan_and_follows_the_pool():
     # the same list grown in place is re-indexed too
     small.append(pool[6])
     assert pool[6]["id"] in [o["id"] for o in bd.near_misses(claim, ATOMS[1], small)]
+
+
+def test_train_drops_name_edits_that_are_no_name_swap_and_counts_them():
+    def row(label, rationale, text="It grew. However, it stalled."):
+        return {"claim": "c", "label": label, "rationale": rationale, "passages": [{"id": "p", "source": "s", "url": "u", "text": text}], "evidence": []}
+    rows = [row("contradicted", "The passage gives a different value (name However -> Chara Sands)."),
+            row("contradicted", "The passage gives a different value (name Hart -> Utah Man pleads guilty in wife's death)."),
+            row("contradicted", "The passage gives a different value (name Hart -> Smith).", "Founded by Hart."),
+            row("contradicted", "The passage gives a different value (year 1971 -> 1978)."),
+            row("supported", "(name However -> Chara Sands)"),  # only contradicted rows are judged
+            dict(row("contradicted", "(name However -> Chara Sands)."), generator="hard-v2")]  # and only rule-made ones
+    rows, hard = rows[:5], rows[5]
+    assert bd.drop_malformed_name_edits([hard])[1] == 0
+    kept, n, why = bd.drop_malformed_name_edits(rows)
+    assert n == 2 and why == {"not_a_name": 1, "title_not_name": 1}
+    assert [r["rationale"][-20:] for r in kept] == [rows[2]["rationale"][-20:], rows[3]["rationale"][-20:], rows[4]["rationale"][-20:]]

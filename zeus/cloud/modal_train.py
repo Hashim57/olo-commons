@@ -326,7 +326,8 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
     # Only what training needs: the splits, gold and imported sets, and the helpers (not the corpus cache).
     parts = [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("train.jsonl", "eval.jsonl", "eval2.jsonl", "eval3.jsonl", "eval3.manifest.json") if os.path.exists(f"zeus/data/{f}")]
     parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported", "mistakes") if os.path.isdir(f"zeus/data/{d}")]
-    parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
+    # quality.py since 2026-11-23: eval.score_by_edit imports it (malformed_name_edit); test_cloud_recipe checks every local import of eval.py is here
+    parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/quality.py", "zeus/quality.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
     payload = _tar(parts)
     result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n, max_minutes)
     tmp = os.path.join(REPO, "zeus", "out", f".cloud-{version}")

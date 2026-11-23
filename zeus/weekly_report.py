@@ -134,6 +134,51 @@ def answers_summary(end, runs=None):
     }
 
 
+STATS_RPC = "https://bfldflbkebyapfagsxnr.supabase.co/rest/v1/rpc/olo_answer_stats"
+
+
+def answer_tally(days=7, key=None, fetch=None):
+    """What the verifier said about Olo's real answers over the last `days` days, read from the public
+    olo_answer_stats function (sql/022, issue #76 part 4): {"measured": True, "totals", "share_supported",
+    "share_zeus_checked", "share_zeus_supported", "days"} or {"measured": False, "reason": ...}. The anon key is
+    public but is still never written into the repository: it comes from OLO_ANON_KEY or SUPABASE_ANON_KEY, and
+    without one the section says so. A function that does not exist yet (sql/022 not run) or a window with no
+    answers is reported as not measured, never as zero. `fetch(url, headers, body)` is for tests."""
+    key = key if key is not None else (os.environ.get("OLO_ANON_KEY") or os.environ.get("SUPABASE_ANON_KEY") or "")
+    if not key:
+        return {"measured": False, "reason": "no anon key in OLO_ANON_KEY or SUPABASE_ANON_KEY"}
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    body = json.dumps({"p_days": days}).encode()
+    if fetch is None:
+        import urllib.error
+        import urllib.request
+
+        def fetch(url, headers, body):
+            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+    try:
+        status, text = fetch(STATS_RPC, headers, body)
+    except Exception as e:  # network down: say so, never invent a number
+        return {"measured": False, "reason": f"olo_answer_stats unreachable ({type(e).__name__})"}
+    if status == 404:
+        return {"measured": False, "reason": "olo_answer_stats does not exist yet (sql/022 has not been run)"}
+    if status != 200:
+        return {"measured": False, "reason": f"olo_answer_stats answered {status}"}
+    try:
+        d = json.loads(text)
+    except ValueError:
+        return {"measured": False, "reason": "olo_answer_stats gave unreadable output"}
+    t = d.get("totals") or {}
+    if not t.get("answers"):
+        return {"measured": False, "reason": f"no answers recorded in the last {d.get('days', days)} days"}
+    return {"measured": True, "days": d.get("days", days), "totals": t, "share_supported": d.get("share_supported"),
+            "share_zeus_checked": d.get("share_zeus_checked"), "share_zeus_supported": d.get("share_zeus_supported")}
+
+
 def week_window(end):
     return end - timedelta(days=6), end
 
@@ -200,6 +245,7 @@ def summarise(end, rows=None):
         "commits": commits(start, end),
         "base": week[-1][2] if week else (rows[-1][2] if rows else None),
         "olo_answers": answers_summary(end),
+        "answer_tally": answer_tally(7),
     }
 
 
@@ -407,6 +453,20 @@ def build_pdf(summary, path, workdir):
         story.append(Paragraph("A run that asked fewer than all 70 questions is listed when it fell in the week but is never the comparison.", S))
     else:
         story.append(Paragraph("No full run of the question set has been recorded yet.", P))
+    tal = summary.get("answer_tally") or {}
+    story.append(Paragraph("In real use", H2))
+    if tal.get("measured"):
+        t = tal["totals"]
+        zs = tal.get("share_zeus_supported")
+        story.append(Paragraph(
+            f"Over the last {tal['days']} days Olo answered {t.get('answers')} questions and wrote {t.get('sentences')} sentences. "
+            f"The verifier supported {t.get('supported')} of them ({pct(tal.get('share_supported'))}), called {t.get('contradicted')} contradicted and "
+            f"{t.get('not_covered')} not covered. Zeus itself checked {t.get('zeus_checked')} sentences ({pct(tal.get('share_zeus_checked'))} of all) and "
+            f"supported {pct(zs)} of those; the fallback verifier checked {t.get('fallback_checked')} and {t.get('unchecked')} went unchecked. "
+            f"{t.get('abstained')} answers showed nothing because nothing could be verified, {t.get('uncovered')} of them because the Commons had nothing on the question. "
+            "Counts only: no question or answer text is kept (olo_answer_stats, sql/022).", P))
+    else:
+        story.append(Paragraph(f"What the verifier said about real answers is not measured this week: {_esc(tal.get('reason') or 'no tally')}.", P))
 
     story.append(Paragraph("What changed this week", H2))
     cs = summary["commits"]

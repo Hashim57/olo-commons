@@ -1142,6 +1142,26 @@ def add_longdoc_train(train, atoms, eval_share, seed=7):
     return longdoc.add_longdoc(train, atoms, eval_share, compose_contra, seed)
 
 
+def drop_malformed_name_edits(rows):
+    """The train rows without the rule-made name contradictions that are not a name swap (quality.malformed_name_edit:
+    a title put in where a name was, or a sentence opener taken out), and the count dropped by reason. Train only:
+    the frozen eval files keep theirs, and eval.score_by_edit scores them apart as "name_malformed" instead. Added
+    on 2026-11-23, when 2,215 of the 2,923 name edits in train turned out to be such claims ("Utah Man pleads guilty
+    in wife's death a decision model catch these risks at runtime?" labelled contradicted)."""
+    kept, by_reason = [], {}
+    for ex in rows:
+        # rules-v1 rows only (they carry no "generator"): hard-v2's entity swap writes the same rationale over a
+        # type-matched swap, and its rows are its own generator's to judge
+        rule_made = ex.get("label") == "contradicted" and not ex.get("generator")
+        reasons = quality.malformed_name_edit(ex.get("rationale", ""), [p.get("text", "") for p in ex.get("passages", [])]) if rule_made else None
+        if reasons:
+            for r in reasons:
+                by_reason[r] = by_reason.get(r, 0) + 1
+            continue
+        kept.append(ex)
+    return kept, len(rows) - len(kept), dict(sorted(by_reason.items()))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--supabase-url", default=os.environ.get("SUPABASE_URL", "https://bfldflbkebyapfagsxnr.supabase.co"))
@@ -1155,6 +1175,7 @@ def main():
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
     ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v2 train examples (two-passage claims, century and decade paraphrases; train only)")
     ap.add_argument("--no-longdoc", action="store_true", help="leave out the longdoc-v1 train examples (claims inside long documents; train only)")
+    ap.add_argument("--keep-malformed-names", action="store_true", help="keep the rule-made name contradictions that are not a name swap in train (dropped since 2026-11-23; see drop_malformed_name_edits)")
     ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
                     help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
     args = ap.parse_args()
@@ -1178,6 +1199,9 @@ def main():
     composed = [] if args.no_compose else add_composed_train(data["train"], atoms, args.eval_share)
     longdocs = [] if args.no_longdoc else add_longdoc_train(data["train"], atoms, args.eval_share)
     data["eval2"] = build_eval2(atoms, args.eval_share)
+    name_dropped, name_reasons = 0, {}
+    if not args.keep_malformed_names:
+        data["train"], name_dropped, name_reasons = drop_malformed_name_edits(data["train"])
     os.makedirs(args.out, exist_ok=True)
     for split in ("train", "eval", "eval2"):
         with open(os.path.join(args.out, f"{split}.jsonl"), "w") as f:
@@ -1205,6 +1229,8 @@ def main():
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_compose else [compose.COMPOSE_VERSION])
     import longdoc
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_longdoc else [longdoc.LONGDOC_VERSION])
+    meta["train_filters"] = [] if args.keep_malformed_names else ["name-check-v1"]
+    meta["train_dropped_malformed_name"] = {"rows": name_dropped, "by_reason": name_reasons}
     meta["train_hard_by_kind"] = {k: sum(1 for ex in hard if ex["kind"] == k) for k in sorted({ex["kind"] for ex in hard})}
     meta["train_composed_by_kind"] = {k: sum(1 for ex in composed if ex["kind"] == k) for k in sorted({ex["kind"] for ex in composed})}
     meta["train_longdoc_by_kind"] = {k: sum(1 for ex in longdocs if ex["kind"] == k) for k in sorted({ex["kind"] for ex in longdocs})}

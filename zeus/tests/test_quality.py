@@ -392,3 +392,23 @@ def test_court_records_are_refused_and_counted_apart():
     kept, counts = quality.usable_atoms(atoms)
     assert [x["id"] for x in kept] == ["a", "c"]
     assert counts["court_record"] == 1 and counts["email"] == 0 and counts["stub"] == 0
+
+
+def test_a_rule_made_name_edit_that_is_no_name_swap_is_flagged():
+    f = quality.malformed_name_edit
+    # the title of an article or paper put in where a name was
+    assert f("The passage gives a different value (name Clark -> Utah Man pleads guilty in wife's death).", ["Judge Clark ruled."]) == ["title_not_name"]
+    assert f("(name Masked -> Integrated Sensing and Communication via Channel Knowledge Maps).", ["Masked models."]) == ["title_not_name", "not_a_name"]
+    assert "title_not_name" in f("(name Seven -> Microplastics: a review).", ["x"])
+    # a title cut inside its bracket
+    assert f("(name Rathcoole -> Gaitana (singer).", ["The depot in Rathcoole."]) == ["cut_title"]
+    # a sentence opener taken out, not a name
+    assert f("(name However -> Chara Sands).", ["It grew. However, it stalled."]) == ["not_a_name"]
+    assert f("(name Improving -> Garoden).", ["Improving the throughput is central."]) == ["not_a_name"]
+    # a readable swap of one name for another stays, even across types, and so does an opener that is a name
+    assert f("(name Germany -> Chara Sands).", ["Italian Embassy, Berlin: mission of Italy to Germany."]) == []
+    assert f("(name Nietzsche -> Corbin station).", ["Nietzsche launches a fierce attack."]) == []
+    assert f("(name Khan Foundation -> Indian Ocean Earthquake).", ["Aga Khan Foundation said."]) == []
+    # not a name edit at all
+    assert f("The passage gives a different value (year 1971 -> 1978).", ["x"]) is None
+    assert f("", []) is None

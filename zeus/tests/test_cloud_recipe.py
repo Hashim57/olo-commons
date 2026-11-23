@@ -179,3 +179,14 @@ def test_focus_sample_differs_between_versions_and_holds_for_one():
     b = recipe.focus_indices(train, pr, random.Random(recipe.shuffle_seed("v24")), caps={"rules": 500})
     c = recipe.focus_indices(train, pr, random.Random(recipe.shuffle_seed("v25")), caps={"rules": 500})
     assert a == b and a != c and len(a) == 500
+
+
+def test_every_local_module_eval_imports_is_shipped_to_the_cloud_job():
+    """The cloud job copies only the helpers it lists into the training image; eval.py runs there, so a local module
+    it imports and the list leaves out fails the run after an hour of training (quality.py, added 2026-11-23)."""
+    import re as _re
+    here = os.path.join(os.path.dirname(__file__), "..")
+    src = open(os.path.join(here, "eval.py"), encoding="utf-8").read()
+    local = {m for m in _re.findall(r"^(?:from|import) (\w+)", src, _re.M) if os.path.exists(os.path.join(here, m + ".py"))}
+    shipped = set(_re.findall(r'\("zeus/(\w+)\.py"', open(os.path.join(here, "cloud", "modal_train.py"), encoding="utf-8").read()))
+    assert local and local <= shipped, f"eval.py imports {sorted(local - shipped)} but modal_train.py does not ship them"
