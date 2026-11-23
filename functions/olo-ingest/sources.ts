@@ -36,17 +36,196 @@ export function wikiSearchTitles(r: any): string[] {
  * Since 2024 many items keep their name only as the language-independent "mul" label (Q42 has no "en" label any more),
  * so "mul" is the fallback when there is no English label.
  */
-export function wikidataCandidates(e: any, ids: string[], n: number): Candidate[] {
+export function wikidataCandidates(e: any, ids: string[], n: number, facts: Record<string, string[]> = {}): Candidate[] {
   const out: Candidate[] = [];
   for (const id of ids) {
-    const ent = e?.entities?.[id]; const label = ent?.labels?.en?.value || ent?.labels?.mul?.value, desc = ent?.descriptions?.en?.value;
+    const ent = e?.entities?.[id]; const label = ent?.labels?.en?.value || ent?.labels?.mul?.value;
+    // a description that ends in a full stop ("a subsidiary of Alphabet Inc.") would otherwise be written with two
+    const desc = String(ent?.descriptions?.en?.value || '').replace(/\.$/, '');
     if (!label || !desc || wikidataHousekeeping(label, desc)) continue;
     const links = Object.keys(ent.sitelinks || {}).length;
     if (links < 3) continue;
-    out.push({ external_id: id, url: `https://www.wikidata.org/wiki/${id}`, title: label, summary: `${label}: ${desc}.`, content: `${label}. ${desc}. Described in ${links} Wikimedia projects.`, licence: 'CC0 1.0', source_revision: ent.lastrevid ? String(ent.lastrevid) : undefined });
+    const f = wikidataFactsSentence(facts[id] || []);
+    out.push({ external_id: id, url: `https://www.wikidata.org/wiki/${id}`, title: label, summary: `${label}: ${desc}.${f ? ' ' + f : ''}`, content: `${label}. ${desc}.${f ? ' ' + f : ''} Described in ${links} Wikimedia projects.`, licence: 'CC0 1.0', source_revision: ent.lastrevid ? String(ent.lastrevid) : undefined });
     if (out.length >= n) break;
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Wikidata facts. Until 23 November 2026 a Wikidata atom was its label and its
+// one-line description ("Yuri Zheleznov: Russian footballer."), which is what
+// the search index and the embedding saw, and the claims an answer could be
+// checked against (born when, where, citizen of what) stayed on Wikidata. The
+// item's statements are CC0 like the rest, so the connector now reads a fixed
+// set of them (WIKIDATA_FACT_PROPERTIES, the properties a claim about a
+// person, a place, a work, an organisation, an event or a taxon is most often
+// about) and writes them into the summary and the content as one sentence of
+// "property value" clauses joined by semicolons: "Instance of human; country
+// of citizenship Russia; date of birth 15 November 2002; occupation
+// association football player." Semicolons, not "Label: value" fields, so the
+// catalogue rule in text.ts never reads the atom as a record. Two more calls
+// per batch (the claims of the kept items, then the labels of the items their
+// values point at), both bounded by WIKIDATA_BATCH. Deprecated statements are
+// skipped, preferred ones win over normal ones (the current population, not
+// every census), at most WIKIDATA_FACT_VALUES values per property and
+// WIKIDATA_FACT_MAX properties per item. A re-check compares revision ids
+// first (recheck.ts), so items whose revision has not moved are not rewritten
+// in the new shape; an item that did change gets its facts when the new text
+// is stored.
+// ---------------------------------------------------------------------------
+
+/** Properties read into the facts sentence, in the order they are written, with the English property label. */
+export const WIKIDATA_FACT_PROPERTIES: [string, string][] = [
+  ['P31', 'instance of'], ['P279', 'subclass of'], ['P225', 'taxon name'], ['P105', 'taxon rank'], ['P171', 'parent taxon'],
+  ['P17', 'country'], ['P30', 'continent'], ['P131', 'located in'], ['P36', 'capital'], ['P1376', 'capital of'], ['P206', 'on body of water'],
+  ['P1082', 'population'], ['P2046', 'area'], ['P2044', 'elevation above sea level'], ['P625', 'coordinates'],
+  ['P27', 'country of citizenship'], ['P569', 'date of birth'], ['P19', 'place of birth'], ['P570', 'date of death'], ['P20', 'place of death'],
+  ['P106', 'occupation'], ['P39', 'position held'], ['P69', 'educated at'], ['P108', 'employer'], ['P54', 'member of sports team'], ['P166', 'award received'], ['P800', 'notable work'],
+  ['P571', 'inception'], ['P576', 'dissolved'], ['P112', 'founded by'], ['P159', 'headquarters'], ['P463', 'member of'], ['P749', 'parent organization'],
+  ['P50', 'author'], ['P57', 'director'], ['P86', 'composer'], ['P170', 'creator'], ['P577', 'publication date'], ['P495', 'country of origin'], ['P136', 'genre'], ['P407', 'language of work'], ['P123', 'publisher'],
+  ['P580', 'start time'], ['P582', 'end time'], ['P585', 'point in time'], ['P276', 'location'], ['P710', 'participant'], ['P1120', 'number of deaths'],
+];
+/** At most this many values are written for one property ("member of sports team" can have thirty). */
+export const WIKIDATA_FACT_VALUES = 3;
+/** At most this many properties are written for one item. */
+export const WIKIDATA_FACT_MAX = 12;
+
+/** wbgetentities for the claims of up to WIKIDATA_BATCH items. */
+export function wikidataClaimsUrl(ids: string[]): string {
+  const q = ids.filter(id => /^Q\d+$/.test(id)).slice(0, WIKIDATA_BATCH);
+  return `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${q.join('|')}&props=claims&format=json`;
+}
+
+/** wbgetentities for the labels of up to WIKIDATA_BATCH items (the values the facts point at). */
+export function wikidataLabelsUrl(ids: string[]): string {
+  const q = ids.filter(id => /^Q\d+$/.test(id)).slice(0, WIKIDATA_BATCH);
+  return `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${q.join('|')}&props=labels&languages=en|mul&format=json`;
+}
+
+/** The labels in a wbgetentities response, by id: English first, else the language-independent "mul" label. */
+export function wikidataLabels(e: any): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [id, ent] of Object.entries((e?.entities || {}) as Record<string, any>)) {
+    const v = ent?.labels?.en?.value || ent?.labels?.mul?.value;
+    if (typeof v === 'string' && v.trim()) out[id] = v.trim();
+  }
+  return out;
+}
+
+/** The statements of one property worth reading: preferred ones when there are any, else the normal ones; never deprecated. */
+function liveStatements(claims: any, prop: string): any[] {
+  const all = (Array.isArray(claims?.[prop]) ? claims[prop] : []).filter((s: any) => s?.mainsnak?.snaktype === 'value' && s.rank !== 'deprecated');
+  const preferred = all.filter((s: any) => s.rank === 'preferred');
+  return preferred.length ? preferred : all;
+}
+
+/** The item ids a fact sentence for these items would need labels for (values and units of the chosen statements), in order, without repeats. */
+export function wikidataValueIds(e: any, ids: string[]): string[] {
+  const out: string[] = [], seen = new Set<string>();
+  for (const id of ids) {
+    const claims = e?.entities?.[id]?.claims;
+    if (!claims) continue;
+    for (const [prop] of WIKIDATA_FACT_PROPERTIES) {
+      for (const s of liveStatements(claims, prop).slice(0, WIKIDATA_FACT_VALUES)) {
+        const dv = s.mainsnak.datavalue;
+        const want: string[] = [];
+        if (dv?.type === 'wikibase-entityid' && typeof dv.value?.id === 'string') want.push(dv.value.id);
+        if (dv?.type === 'quantity' && typeof dv.value?.unit === 'string') { const m = dv.value.unit.match(/\/(Q\d+)$/); if (m) want.push(m[1]); }
+        for (const w of want) if (/^Q\d+$/.test(w) && !seen.has(w)) { seen.add(w); out.push(w); }
+      }
+    }
+  }
+  return out;
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ordinal = (n: number) => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+
+/**
+ * A Wikidata time value as a reader writes it, at the precision the statement
+ * claims and no finer: "15 November 2002" (day), "November 2002" (month),
+ * "2002" (year), "2000s" (decade), "19th century"; years before the common era
+ * end in "BCE". Coarser precisions, and anything unreadable, give ''.
+ */
+export function wikidataTime(v: any): string {
+  const m = String(v?.time || '').match(/^([+-])(\d{1,16})-(\d\d)-(\d\d)T/);
+  if (!m) return '';
+  const p = Number(v?.precision), bce = m[1] === '-', y = Number(m[2]), mo = Number(m[3]), d = Number(m[4]);
+  if (!y && p >= 8) return '';
+  const year = bce ? `${y} BCE` : String(y);
+  if (p >= 11 && d >= 1 && mo >= 1 && mo <= 12) return `${d} ${MONTH_NAMES[mo - 1]} ${year}`;
+  if (p === 10 && mo >= 1 && mo <= 12) return `${MONTH_NAMES[mo - 1]} ${year}`;
+  if (p === 9 || p === 11 || p === 10) return year;
+  if (p === 8) return `${Math.floor(y / 10) * 10}s${bce ? ' BCE' : ''}`;
+  if (p === 7) return `${ordinal(Math.ceil(y / 100))} century${bce ? ' BCE' : ''}`;
+  return '';
+}
+
+/**
+ * A Wikidata quantity as a reader writes it: "12,345" (a count, unit "1"),
+ * "1,234.57 square kilometre" (the unit's label). A quantity whose unit has no
+ * known label gives '', since "elevation above sea level 8,848.86" without its
+ * metre would mislead.
+ */
+export function wikidataQuantity(v: any, labels: Record<string, string>): string {
+  const n = Number(String(v?.amount ?? '').replace(/^\+/, ''));
+  if (!isFinite(n)) return '';
+  const text = Number.isInteger(n) ? n.toLocaleString('en-US') : n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const unit = String(v?.unit || '1');
+  if (unit === '1') return text;
+  const m = unit.match(/\/(Q\d+)$/);
+  const label = m ? labels[m[1]] : '';
+  return label ? `${text} ${label}` : '';
+}
+
+/** A coordinate as "66.2709 N, 47.1710 E". */
+export function wikidataCoordinate(v: any): string {
+  const lat = Number(v?.latitude), lon = Number(v?.longitude);
+  if (!isFinite(lat) || !isFinite(lon)) return '';
+  return `${Math.abs(lat).toFixed(4)} ${lat < 0 ? 'S' : 'N'}, ${Math.abs(lon).toFixed(4)} ${lon < 0 ? 'W' : 'E'}`;
+}
+
+/**
+ * The facts of one item as "property value" clauses, in WIKIDATA_FACT_PROPERTIES
+ * order, from its claims and the labels of the items they point at. A value
+ * whose label is unknown is left out (never a bare Q id); a quantity carries
+ * its "point in time" qualifier as "in 2021" when it has one, so "population
+ * 12,345 in 2021" says which count it is. Strings are read only for the taxon
+ * name. Empty when the item has no claim worth writing.
+ */
+export function wikidataFacts(ent: any, labels: Record<string, string>): string[] {
+  const claims = ent?.claims;
+  if (!claims) return [];
+  const facts: string[] = [];
+  for (const [prop, name] of WIKIDATA_FACT_PROPERTIES) {
+    if (facts.length >= WIKIDATA_FACT_MAX) break;
+    const values: string[] = [];
+    for (const s of liveStatements(claims, prop)) {
+      if (values.length >= WIKIDATA_FACT_VALUES) break;
+      const dv = s.mainsnak.datavalue; let text = '';
+      if (dv?.type === 'wikibase-entityid') text = labels[dv.value?.id] || '';
+      else if (dv?.type === 'time') text = wikidataTime(dv.value);
+      else if (dv?.type === 'quantity') {
+        text = wikidataQuantity(dv.value, labels);
+        const when = ((Array.isArray(s.qualifiers?.P585) ? s.qualifiers.P585 : []) as any[]).filter(q => q?.snaktype === 'value').map(q => wikidataTime(q.datavalue?.value)).filter(Boolean)[0];
+        if (text && when) text += ` in ${when}`;
+      }
+      else if (dv?.type === 'globecoordinate') text = wikidataCoordinate(dv.value);
+      else if (dv?.type === 'string' && prop === 'P225') text = clean(dv.value);
+      if (text && !values.includes(text)) values.push(text);
+    }
+    if (values.length) facts.push(`${name} ${values.length > 1 ? values.slice(0, -1).join(', ') + ' and ' + values[values.length - 1] : values[0]}`);
+  }
+  return facts;
+}
+
+/** The facts as one sentence, the first letter capitalised, clauses joined by semicolons: '' when there are none. */
+export function wikidataFactsSentence(facts: string[]): string {
+  const f = facts.map(x => clean(x)).filter(Boolean);
+  if (!f.length) return '';
+  const s = f.join('; ');
+  return s[0].toUpperCase() + s.slice(1) + '.';
 }
 
 /**

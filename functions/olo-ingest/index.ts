@@ -26,7 +26,7 @@ import { dataGovApiBase, dataGovCandidates, dataGovSearchPlan, dataGovSearchUrl 
 import { doajCandidates, doajSearchUrl, DOAJ_API, DOAJ_TOPICS } from './doaj.ts';
 import { europeanaCandidates, europeanaSearchUrl, redactKey, EUROPEANA_API, EUROPEANA_DEMO_KEY, EUROPEANA_TOPICS } from './europeana.ts';
 import { composeNote, restingNote, restingSources, type RunError } from './runlog.ts';
-import { archiveCandidates, archiveSearchUrl, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, wikinewsCandidates, wikiSearchTitles, waitBefore, type Candidate } from './sources.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, fetchTimeoutMs, gutenbergCandidates, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, wikinewsCandidates, wikiSearchTitles, waitBefore, type Candidate } from './sources.ts';
 import { isNotFound, permalink, planRecheck, retireUpdate, wikidataEntityState, wikiPageState, wikiPageStateUrl, wikiSummaryUrl } from './recheck.ts';
 import { bodyOf, decide, NEAR_EMBED, normDoi, normKey, normPmid, type DedupExisting } from './dedup.ts';
 import { openLibraryCandidates, openLibrarySearchUrl, openLibrarySubjectUrl, OPENLIBRARY_SUBJECTS } from './openlibrary.ts';
@@ -66,10 +66,26 @@ async function wikiByTitles(lang: string, titles: string[], n: number): Promise<
   }
   return out;
 }
+// The facts of the items about to be kept (sources.ts, Wikidata facts): two more calls, the claims of those items and
+// the labels of the items their values point at. Enrichment only: when either call fails the plain candidates are
+// kept, so a slow Wikidata never costs the run its atoms.
+async function wikidataWithFacts(e: any, ids: string[], n: number): Promise<Candidate[]> {
+  const plain = wikidataCandidates(e, ids, n);
+  if (!plain.length) return plain;
+  try {
+    const kept = plain.map(c => String(c.external_id));
+    const claims: any = await get(wikidataClaimsUrl(kept));
+    const valueIds = wikidataValueIds(claims, kept);
+    const labels = valueIds.length ? wikidataLabels(await get(wikidataLabelsUrl(valueIds))) : {};
+    const facts: Record<string, string[]> = {};
+    for (const id of kept) facts[id] = wikidataFacts(claims?.entities?.[id], labels);
+    return wikidataCandidates(e, kept, n, facts);
+  } catch (_) { return plain; }
+}
 async function wikidataByIds(ids: string[], n: number): Promise<Candidate[]> {
   if (!ids.length) return [];
   const e: any = await get(wikidataEntitiesUrl(ids));
-  return wikidataCandidates(e, ids, n);
+  return wikidataWithFacts(e, ids, n);
 }
 // OpenAlex gives keyless callers a small daily budget per IP, which the shared Edge egress IPs use up (issue #16):
 // say so in the run note instead of a bare 429.
@@ -433,7 +449,7 @@ Deno.serve(async (req) => {
           const state = wikidataEntityState(e, id);
           if (state.state === 'gone') { await retire(old); continue; }
           revision = state.revision;
-          c = wikidataCandidates(e, [id], 1)[0] || null;
+          c = (await wikidataWithFacts(e, [id], 1))[0] || null;
         }
         if (!c) {
           // The page is there but is not an article to quote any more (a redirect, a disambiguation page, a stub, an item

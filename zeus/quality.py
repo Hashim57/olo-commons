@@ -67,6 +67,12 @@ COPYRIGHT_STATUS_RE = re.compile(r"\bno copyright (?:notice|registration)(?: or 
 DEDICATION_RE = re.compile(r"\b(?:created|digiti[sz]ed|scanned|written|photographed|uploaded|e[- ]?text created) by [A-Z][\w.'\u2019-]+(?: [A-Z][\w.'\u2019-]+){1,3}\b[^.]{0,40}\b(?:and (?:is|are|was|released|placed|dedicated)|released)\b[^.]{0,60}\bpublic domain\b|\breleased (?:into|to|in) the public domain by [A-Z][\w.'\u2019-]+(?: [A-Z][\w.'\u2019-]+){1,3}\b", re.I)
 ETEXT_CREDIT_RE = re.compile(r"\be[- ]?text created by [A-Z]", re.I)
 
+# A mirrored library record: the field headers of a Library of Congress item page as a mirror copies them into the
+# Internet Archive's description field, in capitals and without colons (LIBRARY_HEADER_RE in text.ts).
+LIBRARY_MIN_HEADERS = 3       # a body with fewer upper-case field headers than this is read as prose
+LIBRARY_HEADER_WITHIN = 120   # ...and the first header must come this early (right after the title), or the capitals are prose
+LIBRARY_HEADER_RE = re.compile(r"(?:^|\s)(MEDIUM|CREATED / PUBLISHED|CONTRIBUTOR NAMES|SUBJECTS|NOTES|FORMAT|SOURCE|REPOSITORY|REPRODUCTION NUMBER|CALL NUMBER|DIGITAL ID|LCCN|CREDIT|RIGHTS|PROVENANCE|PART OF)(?=\s)")
+
 PHYSICAL_RE = re.compile(r"^(?:[xivlc]+, )?(?:\d+ (?:p\.|pages?|v\.|volumes?|leaves)|volumes?|\d+ (?:volume|guide|portfolio) \((?:unpaged|\d+ p\.?)\))(?: of plates)?[^A-Za-z0-9]*(?:(?:ill\.?|illustrations|col\.|colou?r|maps?|ports?\.?|facsims?\.?|music|charts?|plates)[^A-Za-z0-9]*)*(?:\d+(?: x \d+)? cm\.?)?", re.I)
 CATALOGUE_NOTES_RE = re.compile(r"\bIncludes? (?:bibliographical references?|bibliography|bibliographies|index(?:es)?|discography|filmography)(?: \((?:p\.|pages?)? ?[\d, -]+\))?(?: and index(?:es)?)?\.?|\bBibliography: (?:p\.|pages?) [\d, -]+\.?", re.I)
 
@@ -178,6 +184,27 @@ def is_item_record(body):
     return bool(COPYRIGHT_STATUS_RE.search(b) or DEDICATION_RE.search(b) or ETEXT_CREDIT_RE.search(b) or (DIMENSIONS_RE.search(b) and WEIGHT_RE.search(b)))
 
 
+def is_library_record(body):
+    """True when a body is a mirrored library record, not a description (isLibraryRecord in text.ts): the fields of a
+    Library of Congress item page copied with their headers in capitals ("L'Elegante valse brillante MEDIUM 1 score
+    CREATED / PUBLISHED 1843 SOURCE http://www.loc.gov/item/... CREDIT (Library of Congress) ... RIGHTS The ... collection
+    is in the public domain ... PROVENANCE (this copy) Mirrored from loc.gov"). At least LIBRARY_MIN_HEADERS distinct
+    headers, the first within LIBRARY_HEADER_WITHIN characters, and a rights sentence somewhere. 4 archive_org atoms on
+    the live Commons of 2026-11-23, stored since the 22nd when a mirror began uploading the sheet-music collection; no
+    other atom of any source has even two of these headers."""
+    b = oncely(clean(body))
+    if not b:
+        return False
+    found, first = set(), -1
+    for m in LIBRARY_HEADER_RE.finditer(b):
+        found.add(m.group(1))
+        if first < 0:
+            first = m.start(1)
+    if len(found) < LIBRARY_MIN_HEADERS or first > LIBRARY_HEADER_WITHIN:
+        return False
+    return any(RIGHTS_RE.search(x) for x in re.split(r"[.!?]\s+", b))
+
+
 def without_physical_description(body):
     """A body with its library physical description and catalogue notes taken out ("ix, 203 pages : 24 cm Includes
     bibliographical references and index" becomes ""); a body with no physical description comes back unchanged."""
@@ -187,15 +214,15 @@ def without_physical_description(body):
     return clean(CATALOGUE_NOTES_RE.sub(" ", body[m.end():]))
 
 
-STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "file_record", "item_record", "no_rest")
+STUB_RULES = ("empty", "label", "repeat", "link_notice", "catalogue_record", "shelf_mark", "rights_notice", "file_record", "item_record", "library_record", "no_rest")
 
 
 def stub_reason(title, summary, content, authors=None):
     """The name of the rule that makes an atom a stub, or None when it carries knowledge. The rules run in the
     ingester's order (isStub in text.ts), so the first that fires is named: "empty" (no body), "label" (fewer than
     STUB_MIN_DISTINCT different words), "repeat" (one line written over and over), "link_notice", "catalogue_record",
-    "shelf_mark", "rights_notice", "file_record", "item_record", and "no_rest" (nothing beyond the title, the authors and a
-    physical description)."""
+    "shelf_mark", "rights_notice", "file_record", "item_record", "library_record" (a Library of Congress page copied by a
+    mirror), and "no_rest" (nothing beyond the title, the authors and a physical description)."""
     s, c = clean(summary), clean(content)
     body = c if len(c) >= len(s) else s
     if not body:
@@ -218,6 +245,8 @@ def stub_reason(title, summary, content, authors=None):
         return "file_record"
     if is_item_record(body):
         return "item_record"
+    if is_library_record(body):
+        return "library_record"
     rest = " " + without_physical_description(body).lower() + " "
     for name in [title] + list(authors or []):
         n = clean(name).lower()
@@ -270,7 +299,10 @@ def wikidata_description(a):
     """The description part of a wikidata atom. The connector writes the summary as "<label>: <description>." and the
     content as "<label>. <description>. Described in N Wikimedia projects."; the live export gives the summary, the
     snapshot gave both joined until 2026-11-09 and gives the content alone since (scripts/build_snapshot.py
-    join_once). All three read the same here: the label and the "Described in" sentence are taken off."""
+    join_once). All three read the same here: the label and the "Described in" sentence are taken off. Since 2026-11-23 the
+    connector may follow the description with a facts sentence ("Instance of human; country of citizenship Russia; ..."),
+    which stays in what is returned: the housekeeping patterns are anchored at the start, and no housekeeping item is
+    stored with facts (the connector refuses it before it reads any claim)."""
     title, summary = str(a.get("title") or ""), str(a.get("summary") or "")
     desc = summary
     for sep in (": ", ". "):

@@ -166,6 +166,24 @@ def test_quantifier_flips():
     assert bd.hard_quantifier(s, [s], rng()) is None
 
 
+def test_quantifier_makes_a_part_the_whole():
+    # a part of a stated total becomes the whole, which the passage rules out
+    s = "We show that 180 of 202 tasks convert with minimal effort."
+    assert bd.hard_quantifier(s, [s], rng()) == ("We show that all 202 tasks convert with minimal effort.", "quantifier 180 of 202 -> all 202")
+    s = "BenchJack reached near-perfect scores on nine of ten popular agent benchmarks without solving their tasks."
+    assert bd.hard_quantifier(s, [s], rng())[0].startswith("BenchJack reached near-perfect scores on all ten popular agent benchmarks")
+    s = "Belfour stopped 32 of the 33 shots he faced in the game."
+    assert bd.hard_quantifier(s, [s], rng())[0] == "Belfour stopped all 33 shots he faced in the game."
+    s = "Restoring the phase repairs 351 of 391 new errors and 1,200 of 1,500 old ones."
+    assert "all 391 new errors" in bd.hard_quantifier(s, [s], rng())[0] or "all 1,500 old ones" in bd.hard_quantifier(s, [s], rng())[0]
+    # not a count: "one of the", a part equal to or above the total, a percentage, and a sentence the passage states anyway
+    assert bd.hard_quantifier("It is one of the 202 tasks in the benchmark.", ["It is one of the 202 tasks in the benchmark."], rng()) is None
+    assert bd.hard_quantifier("All 202 of 202 tasks convert in the second run.", ["All 202 of 202 tasks convert in the second run."], rng()) is None
+    assert bd.hard_quantifier("The rate was 12 of 100 percent higher than before.", ["The rate was 12 of 100 percent higher than before."], rng()) is None
+    s = "The team won 9 of 12 games this season."
+    assert bd.hard_quantifier(s, [s, "The team won all 12 games this season."], rng()) is None
+
+
 # not_covered generators --------------------------------------------------------------------
 
 def test_modal_shift_states_hedges_as_certain():
