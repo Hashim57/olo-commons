@@ -27,6 +27,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(__file__))
 from train_lora import SYSTEM, render_user  # noqa: E402
+import quality  # noqa: E402  (malformed_name_edit, for score_by_edit)
 
 LABELS = ("supported", "contradicted", "not_covered")
 SPLITS = {"eval": "eval.jsonl", "eval2": "eval2.jsonl", "eval3": "eval3.jsonl"}
@@ -169,6 +170,10 @@ def score_by_edit(examples, answers):
         k = edit_kind(ex)
         if not k:
             continue
+        # since 2026-11-23 a name edit that is not a name swap (quality.malformed_name_edit) is scored apart, so a
+        # "not covered" answer to a nonsense claim is not read as a missed name contradiction
+        if k == "name" and quality.malformed_name_edit(ex.get("rationale", ""), [p.get("text", "") for p in ex.get("passages", [])]):
+            k = "name_malformed"
         pred = ans if isinstance(ans, dict) else parse(ans or "")
         d = kinds.setdefault(k, {"n": 0, "correct": 0, "wrong": {}})
         d["n"] += 1

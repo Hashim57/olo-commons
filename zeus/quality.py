@@ -312,3 +312,50 @@ def usable_atoms(atoms):
             continue
         kept.append(a)
     return kept, counts
+
+
+# ---------------------------------------------------------------------------- rule-made name edits
+# build_dataset.contradict() makes a "name" contradiction by swapping any capitalised word of the sentence for the
+# title of a random other atom. Read on 2026-11-23 (v29's by_edit put name edits lowest, 0.889): 248 of the 336 name
+# edits of the frozen first split, and 2,195 of the 2,923 in train, are not a name swap. The title put in is a paper
+# or article title ("Utah Man pleads guilty in wife's death a decision model catch these risks at runtime?"), or the
+# word taken out is a sentence opener ("However", "Improving") rather than a name. The claim that results is
+# nonsense, not a contradiction of the passage, and a model that calls it not covered is not wrong. Only the clear
+# cases are flagged; a type-mismatched but readable swap ("Nietzsche" -> "Corbin station") is left as it is.
+
+NAME_EDIT_RE = re.compile(r"\(name (.+?) -> (.+)\)\.?\s*$")
+# words that open sentences and are never names in this corpus
+OPENERS = {"however", "when", "could", "would", "should", "while", "after", "before", "during", "there", "these", "those",
+           "this", "that", "what", "which", "where", "with", "from", "into", "over", "under", "since", "although", "though",
+           "because", "also", "many", "most", "some", "such", "each", "every", "both", "here", "they", "their", "then", "than",
+           "thus", "hence", "finally", "first", "second", "third", "today", "yesterday", "recently", "previously", "currently",
+           "overall", "instead", "additionally", "furthermore", "moreover", "meanwhile", "despite", "among", "between", "within",
+           "without", "using", "based", "given", "following", "according", "unlike", "like", "only", "even", "about", "whether",
+           "once", "until", "upon", "just", "results", "methods", "background", "objective", "objectives", "conclusions",
+           "conclusion", "purpose", "aims", "introduction", "papers", "studies", "existing", "current", "recent", "large"}
+# endings of ordinary English words that open sentences in abstracts ("Improving", "Generalized", "Dual", "Recently")
+COMMON_ENDINGS = ("ing", "ed", "ly", "ive", "al", "ous", "tion", "tions", "ment", "ments", "ness", "ity", "ities", "ism", "isms")
+
+
+def malformed_name_edit(rationale, passage_texts):
+    """The reasons a rule-made name contradiction is not a name swap, or [] when it is one, or None when the
+    rationale names no name edit. Reasons: "cut_title" (the title put in has an unclosed bracket: "Gaitana (singer"),
+    "title_not_name" (it has five or more words, a colon, a question or exclamation mark, or ends with a full stop:
+    a paper or article title, not a name), "not_a_name" (the word taken out is one word that opens a sentence of the
+    passage and is a common opener or carries a common-word ending). Pure, deterministic, no word list on disk, so
+    the cloud, the Mac and the tests agree."""
+    m = NAME_EDIT_RE.search(rationale or "")
+    if not m:
+        return None
+    old, new = m.group(1), m.group(2)
+    reasons = []
+    if new.count("(") != new.count(")"):
+        reasons.append("cut_title")
+    if len(new.split()) >= 5 or re.search(r"[:?!]", new) or new.rstrip().endswith("."):
+        reasons.append("title_not_name")
+    if " " not in old:
+        opens = any(re.search(r"(?:^|[.!?]\s+)" + re.escape(old) + r"\b", t or "") for t in passage_texts)
+        low = old.lower()
+        if opens and (low in OPENERS or (len(low) > 5 and low.endswith(COMMON_ENDINGS))):
+            reasons.append("not_a_name")
+    return reasons
