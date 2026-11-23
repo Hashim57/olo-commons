@@ -1,0 +1,98 @@
+{
+ "entities": {
+  "Q5": {
+   "id": "Q5",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "human"
+    }
+   }
+  },
+  "Q159": {
+   "id": "Q159",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "Russia"
+    }
+   }
+  },
+  "Q5343": {
+   "id": "Q5343",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "Saransk"
+    }
+   }
+  },
+  "Q937857": {
+   "id": "Q937857",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "association football player"
+    }
+   }
+  },
+  "Q889348": {
+   "id": "Q889348",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "FC Ural Yekaterinburg"
+    }
+   }
+  },
+  "Q4022": {
+   "id": "Q4022",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "river"
+    }
+   }
+  },
+  "Q2164": {
+   "id": "Q2164",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "Nenets Autonomous Okrug"
+    }
+   }
+  },
+  "Q16521": {
+   "id": "Q16521",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "taxon"
+    }
+   }
+  },
+  "Q7432": {
+   "id": "Q7432",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "species"
+    }
+   }
+  },
+  "Q14844109": {
+   "id": "Q14844109",
+   "labels": {
+    "en": {
+     "language": "en",
+     "value": "Artimpaza"
+    },
+    "mul": {
+     "language": "mul",
+     "value": "Artimpaza"
+    }
+   }
+  }
+ }
+}

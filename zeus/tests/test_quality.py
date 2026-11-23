@@ -450,3 +450,17 @@ def test_capitals_and_rights_sentences_in_real_text_pass_the_library_record_rule
     # the real record with its headers in lower case is prose
     import re
     assert not quality.is_library_record(re.sub(r"MEDIUM|CREATED / PUBLISHED|SOURCE|CREDIT|RIGHTS|PROVENANCE", lambda m: m.group(0).lower(), LOC_RECORD))
+
+
+def test_a_wikidata_atom_with_a_facts_sentence_is_knowledge_not_a_record():
+    # the shape the connector writes since 2026-11-23: description, then "property value" clauses joined by semicolons
+    title = "Yuri Zheleznov"
+    summary = "Yuri Zheleznov: Russian footballer. Instance of human; country of citizenship Russia; date of birth 15 November 2002; place of birth Saransk; occupation association football player; member of sports team FC Ural Yekaterinburg."
+    content = summary.replace(": ", ". ", 1)[:-1] + ". Described in 4 Wikimedia projects."
+    assert quality.stub_reason(title, summary, content) is None
+    assert not quality.is_catalogue_record(summary)
+    a = {"title": title, "summary": summary, "source": "wikidata"}
+    assert quality.wikidata_description(a).startswith("Russian footballer")
+    assert not quality.wikidata_housekeeping(title, quality.wikidata_description(a))
+    # a housekeeping item is still read as one from the start of its description
+    assert quality.wikidata_housekeeping("Category:Rivers", quality.wikidata_description({"title": "Category:Rivers", "summary": "Category:Rivers: Wikimedia category."}))

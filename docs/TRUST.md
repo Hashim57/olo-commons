@@ -87,7 +87,7 @@ Every ingest run (every 15 minutes) re-reads up to 3 of the oldest-observed Wiki
 | Source | Licence | Kind | Notes |
 |---|---|---|---|
 | Wikipedia (en, es) | CC BY-SA 4.0 | encyclopedia | revision ids kept; re-checked |
-| Wikidata | CC0 1.0 | knowledge graph | lastrevid kept; re-checked |
+| Wikidata | CC0 1.0 | knowledge graph | lastrevid kept; re-checked; since 23 November 2026 the atom carries the item's main statements (instance of, country, dates, places, occupation, population, coordinates, author, and so on, up to 12 properties and 3 values each) as one sentence after the description, so a claim can be checked against them |
 | Wikinews | CC BY 2.5 | dated news | the dateline is the fact's date |
 | arXiv | metadata CC0; abstract under arXiv's licence | papers | version kept; DOI when given |
 | PubMed | NLM citation data public domain; abstract as published | papers | PMID and DOI kept |

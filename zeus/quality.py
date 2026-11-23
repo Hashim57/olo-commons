@@ -299,7 +299,10 @@ def wikidata_description(a):
     """The description part of a wikidata atom. The connector writes the summary as "<label>: <description>." and the
     content as "<label>. <description>. Described in N Wikimedia projects."; the live export gives the summary, the
     snapshot gave both joined until 2026-11-09 and gives the content alone since (scripts/build_snapshot.py
-    join_once). All three read the same here: the label and the "Described in" sentence are taken off."""
+    join_once). All three read the same here: the label and the "Described in" sentence are taken off. Since 2026-11-23 the
+    connector may follow the description with a facts sentence ("Instance of human; country of citizenship Russia; ..."),
+    which stays in what is returned: the housekeeping patterns are anchored at the start, and no housekeeping item is
+    stored with facts (the connector refuses it before it reads any claim)."""
     title, summary = str(a.get("title") or ""), str(a.get("summary") or "")
     desc = summary
     for sep in (": ", ". "):
