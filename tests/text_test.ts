@@ -1,6 +1,6 @@
 // deno test tests/
 import { assert, assertEquals } from './_assert.ts';
-import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isFileRecord, isItemRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
+import { clean, delatex, distinctWords, hasEmailAddress, isCatalogueRecord, isCourtRecord, isFileRecord, isItemRecord, isLibraryRecord, isLinkNotice, isRightsNotice, isShelfMark, isStub, joinParts, oncely, withoutPhysicalDescription, words } from '../functions/olo-ingest/text.ts';
 
 Deno.test('clean strips tags, decodes entities and collapses whitespace', () => {
   assertEquals(clean('<p>Tom &amp; Jerry</p>\n\n  <b>run</b>'), 'Tom & Jerry run');
@@ -394,4 +394,37 @@ Deno.test('isCourtRecord: texts about courts and cases from every other source p
   assert(!isCourtRecord('The Supreme Court: a history', book, book));
   assert(!isCourtRecord('Ehnen', 'Ehnen: town.', 'Ehnen. town. Described in 10 Wikimedia projects.'));
   assert(!isCourtRecord(undefined, null, ''));
+});
+
+/* ---------- isLibraryRecord: a Library of Congress item page copied by a mirror ---------- */
+
+const LOC_RECORD = "L'Elegante valse brillante MEDIUM 1 score CREATED / PUBLISHED 1843 SOURCE http://www.loc.gov/item/2023798348/ Digital id: ['M1.A12 I'] CREDIT (Library of Congress) Credit Line: Music Division, Library of Congress. RIGHTS The Library of Congress Music for the Nation: American Sheet Music, ca. 1820-1860 collection is in the public domain and is free to use and reuse. No known copyright restrictions. Public domain: copyright not renewed or term expired (works published before 1930; 17 U.S.C. sec. 304/302 schedule). No endorsement of this mirror by the Library of Congress is implied. PROVENANCE (this copy) Mirrored from loc.gov with no processing. Mirrored to archive.org by the Hessel Digital Library (HDL) for preservation access.";
+
+Deno.test('isLibraryRecord: the mirrored Library of Congress records stored on 22 and 23 November 2026 are stubs', () => {
+  const records: [string, string][] = [
+    ["L'Elegante valse brillante (1843, Library of Congress)", LOC_RECORD],
+    ['Fort Wayne quick step (1841, Library of Congress)', "Fort Wayne quick step MEDIUM 1 score CREATED / PUBLISHED 1841 SOURCE http://www.loc.gov/item/2023797954/ Digital id: ['M1.A12 I'] CREDIT (Library of Congress) Credit Line: Music Division, Library of Congress. RIGHTS The Library of Congress Music for the Nation: American Sheet Music, ca. 1820-1860 collection is in the public domain and is free to use and reuse. No known copyright restrictions. PROVENANCE (this copy) Mirrored from loc.gov with no processing."],
+    // the same page copied with other fields, no link and the summary cut at 600 characters
+    ['Ne pleurez pas (1836, Library of Congress)', 'Ne pleurez pas MEDIUM 1 score CREATED / PUBLISHED 1836 CONTRIBUTOR NAMES Grobe, Charles. REPRODUCTION NUMBER http://hdl.loc.gov/loc.music/sm1836.123 CALL NUMBER M1.A12 V RIGHTS The collection is in the public domain and is free to use and reuse. No known copyright restrictions. Public domain: copyright not renewed or term'],
+  ];
+  for (const [title, body] of records) {
+    assert(isLibraryRecord(body), body);
+    assert(isLibraryRecord(body + ' ' + body), 'written twice: ' + body);
+    assert(isStub(title, body.slice(0, 600), body), body);
+  }
+});
+
+Deno.test('isLibraryRecord: capitals, a rights sentence or the Library of Congress in a real text are kept', () => {
+  // two headers only, and prose about a library
+  assertEquals(isLibraryRecord('The Library of Congress holds the largest collection of sheet music in the world. SOURCE materials and NOTES from the Music Division are open to researchers, and most pieces published before 1930 are in the public domain.'), false);
+  // three of the words in capitals, but late in the text and with no rights sentence
+  assertEquals(isLibraryRecord('The committee read the report in full before voting. Its chapters were headed MEDIUM, FORMAT and SOURCE, and each ran to several pages of findings about how newspapers describe their suppliers.'), false);
+  // a headline in capitals that happens to use two of the words, with a rights sentence
+  assertEquals(isLibraryRecord('CREDIT RIGHTS ROW ENDS IN COURT. The newspaper settled the dispute over the photographs, which the court said were in the public domain since the photographer died in 1890.'), false);
+  // a catalogue record with colons stays with the catalogue rule, a Wikidata item and an empty body
+  assertEquals(isLibraryRecord('Title: Algemeen Handelsblad Datum: 22-05-1861 Editie: Dag Plaats van uitgave: Amsterdam Uitgever: P. den Hengst en Zoon Nummer: 120'), false);
+  assertEquals(isLibraryRecord('Library of Congress. national library of the United States. Described in 90 Wikimedia projects.'), false);
+  assertEquals(isLibraryRecord(''), false);
+  // the real record, with its headers written in lower case as a person would, is prose and is kept
+  assertEquals(isLibraryRecord(LOC_RECORD.replace(/MEDIUM|CREATED \/ PUBLISHED|SOURCE|CREDIT|RIGHTS|PROVENANCE/g, m => m.toLowerCase())), false);
 });

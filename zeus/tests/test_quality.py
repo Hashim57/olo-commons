@@ -412,3 +412,41 @@ def test_a_rule_made_name_edit_that_is_no_name_swap_is_flagged():
     # not a name edit at all
     assert f("The passage gives a different value (year 1971 -> 1978).", ["x"]) is None
     assert f("", []) is None
+
+LOC_RECORD = ("L'Elegante valse brillante MEDIUM 1 score CREATED / PUBLISHED 1843 SOURCE http://www.loc.gov/item/2023798348/ "
+              "Digital id: ['M1.A12 I'] CREDIT (Library of Congress) Credit Line: Music Division, Library of Congress. RIGHTS The "
+              "Library of Congress Music for the Nation: American Sheet Music, ca. 1820-1860 collection is in the public domain and "
+              "is free to use and reuse. No known copyright restrictions. Public domain: copyright not renewed or term expired (works "
+              "published before 1930; 17 U.S.C. sec. 304/302 schedule). No endorsement of this mirror by the Library of Congress is "
+              "implied. PROVENANCE (this copy) Mirrored from loc.gov with no processing. Mirrored to archive.org by the Hessel Digital "
+              "Library (HDL) for preservation access.")
+
+LIBRARY_RECORDS = [
+    ("L'Elegante valse brillante (1843, Library of Congress)", LOC_RECORD),
+    ("Fort Wayne quick step (1841, Library of Congress)", "Fort Wayne quick step MEDIUM 1 score CREATED / PUBLISHED 1841 SOURCE http://www.loc.gov/item/2023797954/ Digital id: ['M1.A12 I'] CREDIT (Library of Congress) Credit Line: Music Division, Library of Congress. RIGHTS The Library of Congress Music for the Nation: American Sheet Music, ca. 1820-1860 collection is in the public domain and is free to use and reuse. No known copyright restrictions. PROVENANCE (this copy) Mirrored from loc.gov with no processing."),
+    ("Ne pleurez pas (1836, Library of Congress)", "Ne pleurez pas MEDIUM 1 score CREATED / PUBLISHED 1836 CONTRIBUTOR NAMES Grobe, Charles. REPRODUCTION NUMBER http://hdl.loc.gov/loc.music/sm1836.123 CALL NUMBER M1.A12 V RIGHTS The collection is in the public domain and is free to use and reuse. No known copyright restrictions. Public domain: copyright not renewed or term"),
+]
+
+
+def test_library_records_are_stubs():
+    for title, body in LIBRARY_RECORDS:
+        assert quality.is_library_record(body), body
+        assert quality.is_library_record(body + " " + body), body
+        assert quality.is_stub(title, body[:600], body), body
+        assert quality.stub_reason(title, body[:600], body) == "library_record", body
+
+
+def test_capitals_and_rights_sentences_in_real_text_pass_the_library_record_rule():
+    # two headers only, prose about a library
+    assert not quality.is_library_record("The Library of Congress holds the largest collection of sheet music in the world. SOURCE materials and NOTES from the Music Division are open to researchers, and most pieces published before 1930 are in the public domain.")
+    # three of the words in capitals, late in the text, no rights sentence
+    assert not quality.is_library_record("The committee read the report in full before voting. Its chapters were headed MEDIUM, FORMAT and SOURCE, and each ran to several pages of findings about how newspapers describe their suppliers.")
+    # a headline with two of the words and a rights sentence
+    assert not quality.is_library_record("CREDIT RIGHTS ROW ENDS IN COURT. The newspaper settled the dispute over the photographs, which the court said were in the public domain since the photographer died in 1890.")
+    # a catalogue record with colons, a Wikidata item, an empty body
+    assert not quality.is_library_record("Title: Algemeen Handelsblad Datum: 22-05-1861 Editie: Dag Plaats van uitgave: Amsterdam Uitgever: P. den Hengst en Zoon Nummer: 120")
+    assert not quality.is_library_record("Library of Congress. national library of the United States. Described in 90 Wikimedia projects.")
+    assert not quality.is_library_record("")
+    # the real record with its headers in lower case is prose
+    import re
+    assert not quality.is_library_record(re.sub(r"MEDIUM|CREATED / PUBLISHED|SOURCE|CREDIT|RIGHTS|PROVENANCE", lambda m: m.group(0).lower(), LOC_RECORD))
