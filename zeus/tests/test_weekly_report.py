@@ -67,3 +67,39 @@ def test_olo_answers_section_compares_only_full_runs():
     rows = wr.measured_versions()
     summary = wr.summarise(date.fromisoformat(rows[-1][0]), rows)
     assert summary["olo_answers"]["latest"]["facts"] == 0.871
+
+
+def test_real_use_tally_is_measured_or_says_why_not():
+    assert wr.answer_tally(key="")["reason"].startswith("no anon key")
+    missing = wr.answer_tally(key="k", fetch=lambda u, h, b: (404, '{"code":"PGRST202"}'))
+    assert missing == {"measured": False, "reason": "olo_answer_stats does not exist yet (sql/022 has not been run)"}
+    empty = wr.answer_tally(key="k", fetch=lambda u, h, b: (200, '{"days": 7, "totals": {"answers": 0}}'))
+    assert empty["measured"] is False and "no answers" in empty["reason"]
+
+    def boom(u, h, b):
+        raise OSError("offline")
+    assert "unreachable" in wr.answer_tally(key="k", fetch=boom)["reason"]
+    seen = {}
+
+    def ok(u, h, b):
+        seen.update(url=u, auth=h["Authorization"], body=b)
+        return 200, ('{"days": 7, "totals": {"answers": 10, "sentences": 30, "supported": 24, "contradicted": 1, "not_covered": 5,'
+                     ' "zeus_checked": 20, "zeus_supported": 17, "fallback_checked": 8, "unchecked": 2, "abstained": 1, "uncovered": 1},'
+                     ' "share_supported": 0.8, "share_zeus_checked": 0.667, "share_zeus_supported": 0.85}')
+    t = wr.answer_tally(key="k", fetch=ok)
+    assert t["measured"] and t["share_zeus_supported"] == 0.85 and t["totals"]["sentences"] == 30
+    assert seen["url"].endswith("/rpc/olo_answer_stats") and seen["auth"] == "Bearer k" and b'"p_days": 7' in seen["body"]
+
+
+def test_a_report_builds_with_and_without_the_tally(tmp_path, monkeypatch):
+    monkeypatch.delenv("OLO_ANON_KEY", raising=False)
+    monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
+    rows = wr.measured_versions()
+    summary = wr.summarise(date.fromisoformat(rows[-1][0]), rows)
+    assert summary["answer_tally"]["measured"] is False
+    wr.build_pdf(summary, str(tmp_path / "a.pdf"), str(tmp_path))
+    summary["answer_tally"] = {"measured": True, "days": 7, "share_supported": 0.8, "share_zeus_checked": 0.5, "share_zeus_supported": 0.9,
+                               "totals": {"answers": 4, "sentences": 10, "supported": 8, "contradicted": 0, "not_covered": 2, "zeus_checked": 5,
+                                          "fallback_checked": 5, "unchecked": 0, "abstained": 0, "uncovered": 0}}
+    wr.build_pdf(summary, str(tmp_path / "b.pdf"), str(tmp_path))
+    assert (tmp_path / "b.pdf").read_bytes()[:5] == b"%PDF-"
