@@ -772,11 +772,32 @@ def hard_entity_swap(s, own_text, texts, rng):
     return None
 
 
+SMALL_COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+                "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "hundred": 100}
+# "180 of 202 tasks", "nine of ten benchmarks", "32 of the 33 shots": a part of a stated total
+PART_OF_RE = re.compile(r"\b(\d{1,3}(?:,\d{3})*|\d+|" + "|".join(SMALL_COUNTS) + r") of (?:the |its |their |all )?(\d{1,3}(?:,\d{3})*|\d+|" + "|".join(SMALL_COUNTS) + r")(?= [a-z])", re.I)
+
+
+def _count(word):
+    w = word.lower().replace(",", "")
+    return SMALL_COUNTS.get(w) if w in SMALL_COUNTS else (int(w) if w.isdigit() else None)
+
+
 def hard_quantifier(s, texts, rng):
     """A quantifier turned to its opposite: "all X" -> "no X", "all of the" -> "none of the",
     "none of" -> "all of", "most X" -> "few X". Fixed phrases (at all, after all, all but, the most)
-    are left alone."""
+    are left alone. Since 2026-11-23 also a part made the whole: "180 of 202 tasks convert" ->
+    "all 202 tasks convert", "nine of ten benchmarks" -> "all ten benchmarks", "32 of the 33 shots" ->
+    "all 33 shots", only when the part is smaller than the total (so "all" is false), and not for
+    "one of the" (an example, not a count) or a percentage."""
     edits = []
+    for m in PART_OF_RE.finditer(s):
+        part, total = _count(m.group(1)), _count(m.group(2))
+        if part is None or total is None or part >= total or total < 2 or m.group(1).lower() == "one":
+            continue
+        if re.match(r"\s*(?:%|percent\b|per cent\b)", s[m.end():]):
+            continue
+        edits.append((m.start(), m.end(), "all " + m.group(2), f"{m.group(1)} of {m.group(2)} -> all {m.group(2)}"))
     for m in re.finditer(r"\b[Aa]ll (?=of\b)", s):
         edits.append((m.start(), m.start() + 3, "none", "all of -> none of"))
     # "All X ..." and "Most X ..." only as the subject at the start of the sentence, where "No X" and
