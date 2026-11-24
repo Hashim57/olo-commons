@@ -108,13 +108,19 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
     base, tok, model = None, None, None
     for candidate in recipe.BASES:
+        revision = recipe.BASE_REVISIONS.get(candidate)  # the Hub commit every measured version read (recipe.py)
         try:
-            tok = AutoTokenizer.from_pretrained(candidate)
-            model = AutoModelForCausalLM.from_pretrained(candidate, torch_dtype=torch.bfloat16, device_map="cuda")
+            tok = AutoTokenizer.from_pretrained(candidate, revision=revision)
+            if not getattr(tok, "chat_template", None):
+                # A tokenizer without a template fails at apply_chat_template only after the weights are down (run 40,
+                # 24 November 2026: mistralai moved the template to chat_template.jinja, which transformers 4.46.3 does
+                # not read). Say what happened and try the next copy instead of training on a wrong prompt format.
+                raise ValueError(f"tokenizer at {candidate}@{revision or 'main'} has no chat_template (the repo changed; pin BASE_REVISIONS in recipe.py)")
+            model = AutoModelForCausalLM.from_pretrained(candidate, revision=revision, torch_dtype=torch.bfloat16, device_map="cuda")
             base = candidate
             break
-        except Exception as e:  # gated for this token, or unavailable: try the next copy of the same weights
-            print(f"could not load {candidate}: {type(e).__name__}: {str(e)[:160]}", flush=True)
+        except Exception as e:  # gated for this token, unavailable, or changed: try the next copy of the same weights
+            print(f"could not load {candidate}: {type(e).__name__}: {str(e)[:200]}", flush=True)
     if model is None:
         raise SystemExit("no base model could be loaded")
     tok.pad_token = tok.pad_token or tok.eos_token

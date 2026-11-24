@@ -9,6 +9,16 @@ and the system prompt folded into the user turn (Mistral v0.2 has no system role
 import json
 
 BASES = ["mistralai/Mistral-7B-Instruct-v0.2", "unsloth/mistral-7b-instruct-v0.2"]  # the second is an ungated copy of the same weights
+# The Hub commit each base is read at, so a run trains on the same files as every measured version. On
+# 24 November 2026 at 08:18 UTC mistralai moved the chat template out of tokenizer_config.json into
+# chat_template.jinja ("Add a response template (#243)", f34bdf28); transformers 4.46.3, which the cloud
+# image pins, reads only the old key, so the tokenizer came back with no template and the v31 run failed at
+# apply_chat_template before training started (run 40). 63a8b081 is the commit before that change, the one
+# v6 to v30 trained on; the unsloth copy is pinned at its only commit for the same reason.
+BASE_REVISIONS = {
+    "mistralai/Mistral-7B-Instruct-v0.2": "63a8b081895390a26e140280378bc85ec8bce07a",
+    "unsloth/mistral-7b-instruct-v0.2": "5d88c8e8dbf7446e665a3633b2f047689f4e6547",
+}
 CLOUDFLARE_BASE = "@cf/mistral/mistral-7b-instruct-v0.2-lora"
 LORA = {"r": 8, "lora_alpha": 16, "lora_dropout": 0.05, "target_modules": ["q_proj", "v_proj"], "bias": "none", "task_type": "CAUSAL_LM"}
 CF_MAX_RANK = 32

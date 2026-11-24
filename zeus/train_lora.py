@@ -7,11 +7,23 @@
 Needs one GPU with 16 GB or more (4-bit). Writes a PEFT adapter to --out and a
 training summary to --out/train_summary.json that eval.py and STATUS.md use.
 """
-import argparse, json, os, time
+import argparse, json, os, sys, time
 
 SYSTEM = ("You are Zeus, the verification layer of Olo. Given a claim and numbered passages, answer with one JSON object: "
           '{"label": "supported" | "contradicted" | "not_covered", "evidence": [{"passage": "<id>", "quote": "<exact words from that passage>"}], "rationale": "<one sentence>"}. '
           "Quote only words that appear in a passage. If no passage covers the claim, label not_covered with empty evidence.")
+
+
+def hub_revision(name):
+    """The Hub commit a base is read at (zeus/cloud/recipe.py, BASE_REVISIONS), or None for a local path, an
+    adapter directory or a base the recipe does not pin. One lookup shared by the trainer, eval.py and serve.py,
+    so every path reads the same files the measured versions were trained on."""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "cloud"))
+        import recipe
+        return recipe.BASE_REVISIONS.get(name)
+    except Exception:
+        return None
 
 
 def render_user(ex):
@@ -56,10 +68,13 @@ def main():
     ds = load_dataset("json", data_files=files)
     ds = ds.map(to_messages, remove_columns=ds["train"].column_names)
 
-    tok = AutoTokenizer.from_pretrained(args.base)
+    revision = hub_revision(args.base)
+    tok = AutoTokenizer.from_pretrained(args.base, revision=revision)
+    if not getattr(tok, "chat_template", None):
+        raise SystemExit(f"tokenizer at {args.base}@{revision or 'main'} has no chat_template (pin the base in zeus/cloud/recipe.py BASE_REVISIONS)")
     tok.pad_token = tok.pad_token or tok.eos_token
     quant = None if args.no_4bit else BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_use_double_quant=True)
-    model = AutoModelForCausalLM.from_pretrained(args.base, quantization_config=quant, torch_dtype=torch.bfloat16, device_map="auto")
+    model = AutoModelForCausalLM.from_pretrained(args.base, revision=revision, quantization_config=quant, torch_dtype=torch.bfloat16, device_map="auto")
 
     lora = LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.05, task_type="CAUSAL_LM",
                       target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"])
