@@ -1,0 +1,16 @@
+{
+  "probe_n": 800,
+  "probe_accuracy": 0.963,
+  "mistakes": 30,
+  "mistakes_by_kind_of_error": {
+    "contradicted->not_covered": 11,
+    "contradicted->supported": 4,
+    "not_covered->contradicted": 3,
+    "supported->contradicted": 6,
+    "supported->invalid": 1,
+    "supported->not_covered": 5
+  },
+  "pool_rows_trained": 235,
+  "pool_rows_in_probe": 2,
+  "note": "a sample of this version's own training rows, never a held-out row; the wrong ones are trained again by the next version"
+}
