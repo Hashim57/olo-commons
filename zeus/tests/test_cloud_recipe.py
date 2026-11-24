@@ -26,6 +26,12 @@ def test_labels_mask_the_prompt_and_keep_the_answer_whole():
     assert ids == [96, 97, 98, 99, 7, 8] and labels == [-100] * 4 + [7, 8]
 
 
+def test_every_base_is_pinned_to_a_hub_commit():
+    import re
+    for base in recipe.BASES:
+        assert re.fullmatch(r"[0-9a-f]{40}", recipe.BASE_REVISIONS[base]), base
+
+
 def test_adapter_config_is_what_cloudflare_accepts():
     cfg = recipe.peft_config_for_cloudflare({"r": 8, "lora_alpha": 16, "target_modules": {"v_proj", "q_proj"}, "peft_type": "LORA"})
     assert cfg["model_type"] == "mistral" and cfg["target_modules"] == ["q_proj", "v_proj"]

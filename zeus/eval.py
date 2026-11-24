@@ -26,7 +26,7 @@ import argparse, json, os, re, sys
 from collections import Counter
 
 sys.path.insert(0, os.path.dirname(__file__))
-from train_lora import SYSTEM, render_user  # noqa: E402
+from train_lora import SYSTEM, hub_revision, render_user  # noqa: E402
 import quality  # noqa: E402  (malformed_name_edit, for score_by_edit)
 
 LABELS = ("supported", "contradicted", "not_covered")
@@ -258,8 +258,8 @@ def main():
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
     name = args.model or args.base
-    tok = AutoTokenizer.from_pretrained(args.adapter or name)
-    model = AutoModelForCausalLM.from_pretrained(name, torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32, device_map="auto")
+    tok = AutoTokenizer.from_pretrained(args.adapter or name, revision=None if args.adapter else hub_revision(name))
+    model = AutoModelForCausalLM.from_pretrained(name, revision=hub_revision(name), torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32, device_map="auto")
     if args.adapter:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, args.adapter)
