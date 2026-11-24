@@ -135,3 +135,52 @@ export async function checkLinks(urls: string[], max = 6, fetcher: typeof fetch 
   const results = await Promise.all(distinct.map(u => linkOk(u, 4000, fetcher)));
   return Object.fromEntries(distinct.map((u, i) => [u, results[i]]));
 }
+
+/** The arguments of olo_review_candidate (sql/024): one sentence the verifier doubted, with what it was checked against. */
+export type ReviewCandidate = {
+  p_claim: string; p_verdict: 'contradicted' | 'not_covered';
+  p_passages: { atom?: string; url?: string; quote?: string }[]; p_checked_by: string | null;
+};
+
+/**
+ * The sentences of one answer that a person should look at (issue #76, part 4): those a served Zeus
+ * adapter (checked_by "zeus:<model>") called contradicted or not covered, and whose verdict stood through
+ * the figure check. A sentence the fallback verifier or nobody checked is left out: the point is to find
+ * Zeus's mistakes and the Commons' wrong answers, and a fallback verdict says nothing about either. Each
+ * candidate carries the passages the sentence was checked against (the cited ones, or all of them when
+ * it cited none), as atom ids and urls, with Zeus's own quote where it gave one, so the review and
+ * zeus/feedback_to_gold.py can rebuild the example from the real text. At most `max` a response, the
+ * contradicted ones first (a contradiction is the rarer and the more telling verdict), none longer than
+ * the table allows (600 characters) or shorter than a sentence, each sentence once.
+ * Pure: the caller sends each candidate to the database and ignores a failure.
+ */
+export function reviewCandidates(
+  sentences: { text: string; citations?: string[]; verdict: Label; checked_by?: string | null; evidence?: { passage: string; quote: string }[] }[],
+  provenance: { id: string; atom?: string | null; url?: string | null }[],
+  max = 3,
+): ReviewCandidate[] {
+  const byId = new Map(provenance.map(p => [p.id, p]));
+  const seen = new Set<string>();
+  const out: ReviewCandidate[] = [];
+  const doubted = sentences.filter(s => (s.verdict === 'contradicted' || s.verdict === 'not_covered') && !!s.checked_by && s.checked_by.startsWith('zeus:'));
+  doubted.sort((a, b) => (a.verdict === 'contradicted' ? 0 : 1) - (b.verdict === 'contradicted' ? 0 : 1));
+  for (const s of doubted) {
+    const claim = String(s.text || '').replace(/\s+/g, ' ').trim();
+    if (claim.length < 3 || claim.length > 600 || seen.has(claim)) continue;
+    seen.add(claim);
+    const quotes = new Map((s.evidence || []).filter(e => e && e.passage && e.quote).map(e => [e.passage, String(e.quote).slice(0, 600)]));
+    const cited = (s.citations || []).filter(id => byId.has(id));
+    const ids = cited.length ? cited : provenance.map(p => p.id);
+    const passages = ids.slice(0, 12).map(id => {
+      const p = byId.get(id)!;
+      const entry: { atom?: string; url?: string; quote?: string } = {};
+      if (p.atom) entry.atom = String(p.atom);
+      if (p.url) entry.url = String(p.url);
+      if (quotes.has(id)) entry.quote = quotes.get(id);
+      return entry;
+    }).filter(p => p.atom || p.url);
+    out.push({ p_claim: claim, p_verdict: s.verdict as 'contradicted' | 'not_covered', p_passages: passages, p_checked_by: s.checked_by || null });
+    if (out.length >= max) break;
+  }
+  return out;
+}

@@ -1,6 +1,6 @@
 // deno test tests/   (citation hygiene in olo-answer)
 import { assert, assertEquals } from './_assert.ts';
-import { answerTally, applyFigureCheck, checkLinks, COULD_NOT_VERIFY, figures, linkOk, missingFigures, shownAnswer, sourceSummary, timeSensitive } from '../functions/olo-answer/hygiene.ts';
+import { answerTally, applyFigureCheck, checkLinks, COULD_NOT_VERIFY, figures, linkOk, missingFigures, reviewCandidates, shownAnswer, sourceSummary, timeSensitive } from '../functions/olo-answer/hygiene.ts';
 
 const P = (id: string, text: string) => ({ id, source: 'wikipedia', url: `https://x/${id}`, text });
 
@@ -85,4 +85,43 @@ Deno.test('answerTally counts verdicts and who checked them, never text (sql/022
   // extractive quotes are supported by construction and checked by nobody
   const x = answerTally([{ verdict: 'supported' }, { verdict: 'supported' }], true, false, true);
   assertEquals([x.p_extractive, x.p_supported, x.p_unchecked, x.p_zeus, x.p_zeus_supported], [true, 2, 2, 0, 0]);
+});
+
+const PROV = [
+  { id: 'p1', atom: '11111111-1111-1111-1111-111111111111', url: 'https://x/1' },
+  { id: 'p2', atom: '22222222-2222-2222-2222-222222222222', url: 'https://x/2' },
+  { id: 'p3', atom: null, url: 'https://x/3' },
+];
+
+Deno.test('reviewCandidates: only sentences Zeus called contradicted or not covered; the fallback and the unchecked are left out', () => {
+  const cs = reviewCandidates([
+    { text: 'Fine sentence.', citations: ['p1'], verdict: 'supported', checked_by: 'zeus:v30' },
+    { text: 'Zeus doubts this one.', citations: ['p1'], verdict: 'not_covered', checked_by: 'zeus:v30' },
+    { text: 'The fallback doubts this one.', citations: ['p1'], verdict: 'contradicted', checked_by: 'llm-fallback' },
+    { text: 'Nobody checked this one.', citations: ['p1'], verdict: 'not_covered', checked_by: null },
+  ], PROV);
+  assertEquals(cs.map(c => c.p_claim), ['Zeus doubts this one.']);
+  assertEquals(cs[0].p_verdict, 'not_covered');
+  assertEquals(cs[0].p_checked_by, 'zeus:v30');
+});
+
+Deno.test('reviewCandidates: the cited passages with Zeus\'s quote, or every passage when none was cited; a passage needs an atom or a url', () => {
+  const cs = reviewCandidates([
+    { text: 'It is 530 metres long.', citations: ['p2', 'p9'], verdict: 'contradicted', checked_by: 'zeus:v30', evidence: [{ passage: 'p2', quote: '503 metres' }] },
+    { text: 'No citation at all.', citations: [], verdict: 'not_covered', checked_by: 'zeus:v30' },
+  ], PROV);
+  assertEquals(cs[0].p_passages, [{ atom: '22222222-2222-2222-2222-222222222222', url: 'https://x/2', quote: '503 metres' }]);
+  assertEquals(cs[1].p_passages.length, 3);
+  assertEquals(cs[1].p_passages[2], { url: 'https://x/3' });
+});
+
+Deno.test('reviewCandidates: contradicted first, at most three, whitespace folded, no repeats, nothing outside the table\'s length rule', () => {
+  const doubt = (text: string, verdict: 'contradicted' | 'not_covered') => ({ text, citations: ['p1'], verdict, checked_by: 'zeus:v30' });
+  const cs = reviewCandidates([
+    doubt('Not covered one.', 'not_covered'), doubt('Not covered two.', 'not_covered'), doubt('Not covered three.', 'not_covered'),
+    doubt('Contradicted   one.', 'contradicted'), doubt('Contradicted one.', 'contradicted'), doubt('x'.repeat(601), 'contradicted'), doubt('ab', 'contradicted'),
+  ], PROV);
+  assertEquals(cs.length, 3);
+  assertEquals(cs.map(c => c.p_claim), ['Contradicted one.', 'Not covered one.', 'Not covered two.']);
+  assertEquals(reviewCandidates([], PROV), []);
 });

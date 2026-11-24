@@ -102,6 +102,12 @@ def main():
     if not flags:
         print("feedback_to_gold: no accepted flags waiting")
         return
+    # Since sql/024 a row is a person's flag (origin person) or a sentence the verifier doubted and a person then
+    # labelled (origin verifier); both reach here only once a person set status = accepted and verdict_user.
+    origins = {}
+    for f in flags:
+        origins[f.get("origin") or "person"] = origins.get(f.get("origin") or "person", 0) + 1
+    print("feedback_to_gold: accepted rows waiting: " + ", ".join(f"{k} {v}" for k, v in sorted(origins.items())))
     ids = sorted({p.get("atom") for f in flags for p in (f.get("passages") or []) if p.get("atom")})
     atoms = []
     for i in range(0, len(ids), 100):
