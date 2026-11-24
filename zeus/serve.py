@@ -12,7 +12,7 @@ import argparse, json, os, sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(__file__))
-from train_lora import SYSTEM, render_user  # noqa: E402
+from train_lora import SYSTEM, hub_revision, render_user  # noqa: E402
 from eval import parse  # noqa: E402
 
 MODEL = {}
@@ -21,8 +21,8 @@ MODEL = {}
 def load(base, adapter):
     import torch
     from transformers import AutoTokenizer, AutoModelForCausalLM
-    tok = AutoTokenizer.from_pretrained(adapter or base)
-    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32, device_map="auto")
+    tok = AutoTokenizer.from_pretrained(adapter or base, revision=None if adapter else hub_revision(base))
+    model = AutoModelForCausalLM.from_pretrained(base, revision=hub_revision(base), torch_dtype=torch.bfloat16 if torch.cuda.is_available() else torch.float32, device_map="auto")
     if adapter:
         from peft import PeftModel
         model = PeftModel.from_pretrained(model, adapter)
