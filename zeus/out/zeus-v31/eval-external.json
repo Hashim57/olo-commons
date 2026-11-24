@@ -1,0 +1,371 @@
+{
+  "eval_v2": {
+    "n": 200,
+    "label_accuracy": 0.995,
+    "json_valid": 1.0,
+    "evidence_hit": 0.99,
+    "f1": {
+      "supported": 0.994,
+      "contradicted": 0.986,
+      "not_covered": 1.0
+    },
+    "confusion": {
+      "supported": {
+        "supported": 82,
+        "contradicted": 1,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 0,
+        "contradicted": 36,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 0,
+        "contradicted": 0,
+        "not_covered": 81,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.988,
+        "tnr": 1.0
+      },
+      "contradicted": {
+        "tpr": 1.0,
+        "tnr": 0.994
+      },
+      "not_covered": {
+        "tpr": 1.0,
+        "tnr": 1.0
+      }
+    },
+    "binary_balanced_accuracy": 0.994,
+    "by_kind": {
+      "near_miss": {
+        "n": 81,
+        "accuracy": 1.0,
+        "wrong": {}
+      },
+      "relation_flip": {
+        "n": 36,
+        "accuracy": 1.0,
+        "wrong": {}
+      },
+      "true_passage_last": {
+        "n": 83,
+        "accuracy": 0.988,
+        "wrong": {
+          "contradicted": 1
+        }
+      }
+    },
+    "note": "frozen harder split: near-miss not covered, relation-flip contradictions, true passage last"
+  },
+  "eval_v3": {
+    "n": 200,
+    "version": "eval3-v1",
+    "label_accuracy": 0.965,
+    "json_valid": 1.0,
+    "evidence_hit": 0.955,
+    "f1": {
+      "supported": 0.933,
+      "contradicted": 0.959,
+      "not_covered": 0.993
+    },
+    "confusion": {
+      "supported": {
+        "supported": 49,
+        "contradicted": 6,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 0,
+        "contradicted": 70,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 1,
+        "contradicted": 0,
+        "not_covered": 74,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.891,
+        "tnr": 0.993
+      },
+      "contradicted": {
+        "tpr": 1.0,
+        "tnr": 0.954
+      },
+      "not_covered": {
+        "tpr": 0.987,
+        "tnr": 1.0
+      }
+    },
+    "binary_balanced_accuracy": 0.942,
+    "by_kind": {
+      "before_after": {
+        "n": 22,
+        "accuracy": 1.0,
+        "wrong": {}
+      },
+      "modal_shift": {
+        "n": 15,
+        "accuracy": 0.933,
+        "wrong": {
+          "supported": 1
+        }
+      },
+      "near_miss_names": {
+        "n": 60,
+        "accuracy": 1.0,
+        "wrong": {}
+      },
+      "paraphrase_decade": {
+        "n": 16,
+        "accuracy": 0.625,
+        "wrong": {
+          "contradicted": 6
+        }
+      },
+      "relation_flip": {
+        "n": 48,
+        "accuracy": 1.0,
+        "wrong": {}
+      },
+      "two_passage": {
+        "n": 39,
+        "accuracy": 1.0,
+        "wrong": {}
+      }
+    },
+    "note": "frozen versioned split: near misses naming everything, relation and before/after flips, modal shifts, two-passage support, decade paraphrases"
+  },
+  "vitaminc_dev": {
+    "n": 300,
+    "label_accuracy": 0.637,
+    "json_valid": 1.0,
+    "evidence_hit": 0.6,
+    "f1": {
+      "supported": 0.687,
+      "contradicted": 0.596,
+      "not_covered": 0.632
+    },
+    "confusion": {
+      "supported": {
+        "supported": 56,
+        "contradicted": 9,
+        "not_covered": 35,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 2,
+        "contradicted": 51,
+        "not_covered": 47,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 5,
+        "contradicted": 11,
+        "not_covered": 84,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 0.56,
+        "tnr": 0.965
+      },
+      "contradicted": {
+        "tpr": 0.51,
+        "tnr": 0.9
+      },
+      "not_covered": {
+        "tpr": 0.84,
+        "tnr": 0.59
+      }
+    },
+    "binary_balanced_accuracy": 0.762,
+    "note": "held out, never trained on; human-written claims over Wikipedia revisions"
+  },
+  "llm_aggrefact": {
+    "n": 600,
+    "balanced_accuracy": 60.5,
+    "per_dataset": {
+      "AggreFact-CNN": {
+        "n": 14,
+        "balanced_accuracy": 62.1,
+        "confusion": {
+          "tp": 10,
+          "fn": 1,
+          "tn": 1,
+          "fp": 2
+        },
+        "said": {
+          "contradicted": 2,
+          "supported": 12
+        }
+      },
+      "AggreFact-XSum": {
+        "n": 16,
+        "balanced_accuracy": 50.0,
+        "confusion": {
+          "tp": 0,
+          "fn": 8,
+          "tn": 8,
+          "fp": 0
+        },
+        "said": {
+          "not_covered": 16
+        }
+      },
+      "ClaimVerify": {
+        "n": 20,
+        "balanced_accuracy": 71.9,
+        "confusion": {
+          "tp": 7,
+          "fn": 9,
+          "tn": 4,
+          "fp": 0
+        },
+        "said": {
+          "contradicted": 1,
+          "not_covered": 12,
+          "supported": 7
+        }
+      },
+      "ExpertQA": {
+        "n": 69,
+        "balanced_accuracy": 55.1,
+        "confusion": {
+          "tp": 6,
+          "fn": 53,
+          "tn": 10,
+          "fp": 0
+        },
+        "said": {
+          "contradicted": 3,
+          "not_covered": 60,
+          "supported": 6
+        }
+      },
+      "FactCheck-GPT": {
+        "n": 31,
+        "balanced_accuracy": 64.3,
+        "confusion": {
+          "tp": 2,
+          "fn": 5,
+          "tn": 24,
+          "fp": 0
+        },
+        "said": {
+          "contradicted": 1,
+          "not_covered": 28,
+          "supported": 2
+        }
+      },
+      "Lfqa": {
+        "n": 36,
+        "balanced_accuracy": 81.8,
+        "confusion": {
+          "tp": 14,
+          "fn": 8,
+          "tn": 14,
+          "fp": 0
+        },
+        "said": {
+          "contradicted": 1,
+          "not_covered": 21,
+          "supported": 14
+        }
+      },
+      "RAGTruth": {
+        "n": 333,
+        "balanced_accuracy": 59.2,
+        "confusion": {
+          "tp": 73,
+          "fn": 240,
+          "tn": 19,
+          "fp": 1
+        },
+        "said": {
+          "contradicted": 14,
+          "invalid": 4,
+          "not_covered": 241,
+          "supported": 74
+        }
+      },
+      "Reveal": {
+        "n": 37,
+        "balanced_accuracy": 63.2,
+        "confusion": {
+          "tp": 6,
+          "fn": 9,
+          "tn": 19,
+          "fp": 3
+        },
+        "said": {
+          "contradicted": 6,
+          "not_covered": 22,
+          "supported": 9
+        }
+      },
+      "TofuEval-MediaS": {
+        "n": 16,
+        "balanced_accuracy": 65.4,
+        "confusion": {
+          "tp": 4,
+          "fn": 9,
+          "tn": 3,
+          "fp": 0
+        },
+        "said": {
+          "not_covered": 12,
+          "supported": 4
+        }
+      },
+      "TofuEval-MeetB": {
+        "n": 15,
+        "balanced_accuracy": 58.3,
+        "confusion": {
+          "tp": 2,
+          "fn": 10,
+          "tn": 3,
+          "fp": 0
+        },
+        "said": {
+          "contradicted": 1,
+          "invalid": 1,
+          "not_covered": 11,
+          "supported": 2
+        }
+      },
+      "Wice": {
+        "n": 13,
+        "balanced_accuracy": 62.5,
+        "confusion": {
+          "tp": 1,
+          "fn": 3,
+          "tn": 9,
+          "fp": 0
+        },
+        "said": {
+          "not_covered": 12,
+          "supported": 1
+        }
+      }
+    },
+    "truncated_docs": 0,
+    "mapping": "supported=1; contradicted or not_covered=0",
+    "sample": "random 600 of the test split, seed 0",
+    "cite": "Tang, Laban, Durrett 2024, arXiv:2404.10774"
+  }
+}
