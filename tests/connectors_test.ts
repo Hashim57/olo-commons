@@ -4,8 +4,9 @@
 // reconstructed from each API's documentation where the live API could not be
 // reached; tests/fixtures/ingest/README.md says which is which.
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataEntitiesUrl, wikidataRandomUrl, wikidataSearchIds, WIKIDATA_BATCH, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, WIKINEWS_NOT_AN_ARTICLE_RE, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 import { dataGovCandidates } from '../functions/olo-ingest/datagov.ts';
+import { isCatalogueRecord, isStub } from '../functions/olo-ingest/text.ts';
 
 const text = (name: string) => Deno.readTextFile(new URL(`./fixtures/ingest/${name}`, import.meta.url));
 const json = async (name: string) => JSON.parse(await text(name));
@@ -75,6 +76,75 @@ Deno.test('wikidata: no description, fewer than 3 sitelinks, or a missing entity
   assertEquals(out.map(c => c.external_id), ['Q7343']);
   assertEquals(out[0].title, 'Great Barrier Reef');
   assertEquals(wikidataCandidates(e, ['Q7343'], 0).length, 1, 'n is checked after a push, so at least one is returned');
+});
+
+Deno.test('wikidata: live claims and labels become a facts sentence in the summary and the content', async () => {
+  // wikidata.claims.json: the fact properties of three items read on 23 November 2026 (a footballer, a river, an insect);
+  // wikidata.labels.json: the labels of the ten items their values point at, from the same day.
+  const claims = await json('wikidata.claims.json'), labels = wikidataLabels(await json('wikidata.labels.json'));
+  const ids = ['Q107642388', 'Q6751402', 'Q14844096'];
+  assertEquals(wikidataValueIds(claims, ids), ['Q5', 'Q159', 'Q5343', 'Q937857', 'Q889348', 'Q4022', 'Q2164', 'Q16521', 'Q7432', 'Q14844109']);
+  assertEquals(labels.Q5, 'human');
+  assertEquals(wikidataFacts(claims.entities.Q107642388, labels), ['instance of human', 'country of citizenship Russia', 'date of birth 15 November 2002', 'place of birth Saransk', 'occupation association football player', 'member of sports team FC Ural Yekaterinburg']);
+  assertEquals(wikidataFacts(claims.entities.Q6751402, labels), ['instance of river', 'country Russia', 'located in Nenets Autonomous Okrug', 'coordinates 66.2709 N, 47.1710 E']);
+  assertEquals(wikidataFacts(claims.entities.Q14844096, labels), ['instance of taxon', 'taxon name Artimpaza quadrimaculata', 'taxon rank species', 'parent taxon Artimpaza']);
+  const e = { entities: { Q107642388: { lastrevid: 2300000001, labels: { en: { value: 'Yuri Zheleznov' } }, descriptions: { en: { value: 'Russian footballer' } }, sitelinks: { a: 1, b: 1, c: 1, d: 1 } } } };
+  const facts = { Q107642388: wikidataFacts(claims.entities.Q107642388, labels) };
+  const [c] = wikidataCandidates(e, ['Q107642388'], 1, facts);
+  assertEquals(c.summary, 'Yuri Zheleznov: Russian footballer. Instance of human; country of citizenship Russia; date of birth 15 November 2002; place of birth Saransk; occupation association football player; member of sports team FC Ural Yekaterinburg.');
+  assertEquals(c.content, 'Yuri Zheleznov. Russian footballer. Instance of human; country of citizenship Russia; date of birth 15 November 2002; place of birth Saransk; occupation association football player; member of sports team FC Ural Yekaterinburg. Described in 4 Wikimedia projects.');
+  // without facts the shape is the one the Commons has always stored; a description ending in a full stop is not given two
+  assertEquals(wikidataCandidates(e, ['Q107642388'], 1)[0].summary, 'Yuri Zheleznov: Russian footballer.');
+  const e2 = { entities: { Q95: { labels: { en: { value: 'Google' } }, descriptions: { en: { value: 'a subsidiary of Alphabet Inc.' } }, sitelinks: { a: 1, b: 1, c: 1 } } } };
+  assertEquals(wikidataCandidates(e2, ['Q95'], 1)[0].summary, 'Google: a subsidiary of Alphabet Inc.');
+  // the facts sentence is prose to the quality gate: not a catalogue record, not a stub
+  assertEquals(isCatalogueRecord(c.summary), false);
+  assertEquals(isStub(c.title, c.summary, c.content), false);
+  // the two extra calls are bounded like the first
+  assert(wikidataClaimsUrl(['Q1', 'P31', 'Q2']).endsWith('ids=Q1|Q2&props=claims&format=json'));
+  assert(wikidataLabelsUrl(['Q1']).includes('props=labels&languages=en|mul'));
+  assertEquals(wikidataLabelsUrl(Array.from({ length: 80 }, (_, i) => `Q${i + 1}`)).split('|').length - 1, WIKIDATA_BATCH, '49 bars between 50 ids and one in en|mul');
+});
+
+Deno.test('wikidata: ranks, caps, times, quantities and unknown labels in the facts', () => {
+  const item = (id: string) => ({ mainsnak: { snaktype: 'value', datavalue: { type: 'wikibase-entityid', value: { id } } }, rank: 'normal' });
+  const labels = { Q1: 'one', Q2: 'two', Q3: 'three', Q4: 'four', Q5: 'five', Q11573: 'metre', Q712226: 'square kilometre' };
+  // preferred statements win over normal ones; deprecated ones are never read; an unknown label is left out, never a bare id
+  const claims = {
+    P31: [item('Q1'), { ...item('Q2'), rank: 'preferred' }, { ...item('Q3'), rank: 'deprecated' }],
+    P106: [item('Q1'), item('Q2'), item('Q3'), item('Q4'), item('Q5')],
+    P17: [item('Q99999')],
+    P1082: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'quantity', value: { amount: '+12345', unit: '1' } } }, rank: 'normal', qualifiers: { P585: [{ snaktype: 'value', datavalue: { type: 'time', value: { time: '+2021-00-00T00:00:00Z', precision: 9 } } }] } }],
+    P2046: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'quantity', value: { amount: '+1234.5678', unit: 'http://www.wikidata.org/entity/Q712226' } } }, rank: 'normal' }],
+    // a quantity whose unit label is unknown is left out (a bare "8,848.86" would mislead), and a somevalue snak is skipped
+    P2044: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'quantity', value: { amount: '+8848.86', unit: 'http://www.wikidata.org/entity/Q999001' } } }, rank: 'normal' }, { mainsnak: { snaktype: 'somevalue' }, rank: 'normal' }],
+    P571: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'time', value: { time: '-0044-03-15T00:00:00Z', precision: 11 } } }, rank: 'normal' }],
+    P576: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'time', value: { time: '+1800-00-00T00:00:00Z', precision: 7 } } }, rank: 'normal' }],
+    P577: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'time', value: { time: '+1990-00-00T00:00:00Z', precision: 8 } } }, rank: 'normal' }],
+    P580: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'time', value: { time: '+2015-06-00T00:00:00Z', precision: 10 } } }, rank: 'normal' }],
+    P225: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'string', value: 'Panthera leo' } }, rank: 'normal' }],
+    P1448: [{ mainsnak: { snaktype: 'value', datavalue: { type: 'monolingualtext', value: { text: 'x', language: 'en' } } }, rank: 'normal' }],
+  };
+  assertEquals(wikidataFacts({ claims }, labels), [
+    'instance of two',
+    'taxon name Panthera leo',
+    'population 12,345 in 2021',
+    'area 1,234.57 square kilometre',
+    `occupation ${['one', 'two', 'three'].slice(0, WIKIDATA_FACT_VALUES - 1).join(', ')} and ${['one', 'two', 'three'][WIKIDATA_FACT_VALUES - 1]}`,
+    'inception 15 March 44 BCE',
+    'dissolved 18th century',
+    'publication date 1990s',
+    'start time June 2015',
+  ]);
+  // the value ids follow the property order, include the unit, skip the deprecated statement and what is not an item
+  assertEquals(wikidataValueIds({ entities: { Q9: { claims } } }, ['Q9']), ['Q2', 'Q99999', 'Q712226', 'Q999001', 'Q1', 'Q3']);
+  // at most WIKIDATA_FACT_MAX properties
+  const many: any = {};
+  for (const [p] of [['P31'], ['P279'], ['P17'], ['P30'], ['P131'], ['P36'], ['P1376'], ['P206'], ['P27'], ['P19'], ['P20'], ['P106'], ['P39'], ['P69']]) many[p] = [item('Q1')];
+  assertEquals(wikidataFacts({ claims: many }, labels).length, WIKIDATA_FACT_MAX);
+  // no claims, no facts
+  assertEquals(wikidataFacts({}, labels), []);
+  assertEquals(wikidataFacts(undefined, labels), []);
 });
 
 Deno.test('wikidata: wbsearchentities ids keep items only (no lexemes or properties)', async () => {
@@ -270,6 +340,14 @@ Deno.test('wikinews: no dateline falls back to touched, no fullurl builds one, p
   assertEquals(out[1].published_at, '2026-05-01', 'an unknown month is not a date');
   assertEquals(wikinewsCandidates(r, 1).length, 1);
   assertEquals(wikinewsCandidates({}, 5), []);
+});
+
+Deno.test('wikinews: crosswords, digests and notes subpages are not articles; a brief is', () => {
+  const page = (pageid: number, title: string) => ({ pageid, ns: 0, title, extract: 'Monday, February 22, 2005 Feel free to use the Wikimedia sites to solve our Wikinews crossword. Please do not fill it out online as it would spoil it for other people; print it out and fill it in at your own leisure! It is long enough to pass the length rule, which is the point of this fixture.', touched: '2005-02-22T00:00:00Z', lastrevid: 1 });
+  const r = { query: { pages: { 1: page(1, 'Crosswords/2005/February/22'), 2: page(2, 'Digest/22November2004'), 3: page(3, 'Florida Governor Jeb Bush gives speech on Hurricane Wilma/Notes'), 4: page(4, 'Plane carrying 160 crashes in Venezuela/Brief'), 5: page(5, 'Notes on a scandal reviewed') } } };
+  assertEquals(wikinewsCandidates(r, 10).map(c => c.external_id), ['4', '5']);
+  for (const t of ['Crosswords/2005/April/2', 'Digest/1December2004', 'Any article/Notes']) assert(WIKINEWS_NOT_AN_ARTICLE_RE.test(t), t);
+  for (const t of ['Crosswords in the age of apps', 'Digest of the week', 'Notes/Any article', 'Plane carrying 160 crashes in Venezuela/Brief']) assert(!WIKINEWS_NOT_AN_ARTICLE_RE.test(t), t);
 });
 
 Deno.test('wikinewsDate: weekday optional, single-digit days padded, unknown months and late datelines ignored', () => {

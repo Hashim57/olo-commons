@@ -36,7 +36,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, looseQuery, rank } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, checkText, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
-import { answerTally, applyFigureCheck, checkLinks, shownAnswer, sourceSummary, timeSensitive, type AnswerTally } from './hygiene.ts';
+import { answerTally, applyFigureCheck, checkLinks, reviewCandidates, shownAnswer, sourceSummary, timeSensitive, type AnswerTally, type ReviewCandidate } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
 const ANON_PER_HOUR = 120, KEYED_PER_HOUR = 3000, MAX_Q = 400, MAX_SENTENCES = 5;
@@ -138,6 +138,8 @@ Deno.serve(async (req) => {
   const logIt = (results_n: number) => sb.from('olo_query_log').insert({ ip_hash: ipHash, q_len: q.length, results: results_n, client: 'answer' + (keyed ? ':keyed' : '') }).then(() => {}, () => {});
   // The day's tally of verdicts (sql/022, issue #76 part 4): counts only, no text. The RPC exists once sql/022 has run; until then the error is ignored.
   const tally = (t: AnswerTally) => sb.rpc('olo_answer_record', t).then(() => {}, () => {});
+  // Sentences Zeus doubted go to the review queue (sql/024, issue #76 part 4): a person decides, and only then does one become gold. The RPC exists once sql/024 has run; until then the error is ignored.
+  const review = (cs: ReviewCandidate[]) => Promise.all(cs.map(c => sb.rpc('olo_review_candidate', c).then(() => {}, () => {}))).then(() => {}, () => {});
 
   if (!passages.length) {
     await logIt(0);
@@ -210,6 +212,7 @@ Deno.serve(async (req) => {
   await markLinks();
   const shown = covered ? shownAnswer(verdicts) : { text: NOT_COVERED_TEXT, shown: 0, hidden: 0, abstained: true };
   await tally(answerTally(verdicts, covered, shown.abstained));
+  await review(reviewCandidates(verdicts, provenance));
   const mode = writer === writers[0] ? 'written' : 'written-fallback';
   let provider = ''; try { provider = new URL(writer.base).hostname; } catch { provider = writer.base; }
 

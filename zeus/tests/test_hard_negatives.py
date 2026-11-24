@@ -124,6 +124,34 @@ def test_value_shift_stays_plausible_and_new():
         assert int(re.search(r"in (\d{4})", new).group(1)) <= bd.MAX_YEAR
 
 
+def test_value_shift_unit_confusion_takes_the_converted_figure_under_the_first_unit():
+    s = "These early penguins stood 1.5 metres (5 feet) tall, weighing over 100 kilograms (220 pounds)."
+    edits = bd.unit_confusion_edits(s)
+    assert [e[2] for e in edits] == ["5 metres", "220 kilograms"]
+    assert edits[0][3] == "unit 1.5 metres (5 feet) -> 5 metres"
+    seen = set()
+    for seed in range(30):
+        new, what = bd.hard_value_shift(s, [s], rng(seed))
+        if what.startswith("unit"):
+            seen.add(new)
+    assert seen >= {"These early penguins stood 5 metres tall, weighing over 100 kilograms (220 pounds).",
+                    "These early penguins stood 1.5 metres (5 feet) tall, weighing over 220 kilograms."}
+    for new in seen:
+        assert bd._contra_ok(s, new, 0, len(new), [s])
+    # a conversion is two units of one family that differ, with different figures; nothing else is one
+    assert bd.unit_confusion_edits("The TGV reached 574.8 km/h (357 mph) on rails.")[0][2] == "357 km/h"
+    assert bd.unit_confusion_edits("The hall is 5 metres (2 lanes) wide.") == []
+    assert bd.unit_confusion_edits("The hall is 5 metres (5 metres) wide.") == []
+    assert bd.unit_confusion_edits("It weighs 2 kg (2 kg) and is 3 m (10 ft) long.")[0][2] == "10 m"
+    assert bd.unit_confusion_edits("The farm covers 40 hectares (99 acres).")[0][2] == "99 hectares"
+    assert bd.unit_confusion_edits("Water boils at 100 °C (212 °F) at sea level.")[0][2] == "212 °C"
+    assert bd.unit_confusion_edits("A 1,000 km (620 mi) road.")[0][2] == "620 km"
+    assert bd.unit_confusion_edits("The box weighs 3 kg (6.6 pounds).")[0][2] == "6.6 kg"
+    # a sentence without a conversion draws exactly as before the rule was added
+    s2 = "The library opened in 1902 and holds 70,000 volumes in its main hall."
+    assert bd.unit_confusion_edits(s2) == []
+
+
 def test_value_shift_refuses_a_value_already_in_a_passage():
     s = "The bridge was completed in 1931 after six years of work on the river."
     passages = [s + " " + " ".join(f"A flood came in {y}." for y in range(1928, 1935) if y != 1931)]
@@ -164,6 +192,24 @@ def test_quantifier_flips():
     assert "all of them passed" in bd.hard_quantifier(s, [s], rng())[0]
     s = "The tax applies at all times across the whole of the country."
     assert bd.hard_quantifier(s, [s], rng()) is None
+
+
+def test_quantifier_makes_a_part_the_whole():
+    # a part of a stated total becomes the whole, which the passage rules out
+    s = "We show that 180 of 202 tasks convert with minimal effort."
+    assert bd.hard_quantifier(s, [s], rng()) == ("We show that all 202 tasks convert with minimal effort.", "quantifier 180 of 202 -> all 202")
+    s = "BenchJack reached near-perfect scores on nine of ten popular agent benchmarks without solving their tasks."
+    assert bd.hard_quantifier(s, [s], rng())[0].startswith("BenchJack reached near-perfect scores on all ten popular agent benchmarks")
+    s = "Belfour stopped 32 of the 33 shots he faced in the game."
+    assert bd.hard_quantifier(s, [s], rng())[0] == "Belfour stopped all 33 shots he faced in the game."
+    s = "Restoring the phase repairs 351 of 391 new errors and 1,200 of 1,500 old ones."
+    assert "all 391 new errors" in bd.hard_quantifier(s, [s], rng())[0] or "all 1,500 old ones" in bd.hard_quantifier(s, [s], rng())[0]
+    # not a count: "one of the", a part equal to or above the total, a percentage, and a sentence the passage states anyway
+    assert bd.hard_quantifier("It is one of the 202 tasks in the benchmark.", ["It is one of the 202 tasks in the benchmark."], rng()) is None
+    assert bd.hard_quantifier("All 202 of 202 tasks convert in the second run.", ["All 202 of 202 tasks convert in the second run."], rng()) is None
+    assert bd.hard_quantifier("The rate was 12 of 100 percent higher than before.", ["The rate was 12 of 100 percent higher than before."], rng()) is None
+    s = "The team won 9 of 12 games this season."
+    assert bd.hard_quantifier(s, [s, "The team won all 12 games this season."], rng()) is None
 
 
 # not_covered generators --------------------------------------------------------------------

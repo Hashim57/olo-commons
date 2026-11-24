@@ -179,6 +179,48 @@ def answer_tally(days=7, key=None, fetch=None):
             "share_zeus_checked": d.get("share_zeus_checked"), "share_zeus_supported": d.get("share_zeus_supported")}
 
 
+FEEDBACK_RPC = "https://bfldflbkebyapfagsxnr.supabase.co/rest/v1/rpc/olo_feedback_stats"
+
+
+def review_queue(key=None, fetch=None):
+    """How many sentences wait for a person, read from the public olo_feedback_stats function: the flags people sent
+    and, since sql/024, the sentences the verifier itself doubted (issue #76 part 4). {"measured": True, "new",
+    "accepted", "taught", "from_people", "from_verifier", "candidates_waiting", "candidates_7d"} or {"measured":
+    False, "reason": ...}. The verifier's own counts are None when sql/024 has not been run (the function then
+    answers without those keys), and the section says so instead of printing a zero. Same key rule and `fetch`
+    hook as answer_tally."""
+    key = key if key is not None else (os.environ.get("OLO_ANON_KEY") or os.environ.get("SUPABASE_ANON_KEY") or "")
+    if not key:
+        return {"measured": False, "reason": "no anon key in OLO_ANON_KEY or SUPABASE_ANON_KEY"}
+    headers = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    if fetch is None:
+        import urllib.error
+        import urllib.request
+
+        def fetch(url, headers, body):
+            req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+    try:
+        status, text = fetch(FEEDBACK_RPC, headers, b"{}")
+    except Exception as e:
+        return {"measured": False, "reason": f"olo_feedback_stats unreachable ({type(e).__name__})"}
+    if status != 200:
+        return {"measured": False, "reason": f"olo_feedback_stats answered {status}"}
+    try:
+        d = json.loads(text)
+    except ValueError:
+        return {"measured": False, "reason": "olo_feedback_stats gave unreadable output"}
+    if not isinstance(d, dict) or "new" not in d:
+        return {"measured": False, "reason": "olo_feedback_stats gave unreadable output"}
+    return {"measured": True, "new": d.get("new"), "accepted": d.get("accepted"), "taught": d.get("taught"),
+            "from_people": d.get("from_people"), "from_verifier": d.get("from_verifier"),
+            "candidates_waiting": d.get("candidates_waiting"), "candidates_7d": d.get("candidates_7d")}
+
+
 def week_window(end):
     return end - timedelta(days=6), end
 
@@ -246,6 +288,7 @@ def summarise(end, rows=None):
         "base": week[-1][2] if week else (rows[-1][2] if rows else None),
         "olo_answers": answers_summary(end),
         "answer_tally": answer_tally(7),
+        "review_queue": review_queue(),
     }
 
 
@@ -467,6 +510,19 @@ def build_pdf(summary, path, workdir):
             "Counts only: no question or answer text is kept (olo_answer_stats, sql/022).", P))
     else:
         story.append(Paragraph(f"What the verifier said about real answers is not measured this week: {_esc(tal.get('reason') or 'no tally')}.", P))
+    rq = summary.get("review_queue") or {}
+    if rq.get("measured"):
+        if rq.get("candidates_waiting") is None:
+            story.append(Paragraph(
+                f"Review queue: {rq.get('new')} flags from people wait for a reviewer; {rq.get('accepted')} have been accepted and {rq.get('taught')} taught to Zeus. "
+                "The verifier's own doubts are not queued yet (sql/024 has not been run).", P))
+        else:
+            story.append(Paragraph(
+                f"Review queue: {rq.get('new')} rows wait for a reviewer, {rq.get('candidates_waiting')} of them sentences the verifier itself doubted "
+                f"({rq.get('candidates_7d')} queued this week); {rq.get('accepted')} rows have been accepted and {rq.get('taught')} taught to Zeus. "
+                "A candidate becomes gold only once a person sets its label (docs/FEEDBACK.md).", P))
+    else:
+        story.append(Paragraph(f"The review queue is not measured this week: {_esc(rq.get('reason') or 'no counts')}.", S))
 
     story.append(Paragraph("What changed this week", H2))
     cs = summary["commits"]

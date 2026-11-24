@@ -13,6 +13,8 @@ Trimming only removed things; nothing was rewritten except where noted.
 | `wikipedia.disambiguation.json` | `en.wikipedia.org/api/rest_v1/page/summary/Mercury` | nothing |
 | `wikipedia.search.json` | `en.wikipedia.org/w/api.php?action=query&list=search&srsearch=coral%20reef` | first three hits kept |
 | `wikidata.entities.json` | `wbgetentities&ids=Q42\|Q1&props=info\|labels\|descriptions\|sitelinks&languages=en` | sitelinks cut to five per entity; the dash in "(1952-2001)" written as a hyphen (repo rule) |
+| `wikidata.claims.json` | `wbgetentities&ids=Q107642388\|Q6751402\|Q14844096&props=claims` (23 November 2026) | only the properties in WIKIDATA_FACT_PROPERTIES kept, each statement cut to mainsnak, rank and a P585 qualifier; no references |
+| `wikidata.labels.json` | `wbgetentities&ids=Q5\|Q159\|...&props=labels&languages=en\|mul` (the ten items the claims above point at) | nothing |
 | `archive_org.json` | `archive.org/advancedsearch.php?q=mediatype:texts AND description:*&rows=6&page=3` | one court judgment that names a private litigant removed |
 | `arxiv.xml` | `export.arxiv.org/api/query?id_list=1706.03762,2005.14165,1207.7214` | the 2005.14165 entry removed; author lists cut to three |
 | `arxiv.latex.xml` | `export.arxiv.org/api/query?search_query=cat:math.CO&sortBy=submittedDate&max_results=6` | three of six entries kept; author lists cut to three |

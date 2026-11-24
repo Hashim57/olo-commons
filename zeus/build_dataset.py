@@ -434,6 +434,8 @@ def count_gold(gold_dir, skip_eval=False):
 # for a handful of rows; bump it with the next rule that moves the set.
 # 2026-11-22: hedge_drop gained the hedges of a conclusion ("appears to be", "seems to be", "is likely to be"
 # and their past and perfect forms). Same reasoning: only sentences that match them change.
+# 2026-11-24: value_shift gained the unit confusion ("1.5 metres (5 feet)" -> "5 metres"). Same reasoning:
+# a sentence without a bracketed conversion draws exactly as before.
 # ---------------------------------------------------------------------------
 HARD_NEGATIVES_VERSION = "hard-v2"
 MAX_YEAR = 2026  # a fixed bound for shifted years (not today's date), so builds are deterministic
@@ -664,12 +666,52 @@ def _digits(tok):
     return len(tok.replace(",", "").split(".")[0])
 
 
+# A measurement written with its conversion in brackets: "1.5 metres (5 feet)", "100 kilograms (220 pounds)",
+# "574.8 km/h (357 mph)". The two units must differ; the claim then takes the converted figure with the
+# first unit ("5 metres"), which is a wrong value made of two right figures, the slip a reader makes and a
+# digit check cannot see (gold-2026-11-24, kind unit_confusion). Units are listed by family so that the
+# bracket really is a conversion and not a second measurement ("5 metres (2 lanes)").
+UNIT_FAMILIES = [
+    ("metres?|meters?|m|feet|foot|ft|kilometres?|kilometers?|km|miles?|mi|centimetres?|centimeters?|cm|inches|inch|in|yards?|yd|millimetres?|millimeters?|mm"),
+    ("kilograms?|kg|pounds?|lb|lbs|grams?|g|ounces?|oz|tonnes?|tons?|stone"),
+    ("square (?:kilometres?|kilometers?|miles?|metres?|meters?|feet)|sq (?:km|mi|m|ft)|km2|hectares?|ha|acres?"),
+    ("litres?|liters?|l|gallons?|gal|millilitres?|milliliters?|ml|cubic (?:metres?|meters?|feet)"),
+    ("km/h|kph|mph|miles per hour|kilometres per hour|kilometers per hour|knots?|m/s"),
+    ("°C|°F|degrees Celsius|degrees Fahrenheit|C|F"),
+]
+UNIT_CONVERSION_RE = re.compile(
+    r"(?<![\w.,/=\-])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?) ?(" + "|".join(UNIT_FAMILIES) + r")"
+    r" \((?:about |approximately |roughly |some |c\. |nearly |over |around )?(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?) ?(" + "|".join(UNIT_FAMILIES) + r")\)(?![\w/\-])")
+
+
+def _unit_family(unit):
+    for i, fam in enumerate(UNIT_FAMILIES):
+        if re.fullmatch(fam, unit):
+            return i
+    return None
+
+
+def unit_confusion_edits(s):
+    """(start, end, replacement, what) for each conversion in s: the bracketed figure put under the first
+    unit, the bracket dropped. Only when the two units are of one family and differ, and the figures differ."""
+    out = []
+    for m in UNIT_CONVERSION_RE.finditer(s):
+        v1, u1, v2, u2 = m.group(1), m.group(2), m.group(3), m.group(4)
+        if u1 == u2 or v1 == v2 or _unit_family(u1) is None or _unit_family(u1) != _unit_family(u2):
+            continue
+        repl = f"{v2} {u1}" if s[m.start(2) - 1] == " " else f"{v2}{u1}"
+        out.append((m.start(), m.end(), repl, f"unit {m.group(0)} -> {repl}"))
+    return out
+
+
 def hard_value_shift(s, texts, rng):
     """A year, month or number changed to a plausible neighbour rather than an absurd one: a year
     by one to three (never past MAX_YEAR), a month to one of the three on either side, a number by
-    a fifth to a half of itself with the same number of digits (a percentage stays at most 100).
+    a fifth to a half of itself with the same number of digits (a percentage stays at most 100),
+    or (2026-11-24) a measurement given with its conversion in brackets rewritten with the converted
+    figure under the first unit ("1.5 metres (5 feet)" -> "5 metres"; unit_confusion_edits).
     The new value must appear in no passage, so the claim cannot be another stated fact."""
-    edits = []
+    edits = unit_confusion_edits(s)
     for m in YEAR_RE.finditer(s):
         if s[m.end():m.end() + 1] in ("-", "\u2013", "/", "s") or s[max(0, m.start() - 1):m.start()] in ("-", "\u2013", "/"):
             continue  # ranges (1990-1995) and decades (1990s) are left alone
@@ -772,11 +814,32 @@ def hard_entity_swap(s, own_text, texts, rng):
     return None
 
 
+SMALL_COUNTS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+                "eleven": 11, "twelve": 12, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "hundred": 100}
+# "180 of 202 tasks", "nine of ten benchmarks", "32 of the 33 shots": a part of a stated total
+PART_OF_RE = re.compile(r"\b(\d{1,3}(?:,\d{3})*|\d+|" + "|".join(SMALL_COUNTS) + r") of (?:the |its |their |all )?(\d{1,3}(?:,\d{3})*|\d+|" + "|".join(SMALL_COUNTS) + r")(?= [a-z])", re.I)
+
+
+def _count(word):
+    w = word.lower().replace(",", "")
+    return SMALL_COUNTS.get(w) if w in SMALL_COUNTS else (int(w) if w.isdigit() else None)
+
+
 def hard_quantifier(s, texts, rng):
     """A quantifier turned to its opposite: "all X" -> "no X", "all of the" -> "none of the",
     "none of" -> "all of", "most X" -> "few X". Fixed phrases (at all, after all, all but, the most)
-    are left alone."""
+    are left alone. Since 2026-11-23 also a part made the whole: "180 of 202 tasks convert" ->
+    "all 202 tasks convert", "nine of ten benchmarks" -> "all ten benchmarks", "32 of the 33 shots" ->
+    "all 33 shots", only when the part is smaller than the total (so "all" is false), and not for
+    "one of the" (an example, not a count) or a percentage."""
     edits = []
+    for m in PART_OF_RE.finditer(s):
+        part, total = _count(m.group(1)), _count(m.group(2))
+        if part is None or total is None or part >= total or total < 2 or m.group(1).lower() == "one":
+            continue
+        if re.match(r"\s*(?:%|percent\b|per cent\b)", s[m.end():]):
+            continue
+        edits.append((m.start(), m.end(), "all " + m.group(2), f"{m.group(1)} of {m.group(2)} -> all {m.group(2)}"))
     for m in re.finditer(r"\b[Aa]ll (?=of\b)", s):
         edits.append((m.start(), m.start() + 3, "none", "all of -> none of"))
     # "All X ..." and "Most X ..." only as the subject at the start of the sentence, where "No X" and

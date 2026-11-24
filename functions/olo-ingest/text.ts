@@ -337,12 +337,50 @@ export function isItemRecord(body: unknown): boolean {
   return COPYRIGHT_STATUS_RE.test(b) || DEDICATION_RE.test(b) || ETEXT_CREDIT_RE.test(b) || (DIMENSIONS_RE.test(b) && WEIGHT_RE.test(b));
 }
 
+export const LIBRARY_MIN_HEADERS = 3;  // a body with fewer upper-case field headers than this is read as prose
+export const LIBRARY_HEADER_WITHIN = 120; // ...and the first header must come this early (right after the title), or the capitals are prose
+
+/** The field headers of a Library of Congress item page as a mirror copies them, in capitals, each followed by its value. */
+export const LIBRARY_HEADER_RE = /(?:^|\s)(MEDIUM|CREATED \/ PUBLISHED|CONTRIBUTOR NAMES|SUBJECTS|NOTES|FORMAT|SOURCE|REPOSITORY|REPRODUCTION NUMBER|CALL NUMBER|DIGITAL ID|LCCN|CREDIT|RIGHTS|PROVENANCE|PART OF)(?=\s)/g;
+
+/**
+ * True when a body is a mirrored library record, not a description: the
+ * fields of a Library of Congress item page copied into the Internet Archive's
+ * description field with their headers in capitals, "L'Elegante valse
+ * brillante MEDIUM 1 score CREATED / PUBLISHED 1843 SOURCE http://www.loc.gov/
+ * item/2023798348/ Digital id: ['M1.A12 I'] CREDIT (Library of Congress) ...
+ * RIGHTS The Library of Congress Music for the Nation: American Sheet Music,
+ * ca. 1820-1860 collection is in the public domain ... PROVENANCE (this copy)
+ * Mirrored from loc.gov with no processing." One mirror began uploading the
+ * collection (some 60,000 pieces of sheet music) on 22 November 2026 and the
+ * random walk stored 4 in two days. The headers carry no colon, so the
+ * catalogue rule does not see them; the rights paragraph is long, so the
+ * rights rule does not either; and the loc.gov link leaves more than enough
+ * text behind for the pointer rule. What the record says beyond the title
+ * (one score, a year) is in the title and the date already, and the rest is
+ * the collection's licence and the mirror's own provenance. The rule: at least
+ * LIBRARY_MIN_HEADERS distinct headers, the first within LIBRARY_HEADER_WITHIN
+ * characters of the start, and a rights sentence (RIGHTS_RE) somewhere, since
+ * every such record carries one. On the live Commons of 23 November 2026
+ * (14,517 atoms) exactly the 4 records matched; no other atom of any source
+ * has even two of these headers, and prose written in capitals would need
+ * three of them in its first line and a rights sentence as well.
+ */
+export function isLibraryRecord(body: unknown): boolean {
+  const b = oncely(clean(body));
+  if (!b) return false;
+  const found = new Set<string>(); let first = -1;
+  for (const m of b.matchAll(LIBRARY_HEADER_RE)) { found.add(m[1]); if (first < 0) first = m.index! + m[0].length - m[1].length; }
+  if (found.size < LIBRARY_MIN_HEADERS || first > LIBRARY_HEADER_WITHIN) return false;
+  return b.split(/[.!?]\s+/).some(s => RIGHTS_RE.test(s));
+}
+
 /**
  * True when an atom would carry no knowledge: its body is a label, one word
  * or one line repeated, a notice that points elsewhere (isLinkNotice), a
  * catalogue record (isCatalogueRecord), a shelf mark (isShelfMark), a rights
  * notice (isRightsNotice), a file record (isFileRecord), an item record
- * (isItemRecord), or says nothing beyond the title, the authors and a
+ * (isItemRecord), a mirrored library record (isLibraryRecord), or says nothing beyond the title, the authors and a
  * physical description (withoutPhysicalDescription).
  * The Internet Archive search returns many uploads whose description is the
  * identifier, a file name or a word typed twice ("new book new book", "fhfh
@@ -368,6 +406,7 @@ export function isStub(title: unknown, summary: unknown, content: unknown, autho
   if (isRightsNotice(body)) return true;
   if (isFileRecord(body)) return true;
   if (isItemRecord(body)) return true;
+  if (isLibraryRecord(body)) return true;
   // What the body says once the physical description, the title and the authors are taken out of it.
   let rest = ' ' + withoutPhysicalDescription(body).toLowerCase() + ' ';
   const names = [title, ...(Array.isArray(authors) ? authors : [])].map(x => clean(x).toLowerCase()).filter(x => x.length >= 3);

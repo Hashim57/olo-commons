@@ -91,6 +91,22 @@ def test_real_use_tally_is_measured_or_says_why_not():
     assert seen["url"].endswith("/rpc/olo_answer_stats") and seen["auth"] == "Bearer k" and b'"p_days": 7' in seen["body"]
 
 
+def test_review_queue_is_measured_or_says_why_not():
+    assert wr.review_queue(key="")["reason"].startswith("no anon key")
+    assert wr.review_queue(key="k", fetch=lambda u, h, b: (503, "")) == {"measured": False, "reason": "olo_feedback_stats answered 503"}
+    assert "unreadable" in wr.review_queue(key="k", fetch=lambda u, h, b: (200, "[]"))["reason"]
+    before = wr.review_queue(key="k", fetch=lambda u, h, b: (200, '{"total": 3, "new": 2, "accepted": 1, "rejected": 0, "taught": 1}'))
+    assert before["measured"] and before["new"] == 2 and before["candidates_waiting"] is None
+    seen = {}
+
+    def ok(u, h, b):
+        seen.update(url=u, auth=h["Authorization"])
+        return 200, '{"total": 9, "new": 5, "accepted": 3, "rejected": 1, "taught": 2, "from_people": 4, "from_verifier": 5, "candidates_waiting": 4, "candidates_7d": 5}'
+    after = wr.review_queue(key="k", fetch=ok)
+    assert after["candidates_waiting"] == 4 and after["from_verifier"] == 5 and after["taught"] == 2
+    assert seen["url"].endswith("/rpc/olo_feedback_stats") and seen["auth"] == "Bearer k"
+
+
 def test_a_report_builds_with_and_without_the_tally(tmp_path, monkeypatch):
     monkeypatch.delenv("OLO_ANON_KEY", raising=False)
     monkeypatch.delenv("SUPABASE_ANON_KEY", raising=False)
