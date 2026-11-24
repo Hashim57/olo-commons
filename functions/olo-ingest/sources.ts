@@ -377,12 +377,22 @@ export function wikinewsDate(text: string): string | undefined {
   return `${m[3]}-${String(mon + 1).padStart(2, '0')}-${m[2].padStart(2, '0')}`;
 }
 
+/**
+ * Wikinews pages in the article namespace that are not news: the daily crossword ("Crosswords/2005/February/22",
+ * whose text is the same invitation to print it out every day), the digests of 2004 (an index of articles, not
+ * one), and a writer's working notes kept as a subpage of an article ("... speech on Hurricane Wilma/Notes").
+ * generator=random hands them out like any other page; nine crosswords, a digest and a notes page were stored
+ * between 27 October and 24 November 2026. A brief ("... crashes in Venezuela/Brief") is a real short article
+ * and stays.
+ */
+export const WIKINEWS_NOT_AN_ARTICLE_RE = /^(Crosswords|Digest)\/|\/Notes$/;
+
 /** Wikinews (MediaWiki API, prop=extracts|info|revisions) pages -> candidates. The dateline is the fact's date. */
 export function wikinewsCandidates(r: any, n: number): Candidate[] {
   const out: Candidate[] = [];
   for (const p of Object.values((r?.query?.pages || {}) as Record<string, any>)) {
     const text = clean(p?.extract || '');
-    if (!p?.title || text.length < 200 || /^(Wikinews|Category|Template|Portal):/.test(p.title)) continue;
+    if (!p?.title || text.length < 200 || /^(Wikinews|Category|Template|Portal):/.test(p.title) || WIKINEWS_NOT_AN_ARTICLE_RE.test(String(p.title))) continue;
     const date = wikinewsDate(text) || (p.touched ? String(p.touched).slice(0, 10) : undefined);
     const body = text.replace(/^(?:[A-Z][a-z]+day,\s*)?[A-Z][a-z]+\s+\d{1,2},\s+\d{4}\s*/, '');
     out.push({ external_id: String(p.pageid), url: p.fullurl || `https://en.wikinews.org/wiki/${encodeURIComponent(String(p.title).replace(/ /g, '_'))}`, title: clean(p.title).slice(0, 200), summary: body.slice(0, 600), content: body, published_at: date, licence: 'CC BY 2.5', lang: 'en',

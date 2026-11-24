@@ -4,7 +4,7 @@
 // reconstructed from each API's documentation where the live API could not be
 // reached; tests/fixtures/ingest/README.md says which is which.
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, WIKINEWS_NOT_AN_ARTICLE_RE, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 import { dataGovCandidates } from '../functions/olo-ingest/datagov.ts';
 import { isCatalogueRecord, isStub } from '../functions/olo-ingest/text.ts';
 
@@ -340,6 +340,14 @@ Deno.test('wikinews: no dateline falls back to touched, no fullurl builds one, p
   assertEquals(out[1].published_at, '2026-05-01', 'an unknown month is not a date');
   assertEquals(wikinewsCandidates(r, 1).length, 1);
   assertEquals(wikinewsCandidates({}, 5), []);
+});
+
+Deno.test('wikinews: crosswords, digests and notes subpages are not articles; a brief is', () => {
+  const page = (pageid: number, title: string) => ({ pageid, ns: 0, title, extract: 'Monday, February 22, 2005 Feel free to use the Wikimedia sites to solve our Wikinews crossword. Please do not fill it out online as it would spoil it for other people; print it out and fill it in at your own leisure! It is long enough to pass the length rule, which is the point of this fixture.', touched: '2005-02-22T00:00:00Z', lastrevid: 1 });
+  const r = { query: { pages: { 1: page(1, 'Crosswords/2005/February/22'), 2: page(2, 'Digest/22November2004'), 3: page(3, 'Florida Governor Jeb Bush gives speech on Hurricane Wilma/Notes'), 4: page(4, 'Plane carrying 160 crashes in Venezuela/Brief'), 5: page(5, 'Notes on a scandal reviewed') } } };
+  assertEquals(wikinewsCandidates(r, 10).map(c => c.external_id), ['4', '5']);
+  for (const t of ['Crosswords/2005/April/2', 'Digest/1December2004', 'Any article/Notes']) assert(WIKINEWS_NOT_AN_ARTICLE_RE.test(t), t);
+  for (const t of ['Crosswords in the age of apps', 'Digest of the week', 'Notes/Any article', 'Plane carrying 160 crashes in Venezuela/Brief']) assert(!WIKINEWS_NOT_AN_ARTICLE_RE.test(t), t);
 });
 
 Deno.test('wikinewsDate: weekday optional, single-digit days padded, unknown months and late datelines ignored', () => {
