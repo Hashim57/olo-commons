@@ -140,7 +140,7 @@ const discover: Record<string, (n: number, src: Source) => Promise<Candidate[]>>
     const ids = (r.query?.random || []).map((x: any) => x.title).filter((t: string) => /^Q\d+$/.test(t));
     return wikidataByIds(ids, n);
   },
-  // Internet Archive: texts that carry a licence URL, kept only under an open licence (sources.ts, licence.ts; issue #50).
+  // Internet Archive: texts under an open licence URL outside the uploader collections, most downloaded first, kept only under an open licence (sources.ts, licence.ts; issue #50).
   async archive_org(n) {
     const page = 1 + Math.floor(Math.random() * 200);
     const r: any = await get(archiveSearchUrl(n, page));

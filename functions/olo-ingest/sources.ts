@@ -269,20 +269,54 @@ export function wikidataSearchIds(r: any): string[] {
 }
 
 /**
- * The search the Internet Archive connector runs: texts with a description and a
- * licence URL. Until 2026-11-10 the query asked for any text with a description
- * and the mapper stored "Public domain / as stated by the Archive" for the 88
- * percent of items that carry no licence URL at all, which was a guess: the
- * Archive also lends in-copyright library scans, and 83 percent of what the
- * source gave the Commons was uploader junk that the quality gate in text.ts
- * later had to learn to refuse (issue #50). The Archive's own CC and public
- * domain marks live in `licenseurl`, so asking for it up front gives the atom
- * its real licence and keeps most of that junk from ever reaching the gate.
- * Four times the budget is requested because the mapper then refuses the items
- * whose licence is not open (NC, ND, custom).
+ * The search the Internet Archive connector runs: texts with a description and
+ * an open licence URL, outside the uploader collections, most downloaded first.
+ * Until 2026-11-10 the query asked for any text with a description and the
+ * mapper stored "Public domain / as stated by the Archive" for the 88 percent
+ * of items that carry no licence URL at all, which was a guess: the Archive
+ * also lends in-copyright library scans, and 83 percent of what the source gave
+ * the Commons was uploader junk that the quality gate in text.ts later had to
+ * learn to refuse (issue #50). The Archive's own CC and public domain marks
+ * live in `licenseurl`, so asking for it up front gives the atom its real
+ * licence. The mapper still refuses every item whose licence is not open
+ * (licence.ts), whatever the query says.
+ *
+ * Measured on the live search on 2026-11-25 (issue #50, proposal 2), each
+ * query sampled over 320 to 480 docs from random pages, run through
+ * archiveCandidates and the ingest gate (isStub, hasEmailAddress,
+ * isCourtRecord): `licenseurl:*` alone kept 17 percent of the docs fetched,
+ * and of what it kept, 13 of 81 came from the Community Texts buckets
+ * (`opensource`, `community`, `opensource_media`), where the last day's stored
+ * atoms were a tender-portal advert, a fan-fiction collection and a journal
+ * article an uploader had marked public domain. Three things change:
+ * - the licence is asked for in the query (`*publicdomain*`, `*zero*`, `*by*`
+ *   and not `*nc*` or `*nd*`; the Archive's search refuses wildcards with a
+ *   slash in them, so this is the closest the query can come to licence.ts,
+ *   which keeps the exact reading);
+ * - the Community Texts buckets are left out, and so is `publicsafetycode`,
+ *   whose descriptions say the document is "made available on a noncommercial
+ *   basis" whatever the licence URL says;
+ * - the results are sorted by downloads, descending. The connector reads a
+ *   random page out of 200, so it only ever sees the first 8,000 results, and
+ *   without a sort that window is whatever order the index happens to hold:
+ *   with the collections left out and no sort, 5 of 400 docs passed the
+ *   licence gate (US federal court dockets and an arXiv mirror, neither under
+ *   an open licence); newest first kept 5 percent (one library's bulk
+ *   uploads); most downloaded first kept 45 to 52 percent across three
+ *   samples, from americana, the CIA reading room, national libraries,
+ *   folkscanomy and books by language.
  */
+export const ARCHIVE_QUERY = 'mediatype:texts AND description:* AND licenseurl:(*publicdomain* OR *zero* OR *by*) AND NOT licenseurl:(*nc* OR *nd*) AND NOT collection:(opensource OR community OR opensource_media OR publicsafetycode)';
+
 export function archiveSearchUrl(n: number, page: number): string {
-  return `https://archive.org/advancedsearch.php?q=mediatype%3Atexts+AND+description%3A*+AND+licenseurl%3A*&fl%5B%5D=identifier&fl%5B%5D=title&fl%5B%5D=description&fl%5B%5D=creator&fl%5B%5D=date&fl%5B%5D=licenseurl&rows=${Math.min(n * 4, 40)}&page=${page}&output=json`;
+  const p = new URLSearchParams();
+  p.set('q', ARCHIVE_QUERY);
+  for (const f of ['identifier', 'title', 'description', 'creator', 'date', 'licenseurl']) p.append('fl[]', f);
+  p.append('sort[]', 'downloads desc');
+  p.set('rows', String(Math.min(n * 4, 40)));
+  p.set('page', String(page));
+  p.set('output', 'json');
+  return `https://archive.org/advancedsearch.php?${p.toString()}`;
 }
 
 /**

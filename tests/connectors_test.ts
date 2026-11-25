@@ -4,7 +4,7 @@
 // reconstructed from each API's documentation where the live API could not be
 // reached; tests/fixtures/ingest/README.md says which is which.
 import { assert, assertEquals } from './_assert.ts';
-import { archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, WIKINEWS_NOT_AN_ARTICLE_RE, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { ARCHIVE_QUERY, archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, WIKINEWS_NOT_AN_ARTICLE_RE, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 import { dataGovCandidates } from '../functions/olo-ingest/datagov.ts';
 import { isCatalogueRecord, isStub } from '../functions/olo-ingest/text.ts';
 
@@ -165,11 +165,17 @@ Deno.test('wikidata: the random walk asks for a full batch of 50 and wbgetentiti
 
 /* ---------- archive_org ---------- */
 
-Deno.test('archive_org: the search asks for texts with a description and a licence URL, four times the budget, capped at 40 rows', () => {
+Deno.test('archive_org: the search asks for texts with a description and an open licence URL outside the uploader collections, most downloaded first, four times the budget, capped at 40 rows', () => {
   const u = new URL(archiveSearchUrl(5, 17));
   assertEquals(u.origin + u.pathname, 'https://archive.org/advancedsearch.php');
-  assertEquals(u.searchParams.get('q'), 'mediatype:texts AND description:* AND licenseurl:*');
+  const q = u.searchParams.get('q')!;
+  assertEquals(q, ARCHIVE_QUERY);
+  assert(q.startsWith('mediatype:texts AND description:* AND '), 'texts with a description, as before');
+  assert(q.includes('licenseurl:(*publicdomain* OR *zero* OR *by*) AND NOT licenseurl:(*nc* OR *nd*)'), 'the open licences are asked for in the query (issue #50)');
+  assert(!/licenseurl:\*[^ ]*\//.test(q), 'no wildcard with a slash in it: the Archive search answers those with a backend error');
+  assert(q.includes('NOT collection:(opensource OR community OR opensource_media OR publicsafetycode)'), 'the Community Texts buckets and the noncommercial standards mirror are left out');
   assertEquals(u.searchParams.getAll('fl[]'), ['identifier', 'title', 'description', 'creator', 'date', 'licenseurl']);
+  assertEquals(u.searchParams.getAll('sort[]'), ['downloads desc'], 'a random page out of 200 only ever sees the first 8,000 results, so they are the most downloaded');
   assertEquals(u.searchParams.get('rows'), '20');
   assertEquals(u.searchParams.get('page'), '17');
   assertEquals(u.searchParams.get('output'), 'json');
