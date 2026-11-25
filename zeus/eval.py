@@ -172,7 +172,7 @@ def score_by_edit(examples, answers):
             continue
         # since 2026-11-23 a name edit that is not a name swap (quality.malformed_name_edit) is scored apart, so a
         # "not covered" answer to a nonsense claim is not read as a missed name contradiction
-        if k == "name" and quality.malformed_name_edit(ex.get("rationale", ""), [p.get("text", "") for p in ex.get("passages", [])]):
+        if k == "name" and is_malformed_name_edit(ex):
             k = "name_malformed"
         pred = ans if isinstance(ans, dict) else parse(ans or "")
         d = kinds.setdefault(k, {"n": 0, "correct": 0, "wrong": {}})
@@ -187,14 +187,42 @@ def score_by_edit(examples, answers):
             for k, d in sorted(kinds.items())}
 
 
+def is_malformed_name_edit(ex):
+    """True for a contradicted line of the first split made by the name rule that is not a name swap (the word
+    taken out was a sentence opener, or the word put in was a paper or article title; quality.malformed_name_edit).
+    These lines stay in the frozen file and in the headline, and score_by_edit scores them as name_malformed."""
+    return edit_kind(ex) == "name" and bool(quality.malformed_name_edit(ex.get("rationale", ""), [p.get("text", "") for p in ex.get("passages", [])]))
+
+
+def score_well_formed(examples, answers):
+    """score() over the lines that are not malformed name edits, with "left_out" saying how many were, or None
+    when the split has none (then the headline already is this number). Added on 2026-11-25, reading v31: the
+    first version trained without the malformed name edits (build_dataset.drop_malformed_name_edits, 2026-11-23)
+    scored 0.915 on the first split against v30's 0.985, and 15 of its 17 misses were the 17 malformed lines,
+    called not covered, which is the right answer to a claim that swaps a sentence opener for a paper title. The
+    headline stays as it is, comparable with v0 to v30 on the same frozen file; this number says how the model
+    does on the lines that are contradictions."""
+    keep = [(ex, ans) for ex, ans in zip(examples, answers) if not is_malformed_name_edit(ex)]
+    left_out = len(examples) - len(keep)
+    if not left_out:
+        return None
+    r = score([ex for ex, _ in keep], [ans for _, ans in keep])
+    r["left_out"] = left_out
+    return r
+
+
 def split_report(examples, answers):
     """score() plus, for a split with patterns, by_kind (or by_edit for the first split, whose contradicted
-    lines name their edit in the rationale), and the split's version when its lines carry one."""
+    lines name their edit in the rationale, and then well_formed, the same numbers without the malformed name
+    edits), and the split's version when its lines carry one."""
     r = score(examples, answers)
     if any("kind" in ex for ex in examples):
         r["by_kind"] = score_by_kind(examples, answers)
     elif any(edit_kind(ex) for ex in examples):
         r["by_edit"] = score_by_edit(examples, answers)
+        wf = score_well_formed(examples, answers)
+        if wf:
+            r["well_formed"] = wf
     versions = sorted({ex["version"] for ex in examples if ex.get("version")})
     if versions:
         r["version"] = versions[0] if len(versions) == 1 else versions
