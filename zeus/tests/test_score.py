@@ -115,3 +115,30 @@ def test_by_edit_scores_a_name_edit_that_is_no_name_swap_apart():
     answers = [ans("contradicted", "founded in 1971"), ans("not_covered"), ans("not_covered")]
     r = ev.score_by_edit(exs, answers)
     assert r == {"name": {"n": 1, "accuracy": 1.0, "wrong": {}}, "name_malformed": {"n": 2, "accuracy": 0.0, "wrong": {"not_covered": 2}}}
+
+
+def test_well_formed_scores_the_split_without_the_malformed_name_edits():
+    """v31 (2026-11-24) scored 0.915 on the first split with 15 of its 17 misses on the 17 malformed name edits
+    the frozen file still holds; well_formed is the same report without those lines, and the headline is unchanged."""
+    def made(what, passage):
+        e = ex("contradicted", claim="x")
+        e["rationale"] = f"The passage gives a different value ({what})."
+        e["passages"] = [{"id": "p1", "source": "s", "url": "u", "text": passage}]
+        return e
+    exs = [made("name Hart -> Smith", "Founded by Hart in 1971."),
+           made("name However -> Utah Man pleads guilty in wife's death", "It grew. However, it stalled."),
+           made("name Rathcoole -> Gaitana (singer", "The depot in Rathcoole closed."),
+           ex("supported"), ex("not_covered", claim="Hart was born in Washington.")]
+    answers = [ans("contradicted", "Hart"), ans("not_covered"), ans("not_covered"), ans("supported", "founded in 1971"), ans("not_covered")]
+    assert [ev.is_malformed_name_edit(e) for e in exs] == [False, True, True, False, False]
+    rep = ev.split_report(exs, answers)
+    assert rep["label_accuracy"] == 0.6, "the headline counts the two malformed lines as misses, as it did for v0 to v31"
+    wf = rep["well_formed"]
+    assert wf["n"] == 3 and wf["left_out"] == 2 and wf["label_accuracy"] == 1.0
+    assert wf["rates"]["contradicted"] == {"tpr": 1.0, "tnr": 1.0}
+    assert set(wf) == set(ev.score(exs, answers)) | {"left_out"}, "the same fields as score(), plus the count left out"
+    # a split with no malformed line gets no well_formed block: the headline already is that number
+    plain = [exs[0], exs[3], exs[4]]
+    plain_answers = [answers[0], answers[3], answers[4]]
+    assert ev.score_well_formed(plain, plain_answers) is None
+    assert "well_formed" not in ev.split_report(plain, plain_answers)

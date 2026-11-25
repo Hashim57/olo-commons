@@ -78,7 +78,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     sys.path.insert(0, os.path.join(work, "zeus"))
     sys.path.insert(0, os.path.join(work, "zeus", "cloud"))
     import recipe  # noqa: E402
-    from eval import evidence_ok, parse, score, score_by_edit, score_by_kind, LABELS  # noqa: E402
+    from eval import evidence_ok, parse, score, score_by_edit, score_by_kind, score_well_formed, LABELS  # noqa: E402
 
     data = os.path.join(work, "zeus", "data")
 
@@ -204,6 +204,11 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     by_edit = score_by_edit(evals, answers)
     if by_edit:
         report["by_edit"] = by_edit
+        # and the same numbers without the malformed name edits the file still holds (eval.score_well_formed, since
+        # 2026-11-25: v31's 0.915 was 0.989 on the lines that are contradictions); the headline stays comparable
+        well_formed = score_well_formed(evals, answers)
+        if well_formed:
+            report["well_formed"] = well_formed
 
     out = os.path.join(work, "out")
     model.save_pretrained(os.path.join(out, "peft"))
