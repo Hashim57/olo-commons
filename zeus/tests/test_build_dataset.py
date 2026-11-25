@@ -303,3 +303,51 @@ def test_train_drops_name_edits_that_are_no_name_swap_and_counts_them():
     kept, n, why = bd.drop_malformed_name_edits(rows)
     assert n == 2 and why == {"not_a_name": 1, "title_not_name": 1}
     assert [r["rationale"][-20:] for r in kept] == [rows[2]["rationale"][-20:], rows[3]["rationale"][-20:], rows[4]["rationale"][-20:]]
+
+
+def test_fetch_page_retries_a_stalled_export_page_then_succeeds():
+    """Run 42 (2026-11-25) lost a training day to one export page that timed out once; fetch_page retries it."""
+    import requests
+    from build_dataset import fetch_page
+
+    class Resp:
+        def __init__(self, code):
+            self.status_code = code
+        def raise_for_status(self):
+            if self.status_code >= 400:
+                raise requests.exceptions.HTTPError(str(self.status_code))
+
+    calls, waits = [], []
+    outcomes = [requests.exceptions.ReadTimeout("read timed out"), Resp(503), Resp(200)]
+    def do():
+        calls.append(1)
+        o = outcomes[len(calls) - 1]
+        if isinstance(o, Exception):
+            raise o
+        return o
+    r = fetch_page(do, sleep=waits.append)
+    assert r.status_code == 200 and len(calls) == 3 and waits == [5, 15]
+
+
+def test_fetch_page_gives_up_after_the_last_attempt_and_never_retries_a_4xx():
+    import pytest, requests
+    from build_dataset import fetch_page
+
+    waits = []
+    def timeout():
+        raise requests.exceptions.ReadTimeout("read timed out")
+    with pytest.raises(requests.exceptions.ReadTimeout):
+        fetch_page(timeout, sleep=waits.append)
+    assert waits == [5, 15, 45], "four attempts, three waits"
+
+    class Resp:
+        status_code = 404
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError("404")
+    calls = []
+    def not_found():
+        calls.append(1)
+        return Resp()
+    with pytest.raises(requests.exceptions.HTTPError):
+        fetch_page(not_found, sleep=waits.append)
+    assert len(calls) == 1, "a 4xx is raised at once"

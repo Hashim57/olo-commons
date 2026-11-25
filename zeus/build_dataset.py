@@ -19,7 +19,7 @@ same atom ids and so the same frozen eval split, but shorter passages than a
 live build, and meta.json says "from": "snapshot" so the counts are not mistaken
 for a live build. The cloud training job always builds from the live export.
 """
-import argparse, hashlib, json, os, random, re, sys
+import argparse, hashlib, json, os, random, re, sys, time
 from datetime import datetime, timezone
 import requests
 
@@ -37,12 +37,40 @@ def enough(atoms, max_atoms):
     return len(quality.usable_atoms(atoms)[0]) >= max_atoms
 
 
+# One page of the export is retried this many times in all, waiting FETCH_BACKOFF[i] seconds before attempt i + 2.
+# Added on 2026-11-25: run 42 (v32) stopped in the cloud job's second build when one keyless export page read
+# nothing for 60 s (ReadTimeout on bfldflbkebyapfagsxnr.supabase.co); the same endpoint answered in about a second
+# before and after, and the workflow's own build two minutes earlier had read every page. A transient stall of one
+# request should not cost a training day.
+FETCH_ATTEMPTS = 4
+FETCH_BACKOFF = (5, 15, 45)
+RETRY_STATUS = {429, 500, 502, 503, 504}
+
+
+def fetch_page(do_request, attempts=FETCH_ATTEMPTS, backoff=FETCH_BACKOFF, sleep=time.sleep):
+    """do_request() -> requests.Response, retried on a timeout, a dropped connection, 429 or a 5xx; any other
+    error status raises at once (a 4xx is a bug, not weather). The last failure is raised as it came."""
+    for i in range(attempts):
+        last = i == attempts - 1
+        try:
+            r = do_request()
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as err:
+            if last:
+                raise
+            print(f"export page: {type(err).__name__}, retry {i + 1} of {attempts - 1} in {backoff[min(i, len(backoff) - 1)]} s", file=sys.stderr)
+        else:
+            if r.status_code not in RETRY_STATUS or last:
+                r.raise_for_status()
+                return r
+            print(f"export page: HTTP {r.status_code}, retry {i + 1} of {attempts - 1} in {backoff[min(i, len(backoff) - 1)]} s", file=sys.stderr)
+        sleep(backoff[min(i, len(backoff) - 1)])
+
+
 def fetch_atoms(url, key, max_atoms):
     atoms, after = [], "1970-01-01T00:00:00Z"
     h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     while not enough(atoms, max_atoms):
-        r = requests.post(f"{url}/rest/v1/rpc/olo_export", headers=h, json={"p_after": after, "p_limit": 500}, timeout=60)
-        r.raise_for_status()
+        r = fetch_page(lambda: requests.post(f"{url}/rest/v1/rpc/olo_export", headers=h, json={"p_after": after, "p_limit": 500}, timeout=60))
         page, nxt = export_page(r.json())
         if not page:
             break
@@ -57,8 +85,7 @@ def fetch_atoms_keyless(export_url, max_atoms):
     """The same pages through olo-query's keyless export (GET ?export=1), so a cloud job needs no key."""
     atoms, after = [], "1970-01-01T00:00:00Z"
     while not enough(atoms, max_atoms):
-        r = requests.get(export_url, params={"export": 1, "after": after, "limit": 500}, timeout=60)
-        r.raise_for_status()
+        r = fetch_page(lambda: requests.get(export_url, params={"export": 1, "after": after, "limit": 500}, timeout=60))
         page, nxt = export_page(r.json())
         if not page:
             break
