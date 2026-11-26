@@ -1,0 +1,130 @@
+{
+  "served_by": "zeus.6hnz57bf82.workers.dev",
+  "model": "default_model",
+  "n": 200,
+  "label_accuracy": 0.905,
+  "json_valid": 1.0,
+  "evidence_hit": 0.905,
+  "f1": {
+    "supported": 0.983,
+    "contradicted": 0.816,
+    "not_covered": 0.904
+  },
+  "confusion": {
+    "supported": {
+      "supported": 59,
+      "contradicted": 0,
+      "not_covered": 0,
+      "invalid": 0
+    },
+    "contradicted": {
+      "supported": 2,
+      "contradicted": 42,
+      "not_covered": 17,
+      "invalid": 0
+    },
+    "not_covered": {
+      "supported": 0,
+      "contradicted": 0,
+      "not_covered": 80,
+      "invalid": 0
+    }
+  },
+  "rates": {
+    "supported": {
+      "tpr": 1.0,
+      "tnr": 0.986
+    },
+    "contradicted": {
+      "tpr": 0.689,
+      "tnr": 1.0
+    },
+    "not_covered": {
+      "tpr": 1.0,
+      "tnr": 0.858
+    }
+  },
+  "binary_balanced_accuracy": 0.993,
+  "by_edit": {
+    "name": {
+      "n": 7,
+      "accuracy": 0.714,
+      "wrong": {
+        "not_covered": 1,
+        "supported": 1
+      }
+    },
+    "name_malformed": {
+      "n": 23,
+      "accuracy": 0.261,
+      "wrong": {
+        "not_covered": 16,
+        "supported": 1
+      }
+    },
+    "number": {
+      "n": 5,
+      "accuracy": 1.0,
+      "wrong": {}
+    },
+    "relation": {
+      "n": 19,
+      "accuracy": 1.0,
+      "wrong": {}
+    },
+    "year": {
+      "n": 7,
+      "accuracy": 1.0,
+      "wrong": {}
+    }
+  },
+  "well_formed": {
+    "n": 177,
+    "label_accuracy": 0.989,
+    "json_valid": 1.0,
+    "evidence_hit": 0.989,
+    "f1": {
+      "supported": 0.992,
+      "contradicted": 0.973,
+      "not_covered": 0.994
+    },
+    "confusion": {
+      "supported": {
+        "supported": 59,
+        "contradicted": 0,
+        "not_covered": 0,
+        "invalid": 0
+      },
+      "contradicted": {
+        "supported": 1,
+        "contradicted": 36,
+        "not_covered": 1,
+        "invalid": 0
+      },
+      "not_covered": {
+        "supported": 0,
+        "contradicted": 0,
+        "not_covered": 80,
+        "invalid": 0
+      }
+    },
+    "rates": {
+      "supported": {
+        "tpr": 1.0,
+        "tnr": 0.992
+      },
+      "contradicted": {
+        "tpr": 0.947,
+        "tnr": 1.0
+      },
+      "not_covered": {
+        "tpr": 1.0,
+        "tnr": 0.99
+      }
+    },
+    "binary_balanced_accuracy": 0.996,
+    "left_out": 23
+  },
+  "format_retry": false,
+  "minutes": 3.8
+}
