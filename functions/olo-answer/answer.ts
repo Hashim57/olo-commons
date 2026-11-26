@@ -207,7 +207,18 @@ export function checkText(t: string): string {
 
 export function checkEvidence(v: Verdict, passages: Passage[]): Verdict & { evidence_checked: boolean } {
   const texts = new Map(passages.map(p => [p.id, quoteKey(p.text)]));
-  const evidence = v.evidence.filter(e => { const k = quoteKey(e.quote); return k.length >= 3 && (texts.get(e.passage) || '').includes(k); });
+  // A quote is kept only when its exact words are in a passage the sentence was checked against. When the
+  // verifier names the wrong passage or one that is not among them (Zeus is trained on passages labelled by atom
+  // id, eight hex characters, not olo-answer's "p1"; with v31 serving, 48 supported sentences of the answer eval
+  // of 26 November lost their evidence), the quote is credited to the first of them whose text holds it. Words
+  // that are in none of the passages are still refused.
+  const evidence = v.evidence.map(e => {
+    const k = quoteKey(e.quote);
+    if (k.length < 3) return null;
+    if (texts.get(e.passage)?.includes(k)) return e;
+    const found = passages.find(p => texts.get(p.id)!.includes(k));
+    return found ? { passage: found.id, quote: e.quote } : null;
+  }).filter((e): e is { passage: string; quote: string } => e !== null);
   if (v.label === 'not_covered') return { label: 'not_covered', evidence: [], rationale: v.rationale, evidence_checked: true };
   if (!evidence.length) return { label: 'not_covered', evidence: [], rationale: v.rationale ? v.rationale + ' (no quoted evidence found in the passages)' : 'No quoted evidence found in the passages.', evidence_checked: false };
   return { label: v.label, evidence, rationale: v.rationale, evidence_checked: true };
