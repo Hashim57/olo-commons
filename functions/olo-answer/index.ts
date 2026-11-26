@@ -36,6 +36,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, looseQuery, rank } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, checkText, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
+import { buildReceipt, sealReceipt, type Receipt } from './receipt.ts';
 import { answerTally, applyFigureCheck, checkLinks, reviewCandidates, shownAnswer, sourceSummary, timeSensitive, type AnswerTally, type ReviewCandidate } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -140,6 +141,17 @@ Deno.serve(async (req) => {
   const tally = (t: AnswerTally) => sb.rpc('olo_answer_record', t).then(() => {}, () => {});
   // Sentences Zeus doubted go to the review queue (sql/024, issue #76 part 4): a person decides, and only then does one become gold. The RPC exists once sql/024 has run; until then the error is ignored.
   const review = (cs: ReviewCandidate[]) => Promise.all(cs.map(c => sb.rpc('olo_review_candidate', c).then(() => {}, () => {}))).then(() => {}, () => {});
+  // The verification receipt (receipt.ts, docs/RECEIPTS.md): every sentence, its verdict and quoted evidence keyed to
+  // atom ids, and each atom's stored SHA-256 fingerprint, so anyone can check the answer later against the public API.
+  // One bounded read of content_hash for at most 12 atoms; if it fails the receipt still comes, with null fingerprints.
+  const receiptFor = async (answerShown: string, answeredBy: { writer: string | null; verifier: string | null; mode: string }, sents: any[]): Promise<Receipt | null> => {
+    try {
+      const hashes: Record<string, string> = {};
+      const ids = provenance.map(p => p.atom).filter(Boolean);
+      if (ids.length) { const { data } = await sb.from('olo_atoms').select('id, content_hash').in('id', ids); for (const row of (data || []) as any[]) if (row?.id && row?.content_hash) hashes[row.id] = row.content_hash; }
+      return await sealReceipt(buildReceipt({ question: q, answerShown, answeredBy, sentences: sents, passages: provenance, hashes, issuedAt: new Date().toISOString() }));
+    } catch { return null; }
+  };
 
   if (!passages.length) {
     await logIt(0);
@@ -164,11 +176,12 @@ Deno.serve(async (req) => {
     await markLinks();
     const shownX = shownAnswer(quoted);
     await tally(answerTally(quoted, quoted.length > 0, !quoted.length, true));
+    const receiptX = await receiptFor(quoted.length ? shownX.text : NOT_COVERED_TEXT, { writer: null, verifier: 'extractive', mode: 'extractive' }, quoted);
     return new Response(JSON.stringify({
       q, mode: 'extractive', answer: quoted.length ? quoted.map(s => s.text).join(' ') : NOT_COVERED_TEXT, answer_shown: quoted.length ? shownX.text : NOT_COVERED_TEXT, shown: shownX.shown, hidden: shownX.hidden, abstained: !quoted.length,
       covered: quoted.length > 0, sentences: quoted, summary: summarise(quoted), sources, freshness_note,
       answered_by: { writer: null, writer_provider: null, verifier: 'extractive', mode: 'extractive' },
-      passages: provenance, verifier: 'extractive', model: null, notice: 'No writing model could be reached, so these are the passages\' own sentences that best match the question.' + (draftErrors.length ? ` (${draftErrors.join('; ')})` : ''),
+      passages: provenance, receipt: receiptX, verifier: 'extractive', model: null, notice: 'No writing model could be reached, so these are the passages\' own sentences that best match the question.' + (draftErrors.length ? ` (${draftErrors.join('; ')})` : ''),
       attribution: 'Olo Commons by Helius Network. Each passage carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api',
     }), { headers: H });
   }
@@ -215,6 +228,7 @@ Deno.serve(async (req) => {
   await review(reviewCandidates(verdicts, provenance));
   const mode = writer === writers[0] ? 'written' : 'written-fallback';
   let provider = ''; try { provider = new URL(writer.base).hostname; } catch { provider = writer.base; }
+  const receipt = await receiptFor(shown.text, { writer: writer.model, verifier, mode }, verdicts);
 
   return new Response(JSON.stringify({
     q, answer: covered ? sentences.map(s => s.text).join(' ') : NOT_COVERED_TEXT,
@@ -222,7 +236,7 @@ Deno.serve(async (req) => {
     answer_shown: shown.text, shown: shown.shown, hidden: shown.hidden, abstained: shown.abstained,
     covered, sentences: verdicts, summary: summarise(verdicts), sources, freshness_note,
     answered_by: { writer: writer.model, writer_provider: provider, verifier, mode },
-    passages: provenance, verifier, model: writer.model, mode,
+    passages: provenance, receipt, verifier, model: writer.model, mode,
     attribution: 'Olo Commons by Helius Network. Each passage carries its own source and licence; cite them.', api: 'https://heliusnetwork.app/olo/#api',
   }), { headers: H });
 });

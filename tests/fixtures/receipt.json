@@ -1,0 +1,71 @@
+{
+  "format": "olo-receipt/1",
+  "issued_at": "2026-11-26T22:00:00.000Z",
+  "question": "What happened to Comair Flight 5191?",
+  "answer_shown": "Comair Flight 5191 crashed on takeoff from Lexington, Kentucky, killing 49 people on board [p1].",
+  "answered_by": {
+    "writer": "openai/gpt-oss-120b",
+    "verifier": "zeus:default_model",
+    "mode": "written"
+  },
+  "sentences": [
+    {
+      "n": 1,
+      "text": "Comair Flight 5191 crashed on takeoff from Lexington, Kentucky, killing 49 people on board [p1].",
+      "verdict": "supported",
+      "checked_by": "zeus:default_model",
+      "shown": true,
+      "evidence": [
+        {
+          "atom": "43ab91a6-50bc-4f4d-8807-7363377e1087",
+          "quote": "A Comair commuter jet crashed on takeoff from Lexington, Kentucky yesterday, killing 49 people on board"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "text": "The flight was headed from Atlanta to Lexington [p1].",
+      "verdict": "contradicted",
+      "checked_by": "zeus:default_model",
+      "shown": false,
+      "evidence": [
+        {
+          "atom": "43ab91a6-50bc-4f4d-8807-7363377e1087",
+          "quote": "was headed from Lexington's Blue Grass Airport to Atlanta's Hartsfield-Jackson International Airport"
+        }
+      ]
+    },
+    {
+      "n": 3,
+      "text": "Dell is recalling 4.1 million lithium batteries [p2].",
+      "verdict": "not_covered",
+      "checked_by": null,
+      "shown": false,
+      "evidence": []
+    }
+  ],
+  "atoms": [
+    {
+      "atom": "43ab91a6-50bc-4f4d-8807-7363377e1087",
+      "content_hash": "503eda912c84168aecaf7e0d8aa181bc412f3763c4d34810ed4829612ee52107",
+      "title": "49 dead after Comair regional jet crashes in Kentucky",
+      "source": "wikinews",
+      "licence": "CC BY 2.5",
+      "url": "https://en.wikinews.org/wiki/49_dead_after_Comair_regional_jet_crashes_in_Kentucky",
+      "retrieved_at": "2026-11-24T12:18:12.022437+00:00",
+      "published_at": "2006-08-28"
+    },
+    {
+      "atom": "43a940f5-b411-4d66-9c66-6e4773949d19",
+      "content_hash": "cfc1aceb4bf2b7962038e2bffd85d5f5f6dd29b2562e75a70881a14d88899f27",
+      "title": "Dell recalls potentially incendiary laptop batteries",
+      "source": "wikinews",
+      "licence": "CC BY 2.5",
+      "url": "https://en.wikinews.org/wiki/Dell_recalls_potentially_incendiary_laptop_batteries",
+      "retrieved_at": "2026-11-24T12:48:10.51009+00:00",
+      "published_at": "2006-08-15"
+    }
+  ],
+  "check": "https://github.com/Hashim57/olo-commons/blob/main/docs/RECEIPTS.md",
+  "receipt_sha256": "572ff0bf09b8592f4d6efe58211555fd740599a8de6299a7a2b83d04b305b14f"
+}
