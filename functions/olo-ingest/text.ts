@@ -343,6 +343,15 @@ export const LIBRARY_HEADER_WITHIN = 120; // ...and the first header must come t
 /** The field headers of a Library of Congress item page as a mirror copies them, in capitals, each followed by its value. */
 export const LIBRARY_HEADER_RE = /(?:^|\s)(MEDIUM|CREATED \/ PUBLISHED|CONTRIBUTOR NAMES|SUBJECTS|NOTES|FORMAT|SOURCE|REPOSITORY|REPRODUCTION NUMBER|CALL NUMBER|DIGITAL ID|LCCN|CREDIT|RIGHTS|PROVENANCE|PART OF)(?=\s)/g;
 
+/** The French library's shelf-mark field and the pointer to the union catalogue (Sudoc), neither of which prose contains. */
+export const LIBRARY_SHELF_FIELD_RE = /\bCote du document\s*:|\bNotice (?:dans le )?Sudoc\b/;
+
+/** The "More details" button of the Sevilla catalogue page, copied as the first words of the description. */
+export const LIBRARY_DETAILS_RE = /^Más detalles\b/;
+
+/** The fields of that catalogue page: shelf mark, physical description, classification, the catalogue's name. */
+export const LIBRARY_FAMA_FIELD_RE = /\b(?:SIGNATURA|DESCR\. FÍSICA|CLASIFICAC\.)\s|\bCatálogo Fama\b/;
+
 /**
  * True when a body is a mirrored library record, not a description: the
  * fields of a Library of Congress item page copied into the Internet Archive's
@@ -365,10 +374,26 @@ export const LIBRARY_HEADER_RE = /(?:^|\s)(MEDIUM|CREATED \/ PUBLISHED|CONTRIBUT
  * (14,517 atoms) exactly the 4 records matched; no other atom of any source
  * has even two of these headers, and prose written in capitals would need
  * three of them in its first line and a rights sentence as well.
+ *
+ * Two European libraries copy their own catalogue pages the same way, with the
+ * fields in their own language, and the narrower Archive search of 26 November
+ * 2026 (ARCHIVE_EXCLUDED_COLLECTIONS in sources.ts) makes their scans about a
+ * sixth of what the source offers. The Bibliothèque Sainte-Geneviève writes
+ * the shelf mark and the union catalogue pointer ("440 p. ; In-8 Cote du
+ * document : 8 SC SUP 57 (3) NOR Notice dans le Sudoc Autres documents liés :
+ * ..."), and the Biblioteca de la Universidad de Sevilla copies its Fama
+ * catalogue page from the "Más detalles" button on ("Más detalles PUBLICACIÓN
+ * Madrid : Viuda de Hernando, 1892 DESCR. FÍSICA 424 p. ; 19 cm ... SIGNATURA
+ * B Res.140146 Catálogo Fama"). The rule: a "Cote du document :" field or a
+ * Sudoc notice anywhere in the body, or a body that opens with "Más detalles"
+ * and names a Fama field (SIGNATURA, DESCR. FÍSICA, CLASIFICAC. or the
+ * catalogue itself). On the live Commons of 26 November 2026 (15,820 atoms)
+ * exactly the 5 archive_org records matched and no atom of any other source.
  */
 export function isLibraryRecord(body: unknown): boolean {
   const b = oncely(clean(body));
   if (!b) return false;
+  if (LIBRARY_SHELF_FIELD_RE.test(b) || (LIBRARY_DETAILS_RE.test(b) && LIBRARY_FAMA_FIELD_RE.test(b))) return true;
   const found = new Set<string>(); let first = -1;
   for (const m of b.matchAll(LIBRARY_HEADER_RE)) { found.add(m[1]); if (first < 0) first = m.index! + m[0].length - m[1].length; }
   if (found.size < LIBRARY_MIN_HEADERS || first > LIBRARY_HEADER_WITHIN) return false;

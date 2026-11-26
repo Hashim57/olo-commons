@@ -270,7 +270,8 @@ export function wikidataSearchIds(r: any): string[] {
 
 /**
  * The search the Internet Archive connector runs: texts with a description and
- * an open licence URL, outside the uploader collections, most downloaded first.
+ * an open licence URL, outside the uploader shelves (ARCHIVE_EXCLUDED_COLLECTIONS),
+ * most downloaded first.
  * Until 2026-11-10 the query asked for any text with a description and the
  * mapper stored "Public domain / as stated by the Archive" for the 88 percent
  * of items that carry no licence URL at all, which was a guess: the Archive
@@ -305,8 +306,34 @@ export function wikidataSearchIds(r: any): string[] {
  *   uploads); most downloaded first kept 45 to 52 percent across three
  *   samples, from americana, the CIA reading room, national libraries,
  *   folkscanomy and books by language.
+ *
+ * Measured again on 2026-11-26, the day after that query went live: the source
+ * stored 70 atoms in 25 hours (6 the day before), and 49 of them sat on the
+ * Archive's other uploader shelves. `booksbylanguage` and `folkscanomy` are the
+ * Community Texts uploads re-shelved by language and by subject (the item keeps
+ * only the derived shelf, so leaving out `opensource` did not touch them), with
+ * the licence the uploader typed: a 2007 novel and a 2020 bestseller under CC0,
+ * a 2016 dictionary under CC BY, a 1996 grammar, a pirate "PDF GRATIS" page,
+ * two antisemitic tracts and a 1940 propaganda film, a state payroll list of
+ * 84,000 named employees. `newsstand` and `magazine_rack` are the same shelves
+ * for periodicals; `fringe` and `deemphasize` are the Archive's own marks for
+ * items it keeps out of its own search; `reclaimtherecords` and `genealogy`
+ * hold birth, death and marriage indexes of named private people, and
+ * `yearbooks` school yearbooks (the Commons stores no personal data). With
+ * all of them left out, four pages of the live search kept 63 of 160 docs (39
+ * percent) against 67 of 160 (42 percent) before, and what is kept comes from
+ * americana and university library scans, government documents, the National
+ * Security Archive, NASA technical reports, dictionaries and manuals.
  */
-export const ARCHIVE_QUERY = 'mediatype:texts AND description:* AND licenseurl:(*publicdomain* OR *zero* OR *by*) AND NOT licenseurl:(*nc* OR *nd*) AND NOT collection:(opensource OR community OR opensource_media OR publicsafetycode)';
+export const ARCHIVE_EXCLUDED_COLLECTIONS = [
+  'opensource', 'community', 'opensource_media', // Community Texts, as uploaded
+  'booksbylanguage', 'folkscanomy',              // Community Texts, re-shelved by language and by subject
+  'newsstand', 'magazine_rack',                  // the same shelves for periodicals
+  'fringe', 'deemphasize',                       // the Archive's own marks for items it keeps out of its search
+  'reclaimtherecords', 'genealogy', 'yearbooks', // indexes of named private people, school yearbooks
+  'publicsafetycode',                            // "made available on a noncommercial basis"
+];
+export const ARCHIVE_QUERY = `mediatype:texts AND description:* AND licenseurl:(*publicdomain* OR *zero* OR *by*) AND NOT licenseurl:(*nc* OR *nd*) AND NOT collection:(${ARCHIVE_EXCLUDED_COLLECTIONS.join(' OR ')})`;
 
 export function archiveSearchUrl(n: number, page: number): string {
   const p = new URLSearchParams();

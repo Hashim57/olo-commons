@@ -72,6 +72,12 @@ ETEXT_CREDIT_RE = re.compile(r"\be[- ]?text created by [A-Z]", re.I)
 LIBRARY_MIN_HEADERS = 3       # a body with fewer upper-case field headers than this is read as prose
 LIBRARY_HEADER_WITHIN = 120   # ...and the first header must come this early (right after the title), or the capitals are prose
 LIBRARY_HEADER_RE = re.compile(r"(?:^|\s)(MEDIUM|CREATED / PUBLISHED|CONTRIBUTOR NAMES|SUBJECTS|NOTES|FORMAT|SOURCE|REPOSITORY|REPRODUCTION NUMBER|CALL NUMBER|DIGITAL ID|LCCN|CREDIT|RIGHTS|PROVENANCE|PART OF)(?=\s)")
+# The catalogue pages two European libraries copy into their descriptions (text.ts, LIBRARY_SHELF_FIELD_RE,
+# LIBRARY_DETAILS_RE and LIBRARY_FAMA_FIELD_RE): the Bibliotheque Sainte-Genevieve's shelf-mark field and Sudoc pointer,
+# and the Universidad de Sevilla's Fama page from its "More details" button on. Case sensitive, as in text.ts.
+LIBRARY_SHELF_FIELD_RE = re.compile(r"\bCote du document\s*:|\bNotice (?:dans le )?Sudoc\b")
+LIBRARY_DETAILS_RE = re.compile(r"^M\u00e1s detalles\b")
+LIBRARY_FAMA_FIELD_RE = re.compile(r"\b(?:SIGNATURA|DESCR\. F\u00cdSICA|CLASIFICAC\.)\s|\bCat\u00e1logo Fama\b")
 
 PHYSICAL_RE = re.compile(r"^(?:[xivlc]+, )?(?:\d+ (?:p\.|pages?|v\.|volumes?|leaves)|volumes?|\d+ (?:volume|guide|portfolio) \((?:unpaged|\d+ p\.?)\))(?: of plates)?[^A-Za-z0-9]*(?:(?:ill\.?|illustrations|col\.|colou?r|maps?|ports?\.?|facsims?\.?|music|charts?|plates)[^A-Za-z0-9]*)*(?:\d+(?: x \d+)? cm\.?)?", re.I)
 CATALOGUE_NOTES_RE = re.compile(r"\bIncludes? (?:bibliographical references?|bibliography|bibliographies|index(?:es)?|discography|filmography)(?: \((?:p\.|pages?)? ?[\d, -]+\))?(?: and index(?:es)?)?\.?|\bBibliography: (?:p\.|pages?) [\d, -]+\.?", re.I)
@@ -191,10 +197,15 @@ def is_library_record(body):
     is in the public domain ... PROVENANCE (this copy) Mirrored from loc.gov"). At least LIBRARY_MIN_HEADERS distinct
     headers, the first within LIBRARY_HEADER_WITHIN characters, and a rights sentence somewhere. 4 archive_org atoms on
     the live Commons of 2026-11-23, stored since the 22nd when a mirror began uploading the sheet-music collection; no
-    other atom of any source has even two of these headers."""
+    other atom of any source has even two of these headers. Also true (since 2026-11-26) for the catalogue pages of the
+    Bibliotheque Sainte-Genevieve ("Cote du document : DELTA 53987 FA ... Notice Sudoc") and of the Universidad de
+    Sevilla (a body opening "M\u00e1s detalles" that names a Fama field such as SIGNATURA): 11 archive_org atoms of the
+    15,820 on the live Commons that day match the whole rule, no atom of any other source."""
     b = oncely(clean(body))
     if not b:
         return False
+    if LIBRARY_SHELF_FIELD_RE.search(b) or (LIBRARY_DETAILS_RE.search(b) and LIBRARY_FAMA_FIELD_RE.search(b)):
+        return True
     found, first = set(), -1
     for m in LIBRARY_HEADER_RE.finditer(b):
         found.add(m.group(1))

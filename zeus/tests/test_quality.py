@@ -452,6 +452,28 @@ def test_capitals_and_rights_sentences_in_real_text_pass_the_library_record_rule
     assert not quality.is_library_record(re.sub(r"MEDIUM|CREATED / PUBLISHED|SOURCE|CREDIT|RIGHTS|PROVENANCE", lambda m: m.group(0).lower(), LOC_RECORD))
 
 
+EUROPEAN_CATALOGUE_RECORDS = [
+    ("\u0152uvres de don Barth\u00e9lemi de las Casas, \u00e9v\u00eaque de Chiapa", "Cote du document : DELTA 53987 FA 2 tomes ([8]-CX-409-[1] ; [6]-503-[1] p.) : ill. ; in-8. Notice Sudoc"),
+    ("Epistler, befattende adskillige historiske, politiske, metaphysiske", "440 p. ; In-8 Cote du document : 8 SC SUP 57 (3) NOR Notice dans le Sudoc Autres documents li\u00e9s : 8 SC SUP 57 (1) NOR 8 SC SUP 57 (2) NOR 8 SC SUP 57 (4) NOR"),
+    ("Relaciones y cartas de Crist\u00f3bal Col\u00f3n", "M\u00e1s detalles PUBLICACI\u00d3N Madrid : Viuda de Hernando, 1892 DESCR. F\u00cdSICA 424 p. ; 19 cm COLECCI\u00d3N Biblioteca cl\u00e1sica ; 164 Biblioteca cl\u00e1sica (Librer\u00eda Vda. de Hernando y Cia.) ; 164 Subject Col\u00f3n, Crist\u00f3bal, 1451?-1506 -- Correspondencia CLASIF. ABREV. 929 A/Z CLASIFICAC. 929 Col\u00f3n, C. SIGNATURA B Res.140146 Cat\u00e1logo Fama"),
+]
+
+
+def test_european_library_catalogue_pages_are_library_records_as_in_text_ts():
+    for title, body in EUROPEAN_CATALOGUE_RECORDS:
+        assert quality.is_library_record(body), body
+        assert quality.is_library_record(body + " " + body), body
+        assert quality.is_stub(title, body[:600], body), body
+
+
+def test_french_and_spanish_prose_about_shelf_marks_passes_the_library_record_rule():
+    # the same sentences tests/text_test.ts keeps
+    assert not quality.is_library_record("La cote du document indique la place du livre sur le rayon ; le Sudoc est le catalogue collectif des biblioth\u00e8ques universitaires fran\u00e7aises, cr\u00e9\u00e9 en 2000.")
+    assert not quality.is_library_record("El tratado de 1892 re\u00fane las cartas de Col\u00f3n a los Reyes Cat\u00f3licos. M\u00e1s detalles sobre la edici\u00f3n figuran en el pr\u00f3logo de Fern\u00e1ndez de Navarrete.")
+    assert not quality.is_library_record("M\u00e1s detalles sobre la guerra de 1898 se encuentran en los diarios de la \u00e9poca, que describen el bloqueo del puerto de Santiago de Cuba y la rendici\u00f3n de la ciudad en julio.")
+    assert not quality.is_library_record("El contrato se firma por duplicado. SIGNATURA del arrendador y del arrendatario al pie de cada p\u00e1gina, seg\u00fan el art\u00edculo 1255 del C\u00f3digo Civil.")
+
+
 def test_a_wikidata_atom_with_a_facts_sentence_is_knowledge_not_a_record():
     # the shape the connector writes since 2026-11-23: description, then "property value" clauses joined by semicolons
     title = "Yuri Zheleznov"

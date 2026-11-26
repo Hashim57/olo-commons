@@ -414,6 +414,31 @@ Deno.test('isLibraryRecord: the mirrored Library of Congress records stored on 2
   }
 });
 
+Deno.test('isLibraryRecord: the Sainte-Geneviève and Sevilla catalogue pages stored on 25 and 26 November 2026 are stubs', () => {
+  const records: [string, string][] = [
+    ['Œuvres de don Barthélemi de las Casas, évêque de Chiapa', 'Cote du document : DELTA 53987 FA 2 tomes ([8]-CX-409-[1] ; [6]-503-[1] p.) : ill. ; in-8. Notice Sudoc'],
+    ['Epistler, befattende adskillige historiske, politiske, metaphysiske', '440 p. ; In-8 Cote du document : 8 SC SUP 57 (3) NOR Notice dans le Sudoc Autres documents liés : 8 SC SUP 57 (1) NOR 8 SC SUP 57 (2) NOR 8 SC SUP 57 (4) NOR'],
+    ['Relaciones y cartas de Cristóbal Colón', 'Más detalles PUBLICACIÓN Madrid : Viuda de Hernando, 1892 DESCR. FÍSICA 424 p. ; 19 cm COLECCIÓN Biblioteca clásica ; 164 Biblioteca clásica (Librería Vda. de Hernando y Cia.) ; 164 Subject Colón, Cristóbal, 1451?-1506 -- Correspondencia CLASIF. ABREV. 929 A/Z CLASIFICAC. 929 Colón, C. SIGNATURA B Res.140146 Catálogo Fama'],
+    ['El libro Negro ó la Magia : Las ciencias ocultas, la alquimia y astrología', 'Más detalles Materia Magia Astrología Ocultismo Editor Barcelona: Manuel Sauri,ed. Fecha de publicación 1886 Formato 201 p., 160 p. ; 16 cm Fuente Catálogo de la biblioteca Identificador OCLC : (OCoLC)930842527 Procedencia Guichot y Sierra, Alejandro Lugar de Impresión España Barcelona Otro tít. El talismán de los sueños y visiones nocturnas, Revelaciones: su interpretación estractada de las obras antiguas y modernas, que tratan de la filosofía y de las ciencias ocultas ; con varios ejemplos, sacados de los magos, de la historia y de los oraculos de Oriente SIGNATURA A Guichot 0879 Catálogo Fama'],
+  ];
+  for (const [title, body] of records) {
+    assert(isLibraryRecord(body), body);
+    assert(isLibraryRecord(body + ' ' + body), 'written twice: ' + body);
+    assert(isStub(title, body.slice(0, 600), body), body);
+  }
+});
+
+Deno.test('isLibraryRecord: French and Spanish prose about a library, a shelf mark or a signature is kept', () => {
+  // a sentence about the shelf mark, without the field
+  assertEquals(isLibraryRecord('La cote du document indique la place du livre sur le rayon ; le Sudoc est le catalogue collectif des bibliothèques universitaires françaises, créé en 2000.'), false);
+  // "Más detalles" later in the text, and a Spanish text that opens with it but names no Fama field
+  assertEquals(isLibraryRecord('El tratado de 1892 reúne las cartas de Colón a los Reyes Católicos. Más detalles sobre la edición figuran en el prólogo de Fernández de Navarrete.'), false);
+  assertEquals(isLibraryRecord('Más detalles sobre la guerra de 1898 se encuentran en los diarios de la época, que describen el bloqueo del puerto de Santiago de Cuba y la rendición de la ciudad en julio.'), false);
+  // a legal text with a signature clause, in capitals as a form prints it
+  assertEquals(isLibraryRecord('El contrato se firma por duplicado. SIGNATURA del arrendador y del arrendatario al pie de cada página, según el artículo 1255 del Código Civil.'), false);
+  assertEquals(isLibraryRecord('Tractatus de mercatura. treatise on commercial law. Described in 2 Wikimedia projects.'), false);
+});
+
 Deno.test('isLibraryRecord: capitals, a rights sentence or the Library of Congress in a real text are kept', () => {
   // two headers only, and prose about a library
   assertEquals(isLibraryRecord('The Library of Congress holds the largest collection of sheet music in the world. SOURCE materials and NOTES from the Music Division are open to researchers, and most pieces published before 1930 are in the public domain.'), false);
