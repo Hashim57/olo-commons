@@ -193,11 +193,13 @@ export function quoteKey(t: string): string {
 
 /**
  * A sentence as the checks read it: a multiplication sign after a number is the letter x ("10×" is "10x",
- * as abstracts write it; Zeus called the writer's "10×" a different value, q059), and a no-break or thin
- * space is a space. What the reader sees is not changed.
+ * as abstracts write it; Zeus called the writer's "10×" a different value, q059), a no-break or thin
+ * space is a space, and a non-breaking or typographic hyphen is a hyphen. What the reader sees is not changed.
  */
 export function checkText(t: string): string {
-  return String(t || '').replace(/(\d)\s?\u00d7/g, '$1x').replace(/[\u00a0\u2009\u202f]/g, ' ');
+  // A non-breaking hyphen (U+2011) or a typographic hyphen (U+2010) is a hyphen: the writer wrote "co\u2011pilot"
+  // and Zeus, trained on "co-pilot", called a sentence its passage states not covered (live answer, 26 Nov 2026).
+  return String(t || '').replace(/(\d)\s?\u00d7/g, '$1x').replace(/[\u00a0\u2009\u202f]/g, ' ').replace(/[\u2010\u2011]/g, '-');
 }
 
 export function checkEvidence(v: Verdict, passages: Passage[]): Verdict & { evidence_checked: boolean } {

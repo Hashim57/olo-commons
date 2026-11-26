@@ -199,3 +199,9 @@ Deno.test('checks read a multiplication sign after a number as x, and leave the 
   const ps = [{ id: 'p1', source: 'arxiv', url: '', text: 'Premiums reach 10x for Amharic in older tokenizers.' }];
   assertEquals(checkEvidence({ label: 'supported', evidence: [{ passage: 'p1', quote: 'Premiums reach 10\u00d7 for Amharic' }], rationale: 'r' }, ps).label, 'supported');
 });
+
+Deno.test('checkText: a non-breaking or typographic hyphen reads as a hyphen, so "co\u2011pilot" is the passage\'s "co-pilot"', () => {
+  assertEquals(checkText('leaving only the co\u2011pilot as a survivor'), 'leaving only the co-pilot as a survivor');
+  assertEquals(checkText('a well\u2010known case'), 'a well-known case');
+  assert(quoteKey('co\u2011pilot') === quoteKey('co-pilot'));
+});
