@@ -119,3 +119,49 @@ def test_the_repository_promotes_the_best_held_out_version_above_the_floor():
     pick = promote.choose(cf, {"version": "v16"})
     assert pick["held_out_accuracy"] == max(c["held_out_accuracy"] for c in above)
     assert pick["version"] != "v16", "v22 (and any later version better on held-out claims) outranks v16"
+
+
+def test_the_honest_score_leaves_out_the_malformed_name_edits_exactly():
+    # v31 as measured: 0.915 on 200, name_malformed 0.118 on 17 (2 right): 183 - 15 = 181 of 183 right
+    ev = {"n": 200, "label_accuracy": 0.915, "by_edit": {"name_malformed": {"n": 17, "accuracy": 0.118}}}
+    assert promote.well_formed_accuracy(ev) == 0.989
+    assert promote.well_formed_accuracy({"n": 200, "label_accuracy": 0.925, "well_formed": {"label_accuracy": 0.984}}) == 0.984
+    assert promote.well_formed_accuracy({"n": 200, "label_accuracy": 0.995}) == 0.995, "older versions: the headline"
+
+
+def test_a_version_below_the_old_floor_clears_it_on_the_honest_score():
+    v31 = {"version": "v31", "label_accuracy": 0.915, "well_formed_accuracy": 0.989, "evidence_hit": 0.915, "held_out_accuracy": 0.637, "eval3_accuracy": 0.965}
+    weak = {"version": "v28", "label_accuracy": 0.965, "well_formed_accuracy": 0.965, "evidence_hit": 0.965, "held_out_accuracy": 0.9, "eval3_accuracy": 0.97}
+    assert promote.rank_key(v31)[0] is True and promote.rank_key(weak)[0] is False
+    assert promote.choose([v31, weak])["version"] == "v31"
+
+
+def test_a_hand_promotion_is_kept_until_a_later_version_outranks_it():
+    v22 = {"version": "v22", "label_accuracy": 0.995, "evidence_hit": 0.995, "held_out_accuracy": 0.733, "eval3_accuracy": 0.92}
+    v31 = {"version": "v31", "label_accuracy": 0.915, "well_formed_accuracy": 0.989, "evidence_hit": 0.915, "held_out_accuracy": 0.637, "eval3_accuracy": 0.965}
+    pinned = {"version": "v31", "pinned": {"version": "v31", "by": "hand", "reason": "r"}}
+    assert promote.choose([v22, v31], {"version": "v22"})["version"] == "v22", "the rule alone keeps v22"
+    assert promote.choose([v22, v31], pinned)["version"] == "v31", "an older version cannot undo the hand choice"
+    v33 = dict(v31, version="v33", held_out_accuracy=0.70)
+    assert promote.choose([v22, v31, v33], pinned)["version"] == "v33", "a later version that outranks it does"
+    v34 = dict(v31, version="v34", held_out_accuracy=0.60)
+    assert promote.choose([v22, v31, v34], pinned)["version"] == "v31", "a later version that does not, does not"
+    assert promote.choose([v22, v31], pinned, force=True)["version"] == "v22", "--force ignores the pin"
+
+
+def test_the_command_line_promotes_by_hand_only_a_measured_version_with_a_reason(tmp_path, monkeypatch):
+    import subprocess, sys, os, shutil
+    zeus = os.path.join(os.path.dirname(__file__), "..")
+    best = tmp_path / "BEST.json"
+    shutil.copy(os.path.join(zeus, "BEST.json"), best)
+    run = lambda *a: subprocess.run([sys.executable, os.path.join(zeus, "promote.py"), "--best", str(best), *a], capture_output=True, text=True)
+    assert run("--version", "v31").returncode != 0, "a reason is required"
+    assert run("--version", "v999", "--reason", "x").returncode != 0, "an unmeasured version is refused"
+    r = run("--version", "v31", "--reason", "Hashim's decision")
+    assert r.returncode == 0, r.stderr
+    b = json.loads(best.read_text())
+    assert b["version"] == "v31" and b["cloudflare"]["version"] == "v31"
+    assert b["pinned"]["version"] == "v31" and b["pinned"]["reason"] == "Hashim's decision"
+    # a later automatic run keeps it
+    assert run().returncode == 0
+    assert json.loads(best.read_text())["version"] == "v31"

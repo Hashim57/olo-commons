@@ -1,25 +1,27 @@
 {
-  "version": "v22",
-  "date": "2026-11-16",
+  "version": "v31",
+  "date": "2026-11-24",
   "base": "mistralai/Mistral-7B-Instruct-v0.2",
-  "train_examples": "36,255",
-  "label_accuracy": 0.995,
-  "evidence_hit": 0.995,
+  "train_examples": "14,190",
+  "label_accuracy": 0.915,
+  "evidence_hit": 0.915,
+  "well_formed_accuracy": 0.989,
   "json_valid": 1.0,
   "eval_n": 200,
   "f1": {
-    "supported": 1.0,
-    "contradicted": 0.993,
-    "not_covered": 0.991
+    "supported": 0.986,
+    "contradicted": 0.809,
+    "not_covered": 0.912
   },
-  "held_out_accuracy": 0.733,
-  "eval3_accuracy": 0.92,
+  "held_out_accuracy": 0.637,
+  "eval3_accuracy": 0.965,
   "train_generators": [
     "rules-v1",
-    "hard-v1",
-    "compose-v1"
+    "hard-v2",
+    "compose-v2",
+    "longdoc-v2"
   ],
-  "promoted_at": "2026-11-17T12:30:05+00:00",
+  "promoted_at": "2026-11-26T22:28:37+00:00",
   "measured_versions": [
     "v0",
     "v10",
@@ -53,18 +55,24 @@
     "v8",
     "v9"
   ],
+  "pinned": {
+    "version": "v31",
+    "by": "hand",
+    "reason": "Promoted by hand on Hashim's decision (26 November 2026). v31 clears the floor on the honest score (0.989 on the first split without the 17 malformed name edits; 0.915 with them) and is better than v22 on Commons eval v3 (0.965 against 0.92); v22 is better on held-out VitaminC (0.733 against 0.637), so this is a measured swap: the 70-question answer eval is rerun after v31 serves and compared with v22's run of 26 November (verification 0.845, facts 0.786, 4 abstained).",
+    "at": "2026-11-26T22:28:37+00:00"
+  },
   "cloudflare": {
-    "version": "v22",
-    "date": "2026-11-16",
+    "version": "v31",
+    "date": "2026-11-24",
     "base": "mistralai/Mistral-7B-Instruct-v0.2",
-    "label_accuracy": 0.995,
-    "evidence_hit": 0.995,
+    "label_accuracy": 0.915,
+    "evidence_hit": 0.915,
     "json_valid": 1.0,
     "eval_n": 200,
     "f1": {
-      "supported": 1.0,
-      "contradicted": 0.993,
-      "not_covered": 0.991
+      "supported": 0.986,
+      "contradicted": 0.809,
+      "not_covered": 0.912
     }
   }
 }
