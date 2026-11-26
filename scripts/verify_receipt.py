@@ -15,7 +15,12 @@ whole response. Four checks, each reported line by line:
                 way olo-answer reads quotes (quoteKey in functions/olo-answer/answer.ts);
   4. licensed   every atom names its source and licence, so the answer can be cited.
 
-Exit status 0 when every check holds, 1 when one fails, 2 when the receipt cannot be read. The public
+A receipt from the check mode over your own passages (docs/CHECK.md) lists each passage's SHA-256, not its
+text. Pass the passages you sent with --supplied (the request body, or a JSON list of passages) and each one
+is matched to its fingerprint and every quote is looked for in it (check 5, "supplied"); without them those
+lines are reported as SKIP, not as a failure.
+
+Exit status 0 when every check that could run holds, 1 when one fails, 2 when the receipt cannot be read. The public
 read key comes from OLO_ANON_KEY (the Supabase anon key, public by design; docs/API.md); --offline skips
 checks 2 and 3. Standard library only. Never sends the question anywhere.
 """
@@ -66,8 +71,10 @@ def fetch_atom(base_url, key, atom_id, timeout=30):
         return (json.loads(r.read().decode("utf-8")) or {}).get("atom")
 
 
-def verify(receipt, get_atom=None):
-    """[(check, ok, message)] for one receipt. get_atom(atom_id) -> atom dict or None; None skips checks 2 and 3."""
+def verify(receipt, get_atom=None, supplied=None):
+    """[(check, ok, message)] for one receipt; ok is None for a check that could not be run (SKIP).
+    get_atom(atom_id) -> atom dict or None; None skips checks 2 and 3. supplied: the passages a check-mode
+    caller sent, as a list of strings or {text} objects, in the order sent."""
     out = []
     if receipt.get("format") != FORMAT:
         out.append(("format", False, f"format is {receipt.get('format')!r}, this script reads {FORMAT!r}"))
@@ -100,8 +107,33 @@ def verify(receipt, get_atom=None):
                 same = cur.get("content_hash") == a.get("content_hash")
                 out.append(("unchanged", same, f"{aid}: same text as when the answer was written" if same else f"{aid}: its text has changed since the answer (fingerprint {a.get('content_hash')[:12]}... is now {str(cur.get('content_hash'))[:12]}...)"))
 
+    fingerprints = {x.get("supplied"): x.get("sha256") for x in receipt.get("supplied") or []}
+    texts = {}
+    if supplied is not None:
+        for n, sha in fingerprints.items():
+            if not isinstance(n, int) or n < 1 or n > len(supplied):
+                out.append(("supplied", False, f"passage s{n}: not among the {len(supplied)} passages given"))
+                continue
+            p = supplied[n - 1]
+            t = re.sub(r"\s+", " ", str(p if isinstance(p, str) else (p or {}).get("text", ""))).strip()
+            same = hashlib.sha256(t.encode("utf-8")).hexdigest() == sha
+            out.append(("supplied", same, f"passage s{n}: the text given is the text that was checked" if same else f"passage s{n}: the text given is not the text that was checked (SHA-256 differs)"))
+            if same:
+                texts[n] = quote_key(t)
+
     for s in receipt.get("sentences") or []:
         for e in s.get("evidence") or []:
+            if "supplied" in e:
+                n, quote = e.get("supplied"), e.get("quote", "")
+                if n not in fingerprints:
+                    out.append(("supplied", False, f"sentence {s.get('n')}: evidence names passage s{n}, which the receipt does not list"))
+                elif n not in texts:
+                    out.append(("supplied", None, f"sentence {s.get('n')}: quote from your passage s{n} not checked (pass --supplied with the passages you sent)"))
+                else:
+                    k = quote_key(quote)
+                    found = len(k) >= 3 and k in texts[n]
+                    out.append(("supplied", found, f"sentence {s.get('n')} ({s.get('verdict')}): quote found in your passage s{n}" if found else f"sentence {s.get('n')} ({s.get('verdict')}): quote not found in your passage s{n}: {quote[:80]!r}"))
+                continue
             aid, quote = e.get("atom"), e.get("quote", "")
             if aid not in atoms:
                 out.append(("quoted", False, f"sentence {s.get('n')}: evidence names atom {aid}, which the receipt does not list"))
@@ -125,6 +157,7 @@ def main(argv=None):
     ap.add_argument("receipt", help="a receipt or a whole olo-answer response as JSON; - reads standard input")
     ap.add_argument("--supabase-url", default=os.environ.get("OLO_SUPABASE_URL", DEFAULT_URL))
     ap.add_argument("--offline", action="store_true", help="check only the seal and the licences, without the network")
+    ap.add_argument("--supplied", help="check mode: the passages you sent, as the request body or a JSON list, to match against their fingerprints")
     a = ap.parse_args(argv)
     try:
         raw = sys.stdin.read() if a.receipt == "-" else open(a.receipt, encoding="utf-8").read()
@@ -143,10 +176,22 @@ def main(argv=None):
             print("set OLO_ANON_KEY to the public read key (docs/API.md), or pass --offline", file=sys.stderr)
             return 2
         get_atom = lambda aid: fetch_atom(a.supabase_url, key, aid)
-    results = verify(receipt, get_atom)
+    supplied = None
+    if a.supplied:
+        try:
+            sdoc = json.loads(open(a.supplied, encoding="utf-8").read())
+        except (OSError, ValueError) as e:
+            print(f"cannot read the supplied passages: {e}", file=sys.stderr)
+            return 2
+        supplied = sdoc.get("passages") if isinstance(sdoc, dict) else sdoc
+        if not isinstance(supplied, list):
+            print("--supplied must be the request body (with passages) or a JSON list of passages", file=sys.stderr)
+            return 2
+    results = verify(receipt, get_atom, supplied)
     for check, ok, msg in results:
-        print(f"{'PASS' if ok else 'FAIL'}  {check:<9} {msg}")
-    failed = [r for r in results if not r[1]]
+        print(f"{'SKIP' if ok is None else 'PASS' if ok else 'FAIL'}  {check:<9} {msg}")
+    failed = [r for r in results if r[1] is False]
+    results = [r for r in results if r[1] is not None]
     shown = sum(1 for s in receipt.get("sentences") or [] if s.get("shown"))
     print(f"\n{len(results) - len(failed)} of {len(results)} checks hold; {shown} of {len(receipt.get('sentences') or [])} sentences were shown as supported.")
     return 1 if failed else 0

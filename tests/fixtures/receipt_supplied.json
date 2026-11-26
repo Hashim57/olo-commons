@@ -1,0 +1,56 @@
+{
+  "format": "olo-receipt/1",
+  "issued_at": "2026-11-27T10:00:00.000Z",
+  "question": "The flight was headed from Atlanta to Lexington. Dell is recalling 4.1 million batteries.",
+  "answer_shown": "Dell is recalling 4.1 million batteries.",
+  "answered_by": {
+    "writer": null,
+    "verifier": "zeus:default_model",
+    "mode": "check-supplied"
+  },
+  "sentences": [
+    {
+      "n": 1,
+      "text": "The flight was headed from Atlanta to Lexington.",
+      "verdict": "contradicted",
+      "checked_by": "zeus:default_model",
+      "shown": false,
+      "evidence": [
+        {
+          "supplied": 1,
+          "quote": "was headed from Lexington's Blue Grass Airport to Atlanta's Hartsfield-Jackson International Airport"
+        }
+      ]
+    },
+    {
+      "n": 2,
+      "text": "Dell is recalling 4.1 million batteries.",
+      "verdict": "supported",
+      "checked_by": "zeus:default_model",
+      "shown": true,
+      "evidence": [
+        {
+          "supplied": 2,
+          "quote": "is recalling 4.1 million lithium batteries"
+        }
+      ]
+    }
+  ],
+  "atoms": [],
+  "supplied": [
+    {
+      "supplied": 1,
+      "sha256": "4106fd798c3902ae09c31d28291cbee25d9b0a8e59d64754ee9b31fe713ecf01",
+      "title": "Comair crash",
+      "url": "https://en.wikinews.org/wiki/49_dead_after_Comair_regional_jet_crashes_in_Kentucky"
+    },
+    {
+      "supplied": 2,
+      "sha256": "ecd2bc4b2624c38cd60bcdc1703f50c7675322773987bbff58889a9bc70bd805",
+      "title": null,
+      "url": null
+    }
+  ],
+  "check": "https://github.com/Hashim57/olo-commons/blob/main/docs/RECEIPTS.md",
+  "receipt_sha256": "97fa5e9bbc84da98cfaecd29f1b3719f9426bd5b9cfc851635bf9e720369d53f"
+}

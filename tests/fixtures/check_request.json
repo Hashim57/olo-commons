@@ -1,0 +1,12 @@
+{
+  "mode": "check",
+  "text": "The flight was headed from Atlanta to Lexington. Dell is recalling 4.1 million batteries.",
+  "passages": [
+    {
+      "text": "A Comair commuter jet crashed on takeoff from Lexington, Kentucky yesterday, killing 49 people on board and seriously injuring the plane's first officer, James M. Polehinke. The early-morning Flight 5191 was operating as Delta Connection and was headed from Lexington's Blue Grass Airport to Atlanta's Hartsfield-Jackson International Airport.",
+      "title": "Comair crash",
+      "url": "https://en.wikinews.org/wiki/49_dead_after_Comair_regional_jet_crashes_in_Kentucky"
+    },
+    "Dell, the world's largest manufactuer of home computers, is recalling 4.1 million lithium batteries used in laptop computers because of the risk of their bursting into flame."
+  ]
+}

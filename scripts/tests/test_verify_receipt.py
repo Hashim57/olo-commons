@@ -79,3 +79,34 @@ def test_the_command_line_reads_a_whole_response_and_exits_with_the_result(tmp_p
     assert vr.main([str(p), "--offline"]) == 1
     p.write_text("not json", encoding="utf-8")
     assert vr.main([str(p), "--offline"]) == 2
+
+
+SUPPLIED = json.load(open(os.path.join(ROOT, "tests", "fixtures", "receipt_supplied.json"), encoding="utf-8"))
+REQUEST = json.load(open(os.path.join(ROOT, "tests", "fixtures", "check_request.json"), encoding="utf-8"))
+
+
+def test_a_check_receipt_over_your_own_passages_is_matched_to_them_by_fingerprint():
+    res = vr.verify(SUPPLIED, None, REQUEST["passages"])
+    assert all(ok for _, ok, _ in res), [r for r in res if not r[1]]
+    assert len(by(res, "supplied")) == 4  # two fingerprints, two quotes
+
+
+def test_without_the_passages_the_quotes_are_skipped_not_failed():
+    res = vr.verify(SUPPLIED, None, None)
+    assert [ok for _, ok, _ in by(res, "supplied")] == [None, None]
+    assert by(res, "intact")[0][1]
+
+
+def test_a_different_passage_than_the_one_checked_is_caught():
+    changed = copy.deepcopy(REQUEST["passages"])
+    changed[1] = changed[1].replace("4.1 million", "41 million")
+    res = vr.verify(SUPPLIED, None, changed)
+    assert [ok for _, ok, _ in by(res, "supplied")][:2] == [True, False]
+
+
+def test_the_command_line_takes_the_request_body_as_supplied(tmp_path):
+    r, q = tmp_path / "r.json", tmp_path / "q.json"
+    r.write_text(json.dumps(SUPPLIED), encoding="utf-8")
+    q.write_text(json.dumps(REQUEST), encoding="utf-8")
+    assert vr.main([str(r), "--offline", "--supplied", str(q)]) == 0
+    assert vr.main([str(r), "--offline"]) == 0  # skipped lines are not failures
