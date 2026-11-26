@@ -220,6 +220,8 @@ export function summarise(verdicts: ({ label: Label } | { verdict: Label })[]): 
 
 const STOP = new Set(['the', 'and', 'for', 'are', 'was', 'were', 'what', 'when', 'where', 'who', 'why', 'how', 'does', 'did', 'this', 'that', 'with', 'from', 'into', 'about', 'which', 'there', 'their', 'have', 'has', 'had', 'been', 'being', 'can', 'could', 'would', 'should', 'made', 'make', 'many', 'much', 'some', 'any', 'all', 'not', 'but', 'you', 'your', 'its', 'our', 'one', 'two', 'tell', 'explain', 'please', 'is', 'of', 'in', 'on', 'to', 'a', 'an']);
 const words = (t: string) => (t.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(w => w.length >= 3 && !STOP.has(w));
+/** The content words of a text (lower case, three letters or more, common words left out), as the extractive answer and the check mode read them. */
+export const contentWords = words;
 
 /**
  * The answer when no writing model can be reached: the passages' own sentences

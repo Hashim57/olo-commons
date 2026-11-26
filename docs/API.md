@@ -36,6 +36,10 @@ Response:
 
 Each result carries its trust line (docs/TRUST.md), the same fields olo-answer gives with every passage: `status` (`candidate`, `verified` or `disputed`; retracted and superseded atoms are never returned), `credibility` (0 to 100), `corroboration` (how many other independent sources agree), `valid_from` and `valid_to` (when the fact holds), `observed_at` (when the source was last seen to say this), `source_revision` and `source_kind`. A field is `null` when the value is unknown. These were added after the fields above them, so a caller written against the earlier response keeps working.
 
+## Check: any text, sentence by sentence
+
+`POST .../functions/v1/olo-answer` with `{ "mode": "check", "text": "..." }` checks every sentence of any text against the Commons, or against your own passages with `"passages": [ { "text": "...", "url": "...", "title": "..." } ]`, and returns each sentence's verdict, quoted evidence and a verification receipt. Nothing sent is stored. docs/CHECK.md has the request, the response and the limits.
+
 ## Answer: a checked answer in one call
 
 `POST https://bfldflbkebyapfagsxnr.supabase.co/functions/v1/olo-answer` with `{ "q": "<question>", "k": 8 }` (or `GET ?q=...`). Olo retrieves passages exactly as the query call does, drafts two to four sentences with a hosted open-weight model (every sentence cites the passages it rests on), then has every sentence checked by the verifier: supported, contradicted or not covered, with the quoted evidence. Nothing is asserted that the passages cannot show: a verdict whose quote is not found in its passage is downgraded to not covered.

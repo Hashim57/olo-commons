@@ -25,7 +25,7 @@ export const RECEIPT_FORMAT = 'olo-receipt/1';
 export const RECEIPT_DOC = 'https://github.com/Hashim57/olo-commons/blob/main/docs/RECEIPTS.md';
 
 export type ReceiptSentence = { text: string; verdict: string; checked_by?: string | null; citations?: string[]; evidence?: { passage: string; quote: string }[] };
-export type ReceiptPassage = { id: string; atom: string; title?: string | null; source_slug?: string | null; licence?: string | null; url?: string | null; retrieved_at?: string | null; published_at?: string | null };
+export type ReceiptPassage = { id: string; atom?: string | null; supplied?: number; title?: string | null; source_slug?: string | null; licence?: string | null; url?: string | null; retrieved_at?: string | null; published_at?: string | null };
 
 export type Receipt = {
   format: string;
@@ -33,8 +33,11 @@ export type Receipt = {
   question: string;
   answer_shown: string;
   answered_by: { writer: string | null; verifier: string | null; mode: string };
-  sentences: { n: number; text: string; verdict: string; checked_by: string | null; shown: boolean; evidence: { atom: string; quote: string }[] }[];
+  sentences: { n: number; text: string; verdict: string; checked_by: string | null; shown: boolean; evidence: ({ atom: string; quote: string } | { supplied: number; quote: string })[] }[];
   atoms: { atom: string; content_hash: string | null; title: string | null; source: string | null; licence: string | null; url: string | null; retrieved_at: string | null; published_at: string | null }[];
+  // Check mode with the caller's own passages (check.ts): each passage's SHA-256 and what the caller said it was.
+  // Absent when every passage is a Commons atom, so receipts of ordinary answers keep the same bytes.
+  supplied?: { supplied: number; sha256: string; title: string | null; url: string | null }[];
   check: string;
   receipt_sha256?: string;
 };
@@ -66,8 +69,10 @@ export async function sha256Hex(s: string): Promise<string> {
  * sentence's evidence is re-keyed from the passage label the verifier saw
  * ("p2") to the atom id, which is what outlives the response. A sentence is
  * `shown` when it is supported, the same rule shownAnswer applies. Atoms are
- * listed in passage order; one with no stored fingerprint (hashes maps no
- * entry for it) gets null, and the check says so rather than guess.
+ * listed in passage order, once each; one with no stored fingerprint (hashes
+ * maps no entry for it) gets null, and the check says so rather than guess.
+ * In check mode a passage the caller supplied is keyed by its number and
+ * listed under `supplied` with the SHA-256 of its text, never the text.
  */
 export function buildReceipt(input: {
   question: string;
@@ -77,8 +82,18 @@ export function buildReceipt(input: {
   passages: ReceiptPassage[];
   hashes: Record<string, string>;
   issuedAt: string;
+  // check mode: passage number -> { sha256 of its text, title, url } for passages the caller supplied
+  supplied?: Record<number, { sha256: string; title?: string | null; url?: string | null }>;
 }): Receipt {
-  const atomOf = new Map(input.passages.map(p => [p.id, p.atom]));
+  const keyOf = new Map<string, { atom: string } | { supplied: number }>();
+  for (const p of input.passages) {
+    if (p.atom) keyOf.set(p.id, { atom: p.atom });
+    else if (typeof p.supplied === 'number') keyOf.set(p.id, { supplied: p.supplied });
+  }
+  const atomPassages: ReceiptPassage[] = [];
+  const seen = new Set<string>();
+  for (const p of input.passages) if (p.atom && !seen.has(p.atom)) { seen.add(p.atom); atomPassages.push(p); }
+  const suppliedNs = Object.keys(input.supplied || {}).map(Number).sort((a, b) => a - b);
   return {
     format: RECEIPT_FORMAT,
     issued_at: input.issuedAt,
@@ -91,11 +106,11 @@ export function buildReceipt(input: {
       verdict: s.verdict,
       checked_by: s.checked_by ?? null,
       shown: s.verdict === 'supported',
-      evidence: (s.evidence || []).filter(e => atomOf.has(e.passage)).map(e => ({ atom: atomOf.get(e.passage)!, quote: e.quote })),
+      evidence: (s.evidence || []).filter(e => keyOf.has(e.passage)).map(e => ({ ...keyOf.get(e.passage)!, quote: e.quote })),
     })),
-    atoms: input.passages.map(p => ({
-      atom: p.atom,
-      content_hash: input.hashes[p.atom] ?? null,
+    atoms: atomPassages.map(p => ({
+      atom: p.atom!,
+      content_hash: input.hashes[p.atom!] ?? null,
       title: p.title ?? null,
       source: p.source_slug ?? null,
       licence: p.licence ?? null,
@@ -103,6 +118,7 @@ export function buildReceipt(input: {
       retrieved_at: p.retrieved_at ?? null,
       published_at: p.published_at ?? null,
     })),
+    ...(suppliedNs.length ? { supplied: suppliedNs.map(n => ({ supplied: n, sha256: input.supplied![n].sha256, title: input.supplied![n].title ?? null, url: input.supplied![n].url ?? null })) } : {}),
     check: RECEIPT_DOC,
   };
 }

@@ -36,7 +36,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { citation, looseQuery, rank } from './rank.ts';
 import { ANSWER_SYSTEM, checkEvidence, checkText, extractiveAnswer, labelPassages, NOT_COVERED_TEXT, parseVerdict, renderAnswerPrompt, renderZeusPrompt, splitSentences, summarise, zeusReads, ZEUS_SYSTEM, type Passage, type Verdict } from './answer.ts';
-import { buildReceipt, sealReceipt, type Receipt } from './receipt.ts';
+import { buildReceipt, sealReceipt, sha256Hex, type Receipt } from './receipt.ts';
+import { checkSentences, checkSummary, chunkSupplied, parseCheckRequest, scopeFor, type CheckRequest } from './check.ts';
 import { answerTally, applyFigureCheck, checkLinks, reviewCandidates, shownAnswer, sourceSummary, timeSensitive, type AnswerTally, type ReviewCandidate } from './hygiene.ts';
 
 const ALLOWED_ORIGINS = ['https://heliusnetwork.app', 'https://helius-olo.io', 'https://www.helius-olo.io', 'https://kokorozashi.io', 'https://heliusnetwork.com'];
@@ -71,6 +72,105 @@ async function chat(baseUrl: string, apiKey: string, model: string, system: stri
   return out;
 }
 
+type Verifier = { name: string; base: string; key: string; model: string; tokens: number };
+
+/** Passages for a question, exactly as olo-query finds them: meaning search merged with keyword search, then reranked. */
+async function retrieve(sb: any, q: string, k: number): Promise<any[]> {
+  const want = Math.min(k * 2, 30);
+  let semantic: any[] = [], keyword: any[] = [];
+  try {
+    // @ts-ignore provided by the Edge runtime
+    const model = new Supabase.ai.Session('gte-small');
+    const emb: number[] = await model.run(q, { mean_pool: true, normalize: true });
+    const { data } = await sb.rpc('olo_match', { p_embedding: emb, p_k: want, p_min: 0.5 });
+    semantic = Array.isArray(data) ? data : [];
+  } catch (_) { /* keyword only */ }
+  const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : [];
+  // the strict query ANDs every word; when it finds nothing, retry with the content words ORed
+  if (!keyword.length) { const loose = looseQuery(q); if (loose) { const { data: d2 } = await sb.rpc('olo_search_text', { p_q: loose, p_k: want }); keyword = Array.isArray(d2) ? d2 : []; } }
+  return rank(q, semantic, keyword, k);
+}
+
+/**
+ * One sentence checked against its passages: Zeus first, then the writers under the Zeus prompt; the quote
+ * check (a verdict whose quote is not in its passage becomes not covered) and the figure check (every number
+ * must be in the passages) apply whatever the verifier said. Zeus has only been trained on English, so a
+ * sentence in another language skips it.
+ */
+async function verifyOne(verifiers: Verifier[], text: string, scope: Passage[]) {
+  let v: Verdict | null = null, verifyError = '', checkedBy: string | null = null;
+  const english = zeusReads(text);
+  for (const ver of verifiers) {
+    if (!english && ver.name.startsWith('zeus:')) continue;
+    try {
+      v = parseVerdict(await chat(ver.base, ver.key, ver.model, ZEUS_SYSTEM, renderZeusPrompt(checkText(text), scope), ver.tokens, VERIFY_TIMEOUT_MS));
+      if (v) { checkedBy = ver.name; break; }
+      verifyError = `${ver.name} gave unreadable output`;
+    } catch (e) { verifyError = String((e as Error).message || e).slice(0, 80); }
+  }
+  const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
+  return { ...applyFigureCheck({ text, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, checkText(text), scope),
+    checked_by: checkedBy, ...(english ? {} : { language: 'not_english' }) };
+}
+
+/**
+ * Check mode (check.ts, docs/CHECK.md): each sentence of the caller's text against the caller's own passages
+ * (chunked, the closest chunks per sentence) or against the Commons passages retrieved for that sentence.
+ * Nothing the caller sent is stored, logged, tallied or queued for review; the receipt keeps only the SHA-256
+ * of each supplied passage.
+ */
+async function runCheck(sb: any, req: CheckRequest, keyed: boolean, verifiers: Verifier[]) {
+  const { checked, unchecked } = checkSentences(req.text, keyed);
+  const supplied = req.supplied;
+  const chunks = supplied ? chunkSupplied(supplied) : [];
+  // Commons mode: retrieve for each sentence (at most four passages each), label them across the whole check.
+  const commons: any[] = [];
+  const perSentence: number[][] = [];
+  if (!supplied) {
+    const byAtom = new Map<string, number>();
+    const found_all = await Promise.all(checked.map(sentence => retrieve(sb, sentence.slice(0, MAX_Q), 4).catch(() => [])));
+    for (const found of found_all) {
+      const ids: number[] = [];
+      for (const r of found) { if (!byAtom.has(r.id)) { byAtom.set(r.id, commons.length); commons.push(r); } ids.push(byAtom.get(r.id)!); }
+      perSentence.push(ids);
+    }
+  }
+  const labelled = supplied ? [] : labelPassages(commons);
+  const scopes: Passage[][] = supplied ? checked.map(s => scopeFor(s, chunks)) : perSentence.map(ids => ids.map(i => labelled[i]).filter(Boolean));
+  const usedBy: string[] = [];
+  const verdicts = await Promise.all(checked.map(async (text, i) => {
+    const scope = scopes[i];
+    if (!scope.length) return { text, verdict: 'not_covered' as const, evidence: [], rationale: 'No passage in the Commons was found for this sentence.', evidence_checked: true, figures_checked: false, figures_missing: [], checked_by: null, passages: [] as string[] };
+    const v = await verifyOne(verifiers, text, scope);
+    if (v.checked_by) usedBy.push(v.checked_by);
+    // Evidence from a chunk is reported against its whole supplied passage ("s2"), which is what the caller holds.
+    const evidence = supplied ? v.evidence.map(e => ({ passage: e.passage.split('.')[0], quote: e.quote })) : v.evidence;
+    return { ...v, evidence, passages: scope.map(p => supplied ? p.id.split('.')[0] : p.id).filter((x, j, a) => a.indexOf(x) === j) };
+  }));
+  const counts = usedBy.reduce((m, n) => m.set(n, (m.get(n) || 0) + 1), new Map<string, number>());
+  const verifier = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const provenance = supplied
+    ? supplied.map((p, i) => ({ id: `s${i + 1}`, supplied: i + 1, title: p.title || null, url: p.url || null, chars: p.text.length }))
+    : commons.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, url: r.url, source: r.source, source_slug: r.source_slug, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at, citation: citation(r) }));
+  // The receipt: Commons atoms with their stored fingerprints, or the SHA-256 of each supplied passage.
+  let receipt: Receipt | null = null;
+  try {
+    const hashes: Record<string, string> = {};
+    const suppliedMeta: Record<number, { sha256: string; title?: string | null; url?: string | null }> = {};
+    if (supplied) { for (const [i, p] of supplied.entries()) suppliedMeta[i + 1] = { sha256: await sha256Hex(p.text), title: p.title || null, url: p.url || null }; }
+    else if (commons.length) { const { data } = await sb.from('olo_atoms').select('id, content_hash').in('id', commons.map(r => r.id)); for (const row of (data || []) as any[]) if (row?.id && row?.content_hash) hashes[row.id] = row.content_hash; }
+    const receiptPassages = supplied ? supplied.map((_p, i) => ({ id: `s${i + 1}`, supplied: i + 1 })) : (provenance as any[]);
+    receipt = await sealReceipt(buildReceipt({ question: req.text, answerShown: verdicts.filter(v => v.verdict === 'supported').map(v => v.text).join(' '), answeredBy: { writer: null, verifier, mode: supplied ? 'check-supplied' : 'check-commons' }, sentences: verdicts, passages: receiptPassages, hashes, supplied: supplied ? suppliedMeta : undefined, issuedAt: new Date().toISOString() }));
+  } catch { receipt = null; }
+  return {
+    mode: 'check', against: supplied ? 'supplied' : 'commons',
+    sentences: verdicts, summary: checkSummary(verdicts, unchecked),
+    ...(unchecked ? { notice: `Only the first ${checked.length} sentences were checked (${keyed ? 'keyed' : 'anonymous'} limit); ${unchecked} more were not.` } : {}),
+    passages: provenance, receipt, verifier,
+    attribution: supplied ? 'Checked by Olo (Helius Network) against the passages you supplied; nothing you sent was stored.' : 'Checked by Olo (Helius Network) against Olo Commons. Each passage carries its own source and licence; cite them.',
+  };
+}
+
 Deno.serve(async (req) => {
   const H = cors(req.headers.get('origin'));
   // Deno refuses a body (even '') on a 204, so the old `new Response('', { status: 204 })` threw and
@@ -78,11 +178,15 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: H });
   if (req.method !== 'GET' && req.method !== 'POST') return new Response(JSON.stringify({ error: 'method_not_allowed' }), { status: 405, headers: H });
 
-  let q = '', k = 8;
-  if (req.method === 'POST') { const b = await req.json().catch(() => ({})); q = String(b.q || ''); k = Number(b.k) || 8; }
+  let q = '', k = 8, body: any = {};
+  if (req.method === 'POST') { body = await req.json().catch(() => ({})); q = String(body.q || ''); k = Number(body.k) || 8; }
   else { const u = new URL(req.url); q = u.searchParams.get('q') || ''; k = Number(u.searchParams.get('k')) || 8; }
+  // Check mode (check.ts, docs/CHECK.md): any text, checked sentence by sentence against the Commons or the caller's own passages.
+  const checkMode = req.method === 'POST' && body?.mode === 'check';
+  const checkReq = checkMode ? parseCheckRequest(body) : null;
+  if (checkReq && 'error' in checkReq) return new Response(JSON.stringify({ error: checkReq.error }), { status: 400, headers: H });
   q = q.replace(/\s+/g, ' ').trim().slice(0, MAX_Q); k = Math.max(2, Math.min(k, 12));
-  if (q.length < 2) return new Response(JSON.stringify({ error: 'q is required (2 to 400 characters)' }), { status: 400, headers: H });
+  if (!checkMode && q.length < 2) return new Response(JSON.stringify({ error: 'q is required (2 to 400 characters)' }), { status: 400, headers: H });
 
   // Writers, tried in order: the main provider, then the fallback (the Cloudflare Worker's "olo-draft",
   // set by zeus/cloudflare/setup.sh). With neither reachable the answer is extractive: the passages' own
@@ -106,22 +210,21 @@ Deno.serve(async (req) => {
   const { count } = await sb.from('olo_query_log').select('id', { count: 'exact', head: true }).eq('ip_hash', ipHash).gt('at', new Date(Date.now() - 3600e3).toISOString());
   if ((count || 0) >= (keyed ? KEYED_PER_HOUR : ANON_PER_HOUR)) return new Response(JSON.stringify({ error: 'rate_limited', retry_after_seconds: 600 }), { status: 429, headers: { ...H, 'Retry-After': '600' } });
 
-  // retrieve, exactly as olo-query does
-  const want = Math.min(k * 2, 30);
-  let semantic: any[] = [], keyword: any[] = [];
-  try {
-    // @ts-ignore provided by the Edge runtime
-    const model = new Supabase.ai.Session('gte-small');
-    const emb: number[] = await model.run(q, { mean_pool: true, normalize: true });
-    const { data } = await sb.rpc('olo_match', { p_embedding: emb, p_k: want, p_min: 0.5 });
-    semantic = Array.isArray(data) ? data : [];
-  } catch (_) { /* keyword only */ }
-  {
-    const { data } = await sb.rpc('olo_search_text', { p_q: q, p_k: want }); keyword = Array.isArray(data) ? data : [];
-    // the strict query ANDs every word; when it finds nothing, retry with the content words ORed
-    if (!keyword.length) { const loose = looseQuery(q); if (loose) { const { data: d2 } = await sb.rpc('olo_search_text', { p_q: loose, p_k: want }); keyword = Array.isArray(d2) ? d2 : []; } }
+  // Verifiers, tried in order for each sentence: Zeus, then the writers with the Zeus prompt.
+  const zeusKey = Deno.env.get('OLO_ZEUS_API_KEY') || '';
+  const verifiers: Verifier[] = [
+    ...(zeusUrl ? [{ name: `zeus:${zeusModel}`, base: zeusUrl, key: zeusKey, model: zeusModel, tokens: 200 }] : []),
+    ...writers.map(w => ({ name: 'llm-fallback', base: w.base, key: w.key, model: w.model, tokens: 600 })),
+  ];
+
+  if (checkReq && !('error' in checkReq)) {
+    // Counted against the same hourly limit as questions; the text itself is never stored, logged or queued for review.
+    await sb.from('olo_query_log').insert({ ip_hash: ipHash, q_len: checkReq.text.length, results: 0, client: 'check' + (keyed ? ':keyed' : '') }).then(() => {}, () => {});
+    return new Response(JSON.stringify(await runCheck(sb, checkReq, keyed, verifiers)), { headers: H });
   }
-  const results = rank(q, semantic, keyword, k);
+
+  // retrieve, exactly as olo-query does
+  const results = await retrieve(sb, q, k);
   const passages: Passage[] = labelPassages(results);
   const provenance = results.map((r: any, i: number) => ({ id: `p${i + 1}`, atom: r.id, title: r.title, summary: r.summary || null, url: r.url, source: r.source, source_slug: r.source_slug, source_kind: r.source_kind || null, licence: r.licence, published_at: r.published_at || null, retrieved_at: r.retrieved_at,
     // sql/002: trust and time (null until the migration has run)
@@ -189,32 +292,14 @@ Deno.serve(async (req) => {
   const covered = !answer.includes(NOT_COVERED_TEXT);
   const sentences = covered ? splitSentences(answer).slice(0, MAX_SENTENCES) : [];
 
-  // Verifiers, tried in order for each sentence: Zeus, then the writers with the Zeus prompt. The response
-  // names the one that answered most sentences, and each sentence says which one checked it (checked_by)
-  // or that none could. Zeus has only been trained on English, so a sentence in another language skips it.
-  const zeusKey = Deno.env.get('OLO_ZEUS_API_KEY') || '';
-  const verifiers = [
-    ...(zeusUrl ? [{ name: `zeus:${zeusModel}`, base: zeusUrl, key: zeusKey, model: zeusModel, tokens: 200 }] : []),
-    ...writers.map(w => ({ name: 'llm-fallback', base: w.base, key: w.key, model: w.model, tokens: 600 })),
-  ];
+  // The response names the verifier that answered most sentences, and each sentence says which one checked it
+  // (checked_by) or that none could. Zeus has only been trained on English, so a sentence in another language skips it.
   const usedBy: string[] = [];
   const verdicts = await Promise.all(sentences.map(async (s) => {
     const cited = passages.filter(p => s.citations.includes(p.id));
-    const scope = cited.length ? cited : passages;
-    let v: Verdict | null = null, verifyError = '', checkedBy: string | null = null;
-    const english = zeusReads(s.text);
-    for (const ver of verifiers) {
-      if (!english && ver.name.startsWith('zeus:')) continue;
-      try {
-        v = parseVerdict(await chat(ver.base, ver.key, ver.model, ZEUS_SYSTEM, renderZeusPrompt(checkText(s.text), scope), ver.tokens, VERIFY_TIMEOUT_MS));
-        if (v) { usedBy.push(ver.name); checkedBy = ver.name; break; }
-        verifyError = `${ver.name} gave unreadable output`;
-      } catch (e) { verifyError = String((e as Error).message || e).slice(0, 80); }
-    }
-    const checked = v ? checkEvidence(v, scope) : { label: 'not_covered' as const, evidence: [], rationale: 'The verifier gave no usable answer' + (verifyError ? ` (${verifyError})` : '') + '.', evidence_checked: true };
-    // Figures and dates in the sentence must be in its sources, whatever the verifier said.
-    return { ...applyFigureCheck({ text: s.text, citations: s.citations, verdict: checked.label, evidence: checked.evidence, rationale: checked.rationale, evidence_checked: checked.evidence_checked }, checkText(s.text), scope),
-      checked_by: checkedBy, ...(english ? {} : { language: 'not_english' }) };
+    const v = await verifyOne(verifiers, s.text, cited.length ? cited : passages);
+    if (v.checked_by) usedBy.push(v.checked_by);
+    return { ...v, citations: s.citations };
   }));
   const counts = usedBy.reduce((m, n) => m.set(n, (m.get(n) || 0) + 1), new Map<string, number>());
   const verifier = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || (zeusUrl ? `zeus:${zeusModel}` : 'llm-fallback');
