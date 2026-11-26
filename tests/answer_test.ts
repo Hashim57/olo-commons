@@ -61,7 +61,9 @@ Deno.test('checkEvidence keeps only quotes found in their passage and downgrades
   assertEquals(ok.label, 'supported');
   assertEquals(ok.evidence, [{ passage: 'p1', quote: 'founded in 1971' }]);
   assertEquals(ok.evidence_checked, true);
-  const down = checkEvidence({ label: 'contradicted', evidence: [{ passage: 'p2', quote: 'founded in 1971' }], rationale: 'r' }, P);
+  // a quote in none of the passages downgrades the verdict (a quote under the wrong label is credited to the
+  // passage that holds it since 26 Nov 2026; see the test below)
+  const down = checkEvidence({ label: 'contradicted', evidence: [{ passage: 'p2', quote: 'founded in 1969' }], rationale: 'r' }, P);
   assertEquals(down.label, 'not_covered');
   assertEquals(down.evidence_checked, false);
   const nc = checkEvidence({ label: 'not_covered', evidence: [{ passage: 'p1', quote: 'founded in 1971' }], rationale: 'r' }, P);
@@ -212,4 +214,19 @@ Deno.test('quoteKey: a hyphen between words reads as a space, so "ward off" is f
   assert(quoteKey('Nazar battu: an icon used in North India and Pakistan to ward-off the evil eye.').includes(quoteKey('used in North India and Pakistan to ward off the evil eye')));
   assertEquals(quoteKey('annually from 1973-1981'), 'annually from 1973-1981', 'a range of years is not words');
   assert(!quoteKey('the well known case').includes(quoteKey('a well-known case')), 'other words are still other words');
+});
+
+Deno.test('checkEvidence credits a quote to the passage that holds it when the verifier names the wrong passage or one the sentence did not have', () => {
+  const ps = [
+    { id: 'p1', source: 'wikinews', url: '', text: 'Dell is recalling 4.1 million lithium batteries used in laptop computers.' },
+    { id: 'p2', source: 'wikipedia', url: '', text: 'What Do I Do with Me is the 19th studio album by Tanya Tucker, released on July 2, 1991.' },
+  ];
+  // an atom-style id, as the training data labels passages
+  const v = checkEvidence({ label: 'supported', evidence: [{ passage: '43a940f5', quote: 'released on July 2, 1991' }], rationale: 'r' }, ps);
+  assertEquals(v.label, 'supported');
+  assertEquals(v.evidence, [{ passage: 'p2', quote: 'released on July 2, 1991' }]);
+  // the wrong one of the sentence's passages: credited to the one that holds the words
+  assertEquals(checkEvidence({ label: 'supported', evidence: [{ passage: 'p1', quote: 'released on July 2, 1991' }], rationale: 'r' }, ps).evidence, [{ passage: 'p2', quote: 'released on July 2, 1991' }]);
+  // words in no passage are refused whatever the id
+  assertEquals(checkEvidence({ label: 'supported', evidence: [{ passage: 'zz', quote: 'released on July 3, 1991' }], rationale: 'r' }, ps).label, 'not_covered');
 });

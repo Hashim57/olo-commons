@@ -1,27 +1,26 @@
 {
-  "version": "v31",
-  "date": "2026-11-24",
+  "version": "v22",
+  "date": "2026-11-16",
   "base": "mistralai/Mistral-7B-Instruct-v0.2",
-  "train_examples": "14,190",
-  "label_accuracy": 0.915,
-  "evidence_hit": 0.915,
-  "well_formed_accuracy": 0.989,
+  "train_examples": "36,255",
+  "label_accuracy": 0.995,
+  "evidence_hit": 0.995,
+  "well_formed_accuracy": 0.995,
   "json_valid": 1.0,
   "eval_n": 200,
   "f1": {
-    "supported": 0.986,
-    "contradicted": 0.809,
-    "not_covered": 0.912
+    "supported": 1.0,
+    "contradicted": 0.993,
+    "not_covered": 0.991
   },
-  "held_out_accuracy": 0.637,
-  "eval3_accuracy": 0.965,
+  "held_out_accuracy": 0.733,
+  "eval3_accuracy": 0.92,
   "train_generators": [
     "rules-v1",
-    "hard-v2",
-    "compose-v2",
-    "longdoc-v2"
+    "hard-v1",
+    "compose-v1"
   ],
-  "promoted_at": "2026-11-26T22:28:37+00:00",
+  "promoted_at": "2026-11-26T23:17:34+00:00",
   "measured_versions": [
     "v0",
     "v10",
@@ -56,23 +55,23 @@
     "v9"
   ],
   "pinned": {
-    "version": "v31",
+    "version": "v22",
     "by": "hand",
-    "reason": "Promoted by hand on Hashim's decision (26 November 2026). v31 clears the floor on the honest score (0.989 on the first split without the 17 malformed name edits; 0.915 with them) and is better than v22 on Commons eval v3 (0.965 against 0.92); v22 is better on held-out VitaminC (0.733 against 0.637), so this is a measured swap: the 70-question answer eval is rerun after v31 serves and compared with v22's run of 26 November (verification 0.845, facts 0.786, 4 abstained).",
-    "at": "2026-11-26T22:28:37+00:00"
+    "reason": "Rolled back by hand on 26 November 2026, the fallback agreed with Hashim when v31 was promoted. With v31 serving, the 70-question answer eval fell to verification 0.380, facts 0.379 and 32 abstained, against v22's 0.845, 0.786 and 4 earlier the same evening: v31 labelled 48 sentences supported whose quotes did not survive olo-answer's evidence check, most likely because Zeus trains on passages labelled by atom id and olo-answer labels them p1, p2. v31 is measured again once olo-answer credits a verbatim quote to the passage that holds it.",
+    "at": "2026-11-26T23:17:34+00:00"
   },
   "cloudflare": {
-    "version": "v31",
-    "date": "2026-11-24",
+    "version": "v22",
+    "date": "2026-11-16",
     "base": "mistralai/Mistral-7B-Instruct-v0.2",
-    "label_accuracy": 0.915,
-    "evidence_hit": 0.915,
+    "label_accuracy": 0.995,
+    "evidence_hit": 0.995,
     "json_valid": 1.0,
     "eval_n": 200,
     "f1": {
-      "supported": 0.986,
-      "contradicted": 0.809,
-      "not_covered": 0.912
+      "supported": 1.0,
+      "contradicted": 0.993,
+      "not_covered": 0.991
     }
   }
 }
