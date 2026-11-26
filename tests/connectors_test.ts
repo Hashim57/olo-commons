@@ -4,7 +4,7 @@
 // reconstructed from each API's documentation where the live API could not be
 // reached; tests/fixtures/ingest/README.md says which is which.
 import { assert, assertEquals } from './_assert.ts';
-import { ARCHIVE_QUERY, archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, WIKINEWS_NOT_AN_ARTICLE_RE, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
+import { ARCHIVE_EXCLUDED_COLLECTIONS, ARCHIVE_QUERY, archiveCandidates, archiveSearchUrl, arxivCandidates, bareDoi, gutenbergCandidates, openalexAbstract, openalexCandidates, pubmedCandidates, pubmedSearchIds, searchUrl, wikiCandidate, wikidataCandidates, wikidataClaimsUrl, wikidataEntitiesUrl, wikidataFacts, wikidataLabels, wikidataLabelsUrl, wikidataRandomUrl, wikidataSearchIds, wikidataValueIds, WIKIDATA_BATCH, WIKIDATA_FACT_MAX, WIKIDATA_FACT_VALUES, WIKINEWS_NOT_AN_ARTICLE_RE, wikinewsCandidates, wikinewsDate, wikiSearchTitles } from '../functions/olo-ingest/sources.ts';
 import { dataGovCandidates } from '../functions/olo-ingest/datagov.ts';
 import { isCatalogueRecord, isStub } from '../functions/olo-ingest/text.ts';
 
@@ -165,7 +165,7 @@ Deno.test('wikidata: the random walk asks for a full batch of 50 and wbgetentiti
 
 /* ---------- archive_org ---------- */
 
-Deno.test('archive_org: the search asks for texts with a description and an open licence URL outside the uploader collections, most downloaded first, four times the budget, capped at 40 rows', () => {
+Deno.test('archive_org: the search asks for texts with a description and an open licence URL outside the uploader shelves, most downloaded first, four times the budget, capped at 40 rows', () => {
   const u = new URL(archiveSearchUrl(5, 17));
   assertEquals(u.origin + u.pathname, 'https://archive.org/advancedsearch.php');
   const q = u.searchParams.get('q')!;
@@ -173,7 +173,10 @@ Deno.test('archive_org: the search asks for texts with a description and an open
   assert(q.startsWith('mediatype:texts AND description:* AND '), 'texts with a description, as before');
   assert(q.includes('licenseurl:(*publicdomain* OR *zero* OR *by*) AND NOT licenseurl:(*nc* OR *nd*)'), 'the open licences are asked for in the query (issue #50)');
   assert(!/licenseurl:\*[^ ]*\//.test(q), 'no wildcard with a slash in it: the Archive search answers those with a backend error');
-  assert(q.includes('NOT collection:(opensource OR community OR opensource_media OR publicsafetycode)'), 'the Community Texts buckets and the noncommercial standards mirror are left out');
+  assert(q.includes('NOT collection:(opensource OR community OR opensource_media OR booksbylanguage OR folkscanomy OR newsstand OR magazine_rack OR fringe OR deemphasize OR reclaimtherecords OR genealogy OR yearbooks OR publicsafetycode)'), 'the uploader shelves, the Archive\'s own deemphasis marks, the genealogy indexes and the noncommercial standards mirror are left out');
+  for (const c of ['booksbylanguage', 'folkscanomy', 'newsstand', 'magazine_rack', 'fringe', 'deemphasize', 'reclaimtherecords', 'genealogy', 'yearbooks']) assert(ARCHIVE_EXCLUDED_COLLECTIONS.includes(c), `${c}: 49 of the 70 atoms stored in the day after 2026-11-25 came from these shelves`);
+  assertEquals(new Set(ARCHIVE_EXCLUDED_COLLECTIONS).size, ARCHIVE_EXCLUDED_COLLECTIONS.length, 'no shelf listed twice');
+  assert(ARCHIVE_EXCLUDED_COLLECTIONS.every(c => /^[a-z_]+$/.test(c)), 'bare collection ids, nothing the query parser could read as syntax');
   assertEquals(u.searchParams.getAll('fl[]'), ['identifier', 'title', 'description', 'creator', 'date', 'licenseurl']);
   assertEquals(u.searchParams.getAll('sort[]'), ['downloads desc'], 'a random page out of 200 only ever sees the first 8,000 results, so they are the most downloaded');
   assertEquals(u.searchParams.get('rows'), '20');
