@@ -151,7 +151,8 @@ Deno.test('checkEvidence accepts a quote that differs only in case, quotes, dash
   // other words are still refused
   assertEquals(checkEvidence({ label: 'supported', evidence: [{ passage: 'p1', quote: 'released on July 3, 1991' }], rationale: 'r' }, ps).label, 'not_covered');
   assertEquals(checkEvidence({ label: 'supported', evidence: [{ passage: 'p1', quote: '.' }], rationale: 'r' }, ps).label, 'not_covered');
-  assertEquals(quoteKey('\u201cHello\u2014world\u201d.'), '"hello-world"');
+  // an em dash folds to a hyphen, and a hyphen between words reads as a space (since 26 Nov 2026, q069)
+  assertEquals(quoteKey('\u201cHello\u2014world\u201d.'), '"hello world"');
 });
 
 Deno.test('zeusReads sends English to Zeus and Spanish to the fallback verifier', () => {
@@ -204,4 +205,11 @@ Deno.test('checkText: a non-breaking or typographic hyphen reads as a hyphen, so
   assertEquals(checkText('leaving only the co\u2011pilot as a survivor'), 'leaving only the co-pilot as a survivor');
   assertEquals(checkText('a well\u2010known case'), 'a well-known case');
   assert(quoteKey('co\u2011pilot') === quoteKey('co-pilot'));
+});
+
+Deno.test('quoteKey: a hyphen between words reads as a space, so "ward off" is found in "ward-off"; numbers keep theirs', () => {
+  assertEquals(quoteKey('to ward-off the evil eye'), quoteKey('to ward off the evil eye'));
+  assert(quoteKey('Nazar battu: an icon used in North India and Pakistan to ward-off the evil eye.').includes(quoteKey('used in North India and Pakistan to ward off the evil eye')));
+  assertEquals(quoteKey('annually from 1973-1981'), 'annually from 1973-1981', 'a range of years is not words');
+  assert(!quoteKey('the well known case').includes(quoteKey('a well-known case')), 'other words are still other words');
 });

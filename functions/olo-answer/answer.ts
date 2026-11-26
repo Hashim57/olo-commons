@@ -187,8 +187,11 @@ export function parseVerdict(text: string): Verdict | null {
  * passage's own, in its order.
  */
 export function quoteKey(t: string): string {
+  // A hyphen between words is read as a space: the verifier quoted "to ward off the evil eye" from "to ward-off
+  // the evil eye", and the quote check called a sentence its passage states not covered (answer eval, 26 Nov 2026,
+  // q069). The words must still be the passage's own, in its order.
   return checkText(t).toLowerCase().replace(/[\u2018\u2019\u201a\u2032`]/g, "'").replace(/[\u201c\u201d\u201e\u2033«»]/g, '"')
-    .replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[\u00a0\u2009\u202f]/g, ' ').replace(/\s+/g, ' ').trim().replace(/[.,;:]+$/, '');
+    .replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[\u00a0\u2009\u202f]/g, ' ').replace(/(\p{L})-(?=\p{L})/gu, '$1 ').replace(/\s+/g, ' ').trim().replace(/[.,;:]+$/, '');
 }
 
 /**
