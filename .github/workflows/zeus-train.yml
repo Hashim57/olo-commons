@@ -46,6 +46,10 @@ on:
       max_minutes:
         description: 'Minutes the optimiser loop may run (0: the whole pass)'
         default: '60'
+      recipe:
+        description: 'Reproduce an earlier version from its own training data, e.g. v22 (blank: the current recipe)'
+        required: false
+        default: ''
 permissions:
   contents: write
 concurrency:
@@ -112,7 +116,7 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo "Training ${{ steps.v.outputs.version }}: ${{ steps.v.outputs.reason }}"
-          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '60' }}"
+          modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '60' }}" --recipe "${{ github.event.inputs.recipe || '' }}"
       - name: Record, promote, scorecard, commit
         if: steps.v.outputs.due == '1'
         # The run takes about 90 minutes and main often moves meanwhile. Until 2026-11-27 a rebase conflict here

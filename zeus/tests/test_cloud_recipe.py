@@ -270,3 +270,21 @@ def test_mix_v3_fits_the_hour_and_keeps_the_first_split_groups():
     src = open(os.path.join(os.path.dirname(__file__), "..", "cloud", "modal_train.py")).read()
     assert "import_n: int = 5000" in src and '"--bound", str(IMPORT_BOUND_PAIRS)' in src and '"--shares", IMPORT_SHARES' in src
     assert "serving_mix" in src and "eval_serving" in src
+
+
+def test_a_reproduction_trains_on_the_old_commit_and_is_measured_on_todays_splits():
+    import ast, re as _re, subprocess as _sp
+    here = os.path.join(os.path.dirname(__file__), "..")
+    src = open(os.path.join(here, "cloud", "modal_train.py")).read()
+    tree = ast.parse(src)
+    repro = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "REPRO")
+    assert repro["v22"]["commit"].startswith("a8ae4b4") and _re.fullmatch(r"[0-9a-f]{40}", repro["v22"]["commit"])
+    assert repro["v22"]["import_n"] == 1500, "v22 imported 1,500 balanced VitaminC rows"
+    # no mistake pool, no focus sampling, no serving views, and the reproduced version's seeds
+    assert 'pool_rows = [] if recipe_name' in src and 'list(range(len(train))) if recipe_name' in src and 'list(focused) if recipe_name' in src
+    assert "seed_of = recipe_name or version" in src and "recipe.shuffle_seed(version))" not in src.split("def train_remote")[1].split("probe_indices")[0]
+    # today's splits and held-out dev file go into the payload, the old commit's training data comes from the worktree
+    body = src.split("def repro_parts")[1].split("\ndef ")[0]
+    assert '"eval.jsonl", "eval2.jsonl", "eval3.jsonl"' in body and "vitaminc-eval.jsonl" in body and "-eval.jsonl" in body
+    wf = open(os.path.join(here, "..", ".github", "workflows", "zeus-train.yml")).read()
+    assert "recipe:" in wf and '--recipe "${{ github.event.inputs.recipe' in wf
