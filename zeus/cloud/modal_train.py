@@ -64,7 +64,7 @@ def _tar(paths):
 
 
 @app.function(image=image, gpu=GPU, timeout=4 * 3600, volumes={"/cache": cache})
-def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 60.0) -> bytes:
+def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs: float = 1.0, eval_limit: int = 200, aggrefact_n: int = 600, max_minutes: float = 60.0, recipe_name: str = "") -> bytes:
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -94,15 +94,18 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                 if f.endswith(".jsonl") and not f.endswith("-eval.jsonl"):
                     train += load(os.path.join(d, f))
     # What earlier versions got wrong (recipe.merge_pool): trained again as priority rows, so read twice in all.
-    pool_rows = load(os.path.join(data, "mistakes", "pool.jsonl"))
+    # A reproduction (--recipe, REPRO below) trains as that version did: no mistake pool, no focus sampling and no
+    # serving-format views, which v22 did not have, and the shuffle seeds of the version it reproduces.
+    pool_rows = [] if recipe_name else load(os.path.join(data, "mistakes", "pool.jsonl"))
     train += pool_rows
+    seed_of = recipe_name or version
     # The gold, imported and mistake rows: under the time budget they always come inside the part of the list a run reads (recipe.budgeted_order).
     priority = [i >= rule_made for i in range(len(train))]
     # Focused training (recipe.focus_indices): every gold, imported, mistake, composed and long-document row, and a
     # version-seeded, label-balanced sample of the plain rule-made and hard-v1 rows. The mistake probe after
     # training still samples the whole set, so it also finds what the model gets wrong in rows this run did not read.
     import random as _random
-    focus = recipe.focus_indices(train, priority, _random.Random(recipe.shuffle_seed(version) + 2))
+    focus = list(range(len(train))) if recipe_name else recipe.focus_indices(train, priority, _random.Random(recipe.shuffle_seed(seed_of) + 2))
     focused, focused_priority = [train[i] for i in focus], [priority[i] for i in focus]
     evals = load(os.path.join(data, "eval.jsonl"))[:eval_limit]
 
@@ -129,8 +132,8 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     # Serving format (recipe.serving_mix): half the rows are shown with olo-answer's passage labels (p1, p2, ...) in a
     # shuffled order, some padded with unrelated passages from the training rows, so Zeus reads the prompts it is
     # served with. Seeded by the version. The rows kept for the mistake probe and the pool stay in their stored form.
-    view_rng = _random.Random(recipe.shuffle_seed(version) + 3)
-    served = recipe.serving_mix(focused, view_rng, recipe.distractor_pool(focused, _random.Random(recipe.shuffle_seed(version) + 4)))
+    view_rng = _random.Random(recipe.shuffle_seed(seed_of) + 3)
+    served = list(focused) if recipe_name else recipe.serving_mix(focused, view_rng, recipe.distractor_pool(focused, _random.Random(recipe.shuffle_seed(seed_of) + 4)))
     rows = []
     for ex in served:
         p = tok.apply_chat_template(recipe.prompt_messages(ex), add_generation_prompt=True)
@@ -154,7 +157,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     import random
     # A different part of the set each version under the time budget, reproducible for the version (recipe.shuffle_seed).
     # The held-out sampling below keeps seed 0 so every version is measured on the same examples.
-    rng = random.Random(recipe.shuffle_seed(version))
+    rng = random.Random(recipe.shuffle_seed(seed_of))
     step = 0
     while step < steps:
         order = recipe.budgeted_order(focused_priority, rng)
@@ -222,7 +225,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     json.dump(cfg, open(cfg_path, "w"), indent=2)
     summary = {"base": base, "framework": "peft-cloud", "gpu": GPU, "train_examples": len(rows), "eval_examples": len(evals), "epochs": iters_epochs,
                "steps": step, "planned_steps": planned_steps, "time_budget_minutes": max_minutes, "time_capped": step < planned_steps,
-               "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True,
+               "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(seed_of), "recipe": f"{recipe_name}-repro" if recipe_name else "current", "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True,
                # how many of the gold and imported rows the budgeted part of the order held (all of them unless the hour allowed less than PRIORITY_FRONT of the list)
                "priority_rows": sum(priority), "priority_front": recipe.PRIORITY_FRONT, "mistake_pool_rows": len(pool_rows),
                "rows_available": len(train), "rows_focused": len(focused), "focus_caps": recipe.FOCUS_CAPS, "serving_rows": sum(1 for a, b in zip(focused, served) if a is not b), "serving_share": recipe.SERVING_SHARE,
@@ -343,12 +346,50 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 IMPORT_SHARES = "contradicted=0.4,supported=0.35,not_covered=0.25"
 IMPORT_BOUND_PAIRS = 500
 
+# Reproductions (2026-11-27, after v35): train again on the training data exactly as an earlier version built it,
+# from the commit that version trained from, measured on today's splits and held-out sets. Why: since v22 every new
+# generator raised the in-house scores and lowered VitaminC dev (v22 0.733, v34 0.677, v35 0.623), so the first
+# question is whether v22's 0.733 reproduces at all. v22 trained from a8ae4b4 (the commit before 74c6124).
+REPRO = {"v22": {"commit": "a8ae4b4521b2783e9382217b560936ca55fa6163", "import_n": 1500}}
+
+
+def repro_parts(name, worktree):
+    """The payload entries of a reproduction: its training data from the old worktree, the splits and the held-out
+    VitaminC dev file from today's tree, so the numbers compare with every other version's."""
+    parts = [(os.path.join(worktree, "zeus", "data", "train.jsonl"), "zeus/data/train.jsonl")]
+    for d in ("gold", "imported"):
+        src = os.path.join(worktree, "zeus", "data", d)
+        if os.path.isdir(src):
+            for f in sorted(os.listdir(src)):
+                if f.endswith(".jsonl") and not f.endswith("-eval.jsonl"):
+                    parts.append((os.path.join(src, f), f"zeus/data/{d}/{f}"))
+    parts += [(f"zeus/data/{f}", f"zeus/data/{f}") for f in ("eval.jsonl", "eval2.jsonl", "eval3.jsonl", "eval3.manifest.json") if os.path.exists(f"zeus/data/{f}")]
+    if os.path.exists("zeus/data/imported/vitaminc-eval.jsonl"):
+        parts.append(("zeus/data/imported/vitaminc-eval.jsonl", "zeus/data/imported/vitaminc-eval.jsonl"))
+    return parts
+
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 5000, aggrefact_n: int = 600, max_minutes: float = 60.0):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 5000, aggrefact_n: int = 600, max_minutes: float = 60.0, recipe: str = ""):
     py = sys.executable
     os.chdir(REPO)
+    if recipe and recipe not in REPRO:
+        raise SystemExit(f"unknown recipe {recipe!r}; known: {sorted(REPRO)}")
     subprocess.run([py, "zeus/validate_gold.py"], check=True)
+    if recipe:
+        # Today's splits and held-out dev file, then the old commit's own import and dataset build in a worktree.
+        subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--split", "dev", "--n", "300", "--out", "zeus/data/imported/vitaminc-eval.jsonl"], check=False)
+        subprocess.run([py, "zeus/build_dataset.py"], check=True)
+        spec = REPRO[recipe]
+        worktree = os.path.join("/tmp", f"zeus-repro-{recipe}")
+        subprocess.run(["git", "fetch", "-q", "--unshallow"], check=False)
+        subprocess.run(["git", "worktree", "add", "-f", worktree, spec["commit"]], check=True)
+        subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--n", str(spec["import_n"])], cwd=worktree, check=False)
+        subprocess.run([py, "zeus/build_dataset.py"], cwd=worktree, check=True)
+        parts = repro_parts(recipe, worktree)
+        parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/quality.py", "zeus/quality.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
+        _finish(version, _tar(parts), epochs, eval_limit, aggrefact_n, max_minutes, recipe)
+        return
     if import_n > 0:
         # Mix v3 (2026-11-27): 5,000 rows weighted toward contradictions (contradicted 0.40, supported 0.35, not covered
         # 0.25) and 500 bound-v1 pairs over VitaminC's own sentences (vitaminc-bound.jsonl). Why: recipe.py, "mix v3".
@@ -362,8 +403,11 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
     parts += [(f"zeus/data/{d}", f"zeus/data/{d}") for d in ("gold", "imported", "mistakes") if os.path.isdir(f"zeus/data/{d}")]
     # quality.py since 2026-11-23: eval.score_by_edit imports it (malformed_name_edit); test_cloud_recipe checks every local import of eval.py is here
     parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/quality.py", "zeus/quality.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
-    payload = _tar(parts)
-    result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n, max_minutes)
+    _finish(version, _tar(parts), epochs, eval_limit, aggrefact_n, max_minutes, "")
+
+
+def _finish(version, payload, epochs, eval_limit, aggrefact_n, max_minutes, recipe):
+    result = train_remote.remote(payload, version, os.environ.get("HF_TOKEN", ""), epochs, eval_limit, aggrefact_n, max_minutes, recipe)
     tmp = os.path.join(REPO, "zeus", "out", f".cloud-{version}")
     os.makedirs(tmp, exist_ok=True)
     tarfile.open(fileobj=io.BytesIO(result), mode="r:gz").extractall(tmp)
