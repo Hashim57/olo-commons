@@ -77,7 +77,7 @@ def test_main_keeps_eval_files_identical_and_no_restate_reproduces_train(tmp_pat
     sp.write_text(json.dumps(snap))
     script = os.path.join(os.path.dirname(__file__), "..", "build_dataset.py")
     outs = {}
-    for name, extra in (("on", []), ("off", ["--no-restate"])):
+    for name, extra in (("on", ["--no-bound"]), ("off", ["--no-restate", "--no-bound"])):
         out = tmp_path / name
         subprocess.run([sys.executable, script, "--snapshot", str(sp), "--out", str(out), "--eval-share", "0.2"] + extra, check=True, capture_output=True)
         outs[name] = out

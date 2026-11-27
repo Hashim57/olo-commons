@@ -85,6 +85,59 @@ def passage_id(unique_id):
     return "v" + hashlib.sha256(unique_id.encode()).hexdigest()[:7]
 
 
+def _distractors(row, distractors, rng, page, pid):
+    """Two passages from other rows (another page, another case) to show next to the row's own."""
+    others, seen = [], {pid}
+    for d in rng.sample(distractors, k=min(12, len(distractors))):
+        dp = page_name(d.get("page"))
+        did = passage_id(d["unique_id"])
+        if did in seen or d.get("case_id") == row.get("case_id") or dp == page or len(detok(d.get("evidence", ""))) < 30:
+            continue
+        seen.add(did)
+        others.append({"id": did, "source": "wikipedia", "url": f"https://en.wikipedia.org/w/index.php?title={dp.replace(' ', '_')}", "title": dp, "text": detok(d.get("evidence", "")), "corpus": "vitaminc"})
+        if len(others) == 2:
+            break
+    return others
+
+
+def bound_examples(rows, n, seed=7):
+    """bound-v1 pairs (zeus/bound.py) over VitaminC's own evidence sentences: a sentence a real Wikipedia
+    revision states, with one of its numbers bounded the way VitaminC's claims bound numbers ("more than 570
+    cases"), once so the sentence entails it and once so it contradicts it. Real revisions only (a synthetic
+    revision's evidence is an edited sentence, not what the page said), one pair per case, at most n pairs.
+    The train split only: the held-out dev split is never read here."""
+    import bound
+    rng = random.Random(f"{seed}:{bound.BOUND_VERSION}")
+    real = [r for r in rows if r.get("revision_type") == "real"]
+    rng.shuffle(real)
+    pool = real[:5000]   # distractors; _distractors never picks the row's own case or page
+    out, cases, prefixes = [], set(), {}
+    for r in real:
+        if len(out) >= 2 * n:
+            break
+        ev = detok(r.get("evidence", ""))
+        if r.get("case_id") in cases or not (40 <= len(ev) <= 400) or not ev.endswith(".") or not bound._candidate(ev):
+            continue
+        prefix = " ".join(ev.split()[:3]).lower()
+        if prefixes.get(prefix, 0) >= 3:
+            continue   # Wikipedia repeats sentence frames ("On Metacritic, the film ..."): at most three pairs of one frame
+        page = page_name(r.get("page"))
+        rev = r.get("wiki_revision_id") or ""
+        pid = passage_id(r["unique_id"])
+        own = {"id": pid, "source": "wikipedia", "url": f"https://en.wikipedia.org/w/index.php?title={page.replace(' ', '_')}" + (f"&oldid={rev}" if rev else ""),
+               "title": page, "text": ev, "revision": rev, "corpus": "vitaminc"}
+        others = _distractors(r, pool, rng, page, pid)
+        if len(others) < 2:
+            continue
+        pair = bound.make_pair(ev, own, others, rng, {"case_id": r.get("case_id"), "unique_id": r["unique_id"],
+                                                     "licence": CORPORA["vitaminc"]["licence"], "attribution": CORPORA["vitaminc"]["attribution"]})
+        if pair:
+            out.extend(pair)
+            cases.add(r.get("case_id"))
+            prefixes[prefix] = prefixes.get(prefix, 0) + 1
+    return out
+
+
 def to_example(row, distractors, rng):
     """One VitaminC row -> one Zeus example. distractors: list of other rows for the two extra passages."""
     label = LABELS.get(row.get("label"))
@@ -98,16 +151,7 @@ def to_example(row, distractors, rng):
     url = f"https://en.wikipedia.org/w/index.php?title={page.replace(' ', '_')}" + (f"&oldid={rev}" if rev else "")
     pid = passage_id(row["unique_id"])
     main = {"id": pid, "source": "wikipedia", "url": url, "title": page, "text": evidence, "revision": rev, "corpus": "vitaminc"}
-    others, seen = [], {pid}
-    for d in rng.sample(distractors, k=min(12, len(distractors))):
-        dp = page_name(d.get("page"))
-        did = passage_id(d["unique_id"])
-        if did in seen or d.get("case_id") == row.get("case_id") or dp == page or len(detok(d.get("evidence", ""))) < 30:
-            continue
-        seen.add(did)
-        others.append({"id": did, "source": "wikipedia", "url": f"https://en.wikipedia.org/w/index.php?title={dp.replace(' ', '_')}", "title": dp, "text": detok(d.get("evidence", "")), "corpus": "vitaminc"})
-        if len(others) == 2:
-            break
+    others = _distractors(row, distractors, rng, page, pid)
     if len(others) < 2:
         return None
     passages = [main] + others
@@ -118,8 +162,9 @@ def to_example(row, distractors, rng):
             "licence": CORPORA["vitaminc"]["licence"], "attribution": CORPORA["vitaminc"]["attribution"]}
 
 
-def balanced_sample(rows, n, rng):
-    """Equal numbers per label (as far as the corpus allows), in a stable shuffled order."""
+def balanced_sample(rows, n, rng, shares=None):
+    """Equal numbers per label (as far as the corpus allows), or the given share per corpus label
+    ({"REFUTES": 0.4, ...}), in a stable shuffled order."""
     by = {}
     for r in rows:
         by.setdefault(r.get("label"), []).append(r)
@@ -127,7 +172,8 @@ def balanced_sample(rows, n, rng):
         rng.shuffle(by[k])
     out, per = [], max(1, n // max(1, len(by)))
     for k in sorted(by):
-        out.extend(by[k][:per])
+        take = round(n * shares[k]) if shares and k in shares else per
+        out.extend(by[k][:take])
     rng.shuffle(out)
     return out[:n]
 
@@ -156,11 +202,11 @@ def load_rows(corpus, split, path=None):
     return rows
 
 
-def convert(rows, n, seed=7, real_only=False):
+def convert(rows, n, seed=7, real_only=False, shares=None):
     rng = random.Random(seed)
     if real_only:
         rows = [r for r in rows if r.get("revision_type") == "real"]
-    picked = balanced_sample(rows, n, rng)
+    picked = balanced_sample(rows, n, rng, shares)
     pool = rng.sample(rows, k=min(5000, len(rows)))
     out = []
     for r in picked:
@@ -179,9 +225,16 @@ def main():
     ap.add_argument("--real-only", action="store_true", help="skip the synthetic (FEVER-derived) revisions")
     ap.add_argument("--zip", help="use an already downloaded zip instead of fetching")
     ap.add_argument("--out")
+    ap.add_argument("--shares", help="share of each Zeus label in the sample, e.g. contradicted=0.4,not_covered=0.25,supported=0.35 (default: equal)")
+    ap.add_argument("--bound", type=int, default=0, help="train split only: also write up to this many bound-v1 pairs over VitaminC's own sentences (zeus/bound.py) to --bound-out")
+    ap.add_argument("--bound-out")
     args = ap.parse_args()
     rows = load_rows(args.corpus, args.split, args.zip)
-    examples = convert(rows, args.n, args.seed, args.real_only)
+    shares = None
+    if args.shares:
+        want = {k.strip(): float(v) for k, v in (kv.split("=") for kv in args.shares.split(","))}
+        shares = {corpus_label: want[zeus_label] for corpus_label, zeus_label in LABELS.items() if zeus_label in want}
+    examples = convert(rows, args.n, args.seed, args.real_only, shares)
     out = args.out or os.path.join(HERE, "data", "imported", f"{args.corpus}.jsonl")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as f:
@@ -191,6 +244,13 @@ def main():
     for ex in examples:
         by[ex["label"]] = by.get(ex["label"], 0) + 1
     print(json.dumps({"corpus": args.corpus, "split": args.split, "written": len(examples), "by_label": by, "out": out, "licence": CORPORA[args.corpus]["licence"]}))
+    if args.bound > 0 and args.split == "train" and args.corpus == "vitaminc":
+        bout = args.bound_out or os.path.join(HERE, "data", "imported", f"{args.corpus}-bound.jsonl")
+        bex = bound_examples(rows, args.bound, args.seed)
+        with open(bout, "w", encoding="utf-8") as f:
+            for ex in bex:
+                f.write(json.dumps(ex, ensure_ascii=False) + "\n")
+        print(json.dumps({"corpus": args.corpus, "generator": "bound-v1", "written": len(bex), "out": bout}))
 
 
 if __name__ == "__main__":
