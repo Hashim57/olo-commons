@@ -1,0 +1,11 @@
+{
+  "version": "v33",
+  "base": "mistralai/Mistral-7B-Instruct-v0.2",
+  "rows_available": 35090,
+  "train_generators": ["rules-v1", "hard-v2", "compose-v2", "longdoc-v2"],
+  "train_filters": ["name-check-v1"],
+  "max_minutes": 60,
+  "last_logged_step": 840,
+  "planned_steps": 894,
+  "note": "Written by hand on 2026-11-27 from the log of run 45905595898: the workflow's record step stopped on a merge conflict and did not keep the file modal_train.py wrote. rows_available is train_total from the workflow's dataset build (35,090: 34,654 rule-made and 436 gold); the cloud run's own count, with the imported VitaminC rows, and its exact minutes were not recorded."
+}
