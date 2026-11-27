@@ -422,7 +422,7 @@ def test_main_keeps_eval_files_byte_identical(tmp_path):
     script = os.path.join(HERE, "..", "build_dataset.py")
     outs = {}
     # --no-compose in both runs: this test is about hard-v1 alone (test_compose.py covers compose-v1)
-    for name, extra in (("on", ["--no-compose", "--no-longdoc"]), ("off", ["--no-hard-negatives", "--no-compose", "--no-longdoc"])):
+    for name, extra in (("on", ["--no-compose", "--no-longdoc", "--no-restate"]), ("off", ["--no-hard-negatives", "--no-compose", "--no-longdoc", "--no-restate"])):
         out = tmp_path / name
         subprocess.run([sys.executable, script, "--snapshot", str(sp), "--out", str(out), "--eval-share", "0.3"] + extra,
                        check=True, capture_output=True)
