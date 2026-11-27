@@ -115,15 +115,33 @@ jobs:
           modal run zeus/cloud/modal_train.py --version "${{ steps.v.outputs.version }}" --epochs "${{ github.event.inputs.epochs || '1' }}" --max-minutes "${{ github.event.inputs.max_minutes || '60' }}"
       - name: Record, promote, scorecard, commit
         if: steps.v.outputs.due == '1'
+        # The run takes about 90 minutes and main often moves meanwhile. Until 2026-11-27 a rebase conflict here
+        # (docs/ZEUS_SCORECARD.md, written by record.py on both sides) printed "nothing to commit" and dropped the
+        # version's measured files (v33). Now the version's own outputs are kept aside, and record.py runs again on
+        # the newest main until the push lands, so BEST.json and STATUS.md are always written over what main holds
+        # (a hand promotion made during the run is respected). Three tries, then the step fails loudly.
         run: |
           V="${{ steps.v.outputs.version }}"
-          python3 zeus/cloud/record.py "$V"
           git config user.name "zeus-cloud"; git config user.email "zeus-cloud@heliusnetwork.app"
-          git add -f "zeus/out/zeus-$V/eval.json" "zeus/out/zeus-$V/train_summary.json" zeus/STATUS.md zeus/BEST.json docs/ZEUS_SCORECARD.md
-          git add -f "zeus/out/zeus-$V/eval-external.json" 2>/dev/null || true
-          git add -f "zeus/out/zeus-$V/learning.json" zeus/data/mistakes/pool.jsonl 2>/dev/null || true
-          git rm -q --cached zeus/TRAIN_REQUEST.json 2>/dev/null || true
-          git commit -q -m "zeus: $V trained and measured in the cloud (${{ steps.v.outputs.reason }})" && git pull -q --rebase && git push -q || echo "nothing to commit"
+          KEEP="$RUNNER_TEMP/zeus-keep"; mkdir -p "$KEEP"
+          cp -r "zeus/out/zeus-$V" "$KEEP/"
+          if [ -f zeus/data/mistakes/pool.jsonl ]; then cp zeus/data/mistakes/pool.jsonl "$KEEP/pool.jsonl"; fi
+          recorded=0
+          for attempt in 1 2 3; do
+            git fetch -q origin main && git reset -q --hard origin/main
+            rm -rf "zeus/out/zeus-$V" && cp -r "$KEEP/zeus-$V" zeus/out/
+            if [ -f "$KEEP/pool.jsonl" ]; then cp "$KEEP/pool.jsonl" zeus/data/mistakes/pool.jsonl; fi
+            python3 zeus/cloud/record.py "$V"
+            git add -f "zeus/out/zeus-$V/eval.json" "zeus/out/zeus-$V/train_summary.json" zeus/STATUS.md zeus/BEST.json docs/ZEUS_SCORECARD.md
+            git add -f "zeus/out/zeus-$V/eval-external.json" 2>/dev/null || true
+            git add -f "zeus/out/zeus-$V/learning.json" 2>/dev/null || true
+            git add -f zeus/data/mistakes/pool.jsonl 2>/dev/null || true
+            git rm -q --cached zeus/TRAIN_REQUEST.json 2>/dev/null || true
+            if ! git commit -q -m "zeus: $V trained and measured in the cloud (${{ steps.v.outputs.reason }})"; then echo "nothing to commit"; recorded=1; break; fi
+            if git push -q; then echo "recorded $V"; recorded=1; break; fi
+            echo "main moved while recording $V; recording again on the new main (attempt $attempt of 3)"
+          done
+          if [ "$recorded" != 1 ]; then echo "::error::$V was trained and measured but could not be recorded on main after 3 tries; its files are in the run log and the adapter artifact"; exit 1; fi
       - name: Keep the adapter
         if: steps.v.outputs.due == '1'
         uses: actions/upload-artifact@v4
