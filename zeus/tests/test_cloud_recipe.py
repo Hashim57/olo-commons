@@ -196,3 +196,74 @@ def test_every_local_module_eval_imports_is_shipped_to_the_cloud_job():
     local = {m for m in _re.findall(r"^(?:from|import) (\w+)", src, _re.M) if os.path.exists(os.path.join(here, m + ".py"))}
     shipped = set(_re.findall(r'\("zeus/(\w+)\.py"', open(os.path.join(here, "cloud", "modal_train.py"), encoding="utf-8").read()))
     assert local and local <= shipped, f"eval.py imports {sorted(local - shipped)} but modal_train.py does not ship them"
+
+
+# ---- serving format (since 2026-11-27) ----
+
+def _srow(label="supported"):
+    return {"claim": "Dell is recalling 4.1 million batteries.", "label": label,
+            "passages": [{"id": "43a940f5", "source": "wikinews", "text": "Dell is recalling 4.1 million lithium batteries used in laptop computers."},
+                         {"id": "1b7c4e6e", "source": "wikipedia", "text": "Coral reefs recover slowly after bleaching events."},
+                         {"id": "6b295c06", "source": "pubmed", "text": "A trial of 636 participants found no difference."}],
+            "evidence": [] if label == "not_covered" else [{"passage": "43a940f5", "quote": "Dell is recalling 4.1 million lithium batteries"}],
+            "rationale": "r"}
+
+
+def test_serving_view_relabels_passages_like_olo_answer_and_keeps_the_evidence_on_the_same_words():
+    import random
+    from eval import evidence_ok
+    ex = _srow()
+    v = recipe.serving_view(ex, random.Random(1))
+    assert [p["id"] for p in v["passages"]] == ["p1", "p2", "p3"]
+    assert sorted(p["text"] for p in v["passages"]) == sorted(p["text"] for p in ex["passages"]), "same passages, new names and order"
+    e = v["evidence"][0]
+    assert e["quote"] == ex["evidence"][0]["quote"]
+    assert e["quote"] in next(p["text"] for p in v["passages"] if p["id"] == e["passage"]), "the evidence follows its passage"
+    assert evidence_ok({"label": "supported", "evidence": v["evidence"]}, v), "the scorer accepts the re-keyed evidence"
+    assert ex["passages"][0]["id"] == "43a940f5", "the input row is not changed"
+    assert (v["claim"], v["label"], v["rationale"]) == (ex["claim"], ex["label"], ex["rationale"])
+
+
+def test_serving_view_pads_with_unrelated_passages_and_never_repeats_one():
+    import random
+    ex = _srow("not_covered")
+    pool = [{"id": f"d{i}", "source": "wikipedia", "text": f"Distractor passage number {i} about something else entirely."} for i in range(10)]
+    pool.append(dict(ex["passages"][1]))  # already in the row: must not be added twice
+    v = recipe.serving_view(ex, random.Random(2), pool, pad_to=7)
+    assert len(v["passages"]) == 7
+    assert len({p["text"] for p in v["passages"]}) == 7
+    assert [p["id"] for p in v["passages"]] == [f"p{i}" for i in range(1, 8)]
+    assert v["evidence"] == []
+
+
+def test_serving_mix_shows_about_half_the_rows_in_serving_form_reproducibly():
+    import random
+    rows = [_srow() for _ in range(400)]
+    others = [dict(_srow(), passages=[{"id": f"o{i}", "source": "wikipedia", "text": f"Other passage {i} on another subject."}]) for i in range(300)]
+    pool = recipe.distractor_pool(others, random.Random(0))
+    a = recipe.serving_mix(rows, random.Random(7), pool)
+    b = recipe.serving_mix(rows, random.Random(7), pool)
+    assert [r["passages"][0]["id"] for r in a] == [r["passages"][0]["id"] for r in b], "seeded"
+    served = sum(1 for r in a if r["passages"][0]["id"].startswith("p"))
+    assert 150 < served < 250, served
+    padded = sum(1 for r in a if len(r["passages"]) > 3)
+    assert 30 < padded < 130, padded
+    assert all(len(r["passages"]) <= recipe.SERVING_MAX_PASSAGES for r in a)
+
+
+def test_serving_eval_is_the_same_prompts_for_every_version_and_pads_from_eval_rows_only():
+    evals = [dict(_srow(), claim=f"claim {i}", passages=[{"id": f"e{i}x", "source": "wikipedia", "text": f"Eval passage {i} with its own words."}]) for i in range(30)]
+    for i, ex in enumerate(evals):
+        ex["evidence"] = [{"passage": f"e{i}x", "quote": f"Eval passage {i}"}]
+    a, b = recipe.serving_eval(evals), recipe.serving_eval(evals)
+    assert a == b
+    assert all(len(r["passages"]) == recipe.SERVING_EVAL_PASSAGES for r in a)
+    eval_texts = {p["text"] for ex in evals for p in ex["passages"]}
+    assert all(p["text"] in eval_texts for r in a for p in r["passages"]), "no training text in an eval prompt"
+
+
+def test_the_focused_set_has_room_for_the_doubled_vitaminc_import():
+    assert recipe.FOCUS_CAPS["rules"] <= 1800 and recipe.FOCUS_CAPS["hard-v2"] <= 1300 and recipe.FOCUS_CAPS["compose-v2"] <= 2400
+    src = open(os.path.join(os.path.dirname(__file__), "..", "cloud", "modal_train.py")).read()
+    assert "import_n: int = 8000" in src
+    assert "serving_mix" in src and "eval_serving" in src

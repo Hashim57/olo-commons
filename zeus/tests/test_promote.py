@@ -165,3 +165,12 @@ def test_the_command_line_promotes_by_hand_only_a_measured_version_with_a_reason
     # a later automatic run keeps it
     assert run().returncode == 0
     assert json.loads(best.read_text())["version"] == "v31"
+
+
+def test_a_version_that_fails_in_olo_answers_form_cannot_be_promoted_however_well_it_reads_the_stored_split():
+    v22 = {"version": "v22", "label_accuracy": 0.995, "evidence_hit": 0.995, "held_out_accuracy": 0.733, "eval3_accuracy": 0.92}
+    broken = {"version": "v40", "label_accuracy": 0.99, "well_formed_accuracy": 0.99, "evidence_hit": 0.99, "held_out_accuracy": 0.80, "eval3_accuracy": 0.97, "serving_accuracy": 0.55}
+    good = dict(broken, version="v41", serving_accuracy=0.97)
+    assert promote.rank_key(broken)[0] is False
+    assert promote.choose([v22, broken])["version"] == "v22"
+    assert promote.choose([v22, broken, good])["version"] == "v41"
