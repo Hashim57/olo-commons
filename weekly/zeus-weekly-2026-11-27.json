@@ -1,0 +1,443 @@
+{
+  "week_start": "2026-11-21",
+  "week_end": "2026-11-27",
+  "latest": "v34",
+  "reference": "v27",
+  "versions_this_week": [
+    "v28",
+    "v29",
+    "v30",
+    "v31",
+    "v32",
+    "v33",
+    "v34"
+  ],
+  "latest_scores": {
+    "version": "v34",
+    "commons_eval": 0.905,
+    "vitaminc_dev": 0.677,
+    "vitaminc_n": 300,
+    "eval3": 0.96,
+    "eval3_n": 200,
+    "eval3_patterns": {
+      "before_after": 1.0,
+      "modal_shift": 0.933,
+      "near_miss_names": 1.0,
+      "paraphrase_decade": 0.688,
+      "relation_flip": 0.979,
+      "two_passage": 0.974
+    },
+    "eval3_wrong": {
+      "before_after": {},
+      "modal_shift": {
+        "supported": 1
+      },
+      "near_miss_names": {},
+      "paraphrase_decade": {
+        "contradicted": 5
+      },
+      "relation_flip": {
+        "supported": 1
+      },
+      "two_passage": {
+        "not_covered": 1
+      }
+    },
+    "aggrefact": 0.65,
+    "aggrefact_n": 600,
+    "aggrefact_error": null,
+    "minutes": 60.0,
+    "steps": 851,
+    "planned_steps": 1039,
+    "train_examples": 16633,
+    "priority_rows": 8739,
+    "learning": {
+      "probe_n": 800,
+      "probe_accuracy": 0.926,
+      "mistakes": 59,
+      "mistakes_by_kind_of_error": {
+        "contradicted->not_covered": 26,
+        "contradicted->supported": 6,
+        "not_covered->contradicted": 4,
+        "not_covered->supported": 2,
+        "supported->contradicted": 6,
+        "supported->not_covered": 15
+      },
+      "pool_rows_trained": 338,
+      "pool_rows_in_probe": 7,
+      "note": "a sample of this version's own training rows, never a held-out row; the wrong ones are trained again by the next version"
+    }
+  },
+  "reference_scores": {
+    "version": "v27",
+    "commons_eval": 0.985,
+    "vitaminc_dev": 0.637,
+    "vitaminc_n": 300,
+    "eval3": 0.965,
+    "eval3_n": 200,
+    "eval3_patterns": {
+      "before_after": 1.0,
+      "modal_shift": 0.8,
+      "near_miss_names": 1.0,
+      "paraphrase_decade": 0.75,
+      "relation_flip": 1.0,
+      "two_passage": 1.0
+    },
+    "eval3_wrong": {
+      "before_after": {},
+      "modal_shift": {
+        "contradicted": 1,
+        "supported": 2
+      },
+      "near_miss_names": {},
+      "paraphrase_decade": {
+        "contradicted": 4
+      },
+      "relation_flip": {},
+      "two_passage": {}
+    },
+    "aggrefact": 0.58,
+    "aggrefact_n": 600,
+    "aggrefact_error": null,
+    "minutes": 60.1,
+    "steps": 835,
+    "planned_steps": 874,
+    "train_examples": 13987,
+    "priority_rows": 4447,
+    "learning": {
+      "probe_n": 800,
+      "probe_accuracy": 0.956,
+      "mistakes": 35,
+      "mistakes_by_kind_of_error": {
+        "contradicted->not_covered": 11,
+        "contradicted->supported": 4,
+        "not_covered->contradicted": 6,
+        "supported->contradicted": 5,
+        "supported->not_covered": 9
+      },
+      "pool_rows_trained": 132,
+      "pool_rows_in_probe": 2,
+      "note": "a sample of this version's own training rows, never a held-out row; the wrong ones are trained again by the next version"
+    }
+  },
+  "headline": {
+    "vitaminc_dev": {
+      "now": 0.677,
+      "week_ago": 0.637,
+      "change": "+4.0 pts"
+    },
+    "eval3": {
+      "now": 0.96,
+      "week_ago": 0.965,
+      "change": "-0.5 pts"
+    },
+    "aggrefact": {
+      "now": 0.65,
+      "week_ago": 0.58,
+      "change": "+7.0 pts"
+    }
+  },
+  "commits": [
+    [
+      "2026-11-27",
+      "zeus: data card, README and status log for training mix v2"
+    ],
+    [
+      "2026-11-27",
+      "zeus: restate-v1, supported claims that state a passage's fact written differently (train only)"
+    ],
+    [
+      "2026-11-27",
+      "zeus: train and measure in olo-answer's prompt form, gate promotion on it, and double the human-written claims"
+    ],
+    [
+      "2026-11-27",
+      "zeus: v33 recorded by hand from its run log (the record step lost it on a merge conflict)"
+    ],
+    [
+      "2026-11-27",
+      "zeus-train: the record step records again on the newest main instead of dropping a version on a conflict"
+    ],
+    [
+      "2026-11-26",
+      "zeus: v31 measured live and rolled back to v22; olo-answer credits a verbatim quote to the passage that holds it"
+    ],
+    [
+      "2026-11-26",
+      "olo-answer: the quote check reads a hyphen between words as a space"
+    ],
+    [
+      "2026-11-26",
+      "zeus: answer eval with v22 measured and read, and 13 restatement gold lines from what it got wrong"
+    ],
+    [
+      "2026-11-26",
+      "zeus: promotion reads the honest score, and v31 is promoted by hand and pinned"
+    ],
+    [
+      "2026-11-26",
+      "olo-answer: a non-breaking hyphen reads as a hyphen before Zeus checks a sentence"
+    ],
+    [
+      "2026-11-26",
+      "olo-answer: check mode checks any text sentence by sentence, against the Commons or the caller's own passages (issue #102)"
+    ],
+    [
+      "2026-11-26",
+      "olo-answer: every answer carries a verification receipt anyone can check against the public Commons (issue #102)"
+    ],
+    [
+      "2026-11-26",
+      "zeus: status log for 2026-11-26 (archive_org shelves measured, library records, sql/026, 10 gold, run 43 training)"
+    ],
+    [
+      "2026-11-26",
+      "zeus: quality.is_library_record matches text.ts again (Sainte-Genevieve and Sevilla catalogue pages)"
+    ],
+    [
+      "2026-11-26",
+      "zeus: 10 gold examples over Wikinews atoms stored since noon on 25 November"
+    ],
+    [
+      "2026-11-26",
+      "olo-ingest: isLibraryRecord refuses the Sainte-Genevieve and Sevilla catalogue copies; sql/026 removes them and the 49 shelf items"
+    ],
+    [
+      "2026-11-26",
+      "olo-ingest: the Internet Archive search leaves out the re-shelved uploader collections and the genealogy indexes (issue #50)"
+    ],
+    [
+      "2026-11-25",
+      "zeus: retry a stalled export page; v32 failed when one keyless page timed out once"
+    ],
+    [
+      "2026-11-25",
+      "zeus: status log for 2026-11-25 (archive_org search measured live, v31 read, well_formed, 15 gold, promotion floor decision)"
+    ],
+    [
+      "2026-11-25",
+      "zeus: the first-split report also scores the lines that are contradictions (well_formed, without the malformed name edits)"
+    ],
+    [
+      "2026-11-25",
+      "zeus: 15 gold examples over atoms stored since noon on 24 November, four of them on Wikidata fact records"
+    ],
+    [
+      "2026-11-25",
+      "olo-ingest: the Internet Archive search asks for open licences, leaves out the uploader collections and reads the most downloaded first (issue #50)"
+    ],
+    [
+      "2026-11-24",
+      "zeus: pin each base to a Hub commit; v31 failed when mistralai moved the chat template to chat_template.jinja"
+    ],
+    [
+      "2026-11-24",
+      "zeus: status log for 2026-11-24 (stranded #96, review candidates, Wikinews non-articles, unit confusion, v30 read)"
+    ],
+    [
+      "2026-11-24",
+      "zeus: hard_value_shift also makes the unit confusion (\"1.5 metres (5 feet)\" -> \"5 metres\")"
+    ],
+    [
+      "2026-11-24",
+      "olo-ingest: Wikinews crosswords, digests and notes pages are not articles; sql/025 removes the 11 stored"
+    ],
+    [
+      "2026-11-24",
+      "zeus: 15 gold examples over atoms stored on 23 and 24 November"
+    ],
+    [
+      "2026-11-24",
+      "zeus: the weekly report shows the review queue (flags from people, sentences the verifier doubted)"
+    ],
+    [
+      "2026-11-24",
+      "olo-answer: sentences Zeus doubts become review candidates in olo_feedback (issue #76, part 4, last box)"
+    ],
+    [
+      "2026-11-23",
+      "zeus: status log for 2026-11-23 (live build, library records, Wikidata facts, quantifier rows, Monday base check)"
+    ],
+    [
+      "2026-11-23",
+      "zeus: hard_quantifier also makes a part the whole (\"180 of 202 tasks\" -> \"all 202 tasks\")"
+    ],
+    [
+      "2026-11-23",
+      "zeus: 10 gold examples over atoms stored on 23 November (gold-2026-11-23b.jsonl)"
+    ],
+    [
+      "2026-11-23",
+      "olo-ingest: a Wikidata atom carries the item's main statements as a facts sentence"
+    ],
+    [
+      "2026-11-23",
+      "olo-ingest: refuse mirrored Library of Congress records (isLibraryRecord), sql/023 cleans the 4 stored"
+    ],
+    [
+      "2026-11-23",
+      "zeus: status log for 2026-11-23 (malformed name edits, real-use tally in the report, base model check)"
+    ],
+    [
+      "2026-11-23",
+      "zeus: 11 gold examples over atoms stored on 23 November, three of them proper name swaps"
+    ],
+    [
+      "2026-11-23",
+      "zeus: rule-made name edits that are not a name swap leave train and are scored apart"
+    ],
+    [
+      "2026-11-23",
+      "zeus: the weekly report shows what the verifier said about real answers (issue #76, part 4)"
+    ],
+    [
+      "2026-11-22",
+      "zeus: status log for 2026-11-22 (live build, answer tally, weekly report section, conclusion hedges)"
+    ],
+    [
+      "2026-11-22",
+      "zeus: hedge_drop also drops the hedges of a conclusion (appears to be, seems to be, is likely to be)"
+    ],
+    [
+      "2026-11-22",
+      "zeus: 13 gold examples over atoms stored on 22 November"
+    ],
+    [
+      "2026-11-22",
+      "zeus: the weekly report gains an Olo answers section read from the measured runs (issue #76, part 1)"
+    ],
+    [
+      "2026-11-22",
+      "olo-answer: a daily tally of what the verifier said, read through olo_answer_stats (issue #76, part 4)"
+    ],
+    [
+      "2026-11-21",
+      "zeus: status log for 2026-11-21 (live build, source diversity, by_edit, v28 read)"
+    ],
+    [
+      "2026-11-21",
+      "zeus: the first split's report says which rule-made edit the model misses (by_edit)"
+    ],
+    [
+      "2026-11-21",
+      "zeus: 13 gold examples over atoms observed on 20 November"
+    ],
+    [
+      "2026-11-21",
+      "olo-query, olo-answer: at most two atoms of one source in the top six (issue #76, part 3)"
+    ]
+  ],
+  "base": "mistralai/Mistral-7B-Instruct-v0.2",
+  "olo_answers": {
+    "runs_this_week": [],
+    "latest": {
+      "date": "2026-11-18",
+      "label": "2026-11-18 14:17 and 14:33",
+      "questions": "70 of 70 (two halves of 35)",
+      "asked": 70,
+      "of": 70,
+      "answered_by": "written, checked by Zeus v22; after PR #89; 24 of the second half's 35 answers written by the Cloudflare fallback",
+      "retrieval": 1.0,
+      "citation": 0.979,
+      "verification": 0.867,
+      "verification_note": "0.867",
+      "facts": 0.871,
+      "abstained": 1
+    },
+    "reference": {
+      "date": "2026-11-18",
+      "label": "2026-11-18 14:17 and 14:33",
+      "questions": "70 of 70 (two halves of 35)",
+      "asked": 70,
+      "of": 70,
+      "answered_by": "written, checked by Zeus v22; after PR #89; 24 of the second half's 35 answers written by the Cloudflare fallback",
+      "retrieval": 1.0,
+      "citation": 0.979,
+      "verification": 0.867,
+      "verification_note": "0.867",
+      "facts": 0.871,
+      "abstained": 1
+    },
+    "set": "tests/answers/questions-v1.jsonl",
+    "change": {
+      "retrieval": "+0.0 pts",
+      "citation": "+0.0 pts",
+      "verification": "+0.0 pts",
+      "facts": "+0.0 pts"
+    }
+  },
+  "answer_tally": {
+    "measured": false,
+    "reason": "no anon key in OLO_ANON_KEY or SUPABASE_ANON_KEY"
+  },
+  "review_queue": {
+    "measured": false,
+    "reason": "no anon key in OLO_ANON_KEY or SUPABASE_ANON_KEY"
+  },
+  "history_tail": [
+    {
+      "version": "v27",
+      "date": "2026-11-20",
+      "vitaminc_dev": 0.637,
+      "eval3": 0.965,
+      "aggrefact": 0.58,
+      "minutes": 60.1
+    },
+    {
+      "version": "v28",
+      "date": "2026-11-21",
+      "vitaminc_dev": 0.637,
+      "eval3": 0.97,
+      "aggrefact": 0.5529999999999999,
+      "minutes": 60.0
+    },
+    {
+      "version": "v29",
+      "date": "2026-11-22",
+      "vitaminc_dev": 0.66,
+      "eval3": 0.97,
+      "aggrefact": 0.561,
+      "minutes": 60.0
+    },
+    {
+      "version": "v30",
+      "date": "2026-11-23",
+      "vitaminc_dev": 0.64,
+      "eval3": 0.955,
+      "aggrefact": 0.59,
+      "minutes": 60.1
+    },
+    {
+      "version": "v31",
+      "date": "2026-11-24",
+      "vitaminc_dev": 0.637,
+      "eval3": 0.965,
+      "aggrefact": 0.605,
+      "minutes": 60.1
+    },
+    {
+      "version": "v32",
+      "date": "2026-11-26",
+      "vitaminc_dev": 0.633,
+      "eval3": 0.965,
+      "aggrefact": 0.593,
+      "minutes": 60.0
+    },
+    {
+      "version": "v33",
+      "date": "2026-11-27",
+      "vitaminc_dev": 0.57,
+      "eval3": 0.97,
+      "aggrefact": 0.55,
+      "minutes": null
+    },
+    {
+      "version": "v34",
+      "date": "2026-11-27",
+      "vitaminc_dev": 0.677,
+      "eval3": 0.96,
+      "aggrefact": 0.65,
+      "minutes": 60.0
+    }
+  ]
+}
