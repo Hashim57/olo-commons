@@ -340,13 +340,20 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     return _tar([(out, "out")])
 
 
+IMPORT_SHARES = "contradicted=0.4,supported=0.35,not_covered=0.25"
+IMPORT_BOUND_PAIRS = 500
+
+
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 8000, aggrefact_n: int = 600, max_minutes: float = 60.0):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 5000, aggrefact_n: int = 600, max_minutes: float = 60.0):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)
     if import_n > 0:
-        subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--n", str(import_n)], check=False)
+        # Mix v3 (2026-11-27): 5,000 rows weighted toward contradictions (contradicted 0.40, supported 0.35, not covered
+        # 0.25) and 500 bound-v1 pairs over VitaminC's own sentences (vitaminc-bound.jsonl). Why: recipe.py, "mix v3".
+        subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--n", str(import_n),
+                        "--shares", IMPORT_SHARES, "--bound", str(IMPORT_BOUND_PAIRS)], check=False)
         # the held-out dev split (never trained on: build_dataset skips *-eval.jsonl)
         subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--split", "dev", "--n", "300", "--out", "zeus/data/imported/vitaminc-eval.jsonl"], check=False)
     subprocess.run([py, "zeus/build_dataset.py"], check=True)

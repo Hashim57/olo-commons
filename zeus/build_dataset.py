@@ -1266,6 +1266,7 @@ def main():
     ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v2 train examples (two-passage claims, century and decade paraphrases; train only)")
     ap.add_argument("--no-longdoc", action="store_true", help="leave out the longdoc-v1 train examples (claims inside long documents; train only)")
     ap.add_argument("--no-restate", action="store_true", help="leave out the restate-v1 train examples (supported claims restated in other words; train only)")
+    ap.add_argument("--no-bound", action="store_true", help="leave out the bound-v1 train examples (a number of a sentence bounded, once true and once false; train only)")
     ap.add_argument("--keep-malformed-names", action="store_true", help="keep the rule-made name contradictions that are not a name swap in train (dropped since 2026-11-23; see drop_malformed_name_edits)")
     ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
                     help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
@@ -1291,6 +1292,8 @@ def main():
     longdocs = [] if args.no_longdoc else add_longdoc_train(data["train"], atoms, args.eval_share)
     import restate
     restated = [] if args.no_restate else restate.add_restated(data["train"])
+    import bound
+    bounded = [] if args.no_bound else bound.add_bounded(data["train"], atoms, args.eval_share)
     data["eval2"] = build_eval2(atoms, args.eval_share)
     name_dropped, name_reasons = 0, {}
     if not args.keep_malformed_names:
@@ -1323,6 +1326,8 @@ def main():
     import longdoc
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_longdoc else [longdoc.LONGDOC_VERSION])
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_restate else [restate.RESTATE_VERSION])
+    meta["train_generators"] = meta["train_generators"] + ([] if args.no_bound else [bound.BOUND_VERSION])
+    meta["train_bounded_by_kind"] = {k: sum(1 for ex in bounded if ex["kind"] == k) for k in sorted({ex["kind"] for ex in bounded})}
     meta["train_restated_by_kind"] = {k: sum(1 for ex in restated if ex["kind"] == k) for k in sorted({ex["kind"] for ex in restated})}
     meta["train_filters"] = [] if args.keep_malformed_names else ["name-check-v1"]
     meta["train_dropped_malformed_name"] = {"rows": name_dropped, "by_reason": name_reasons}

@@ -262,8 +262,11 @@ def test_serving_eval_is_the_same_prompts_for_every_version_and_pads_from_eval_r
     assert all(p["text"] in eval_texts for r in a for p in r["passages"]), "no training text in an eval prompt"
 
 
-def test_the_focused_set_has_room_for_the_doubled_vitaminc_import():
-    assert recipe.FOCUS_CAPS["rules"] <= 1800 and recipe.FOCUS_CAPS["hard-v2"] <= 1300 and recipe.FOCUS_CAPS["compose-v2"] <= 2400
+def test_mix_v3_fits_the_hour_and_keeps_the_first_split_groups():
+    # rules stays at 1,800: the first split is made of plain rule-made rows and v34 missed its floor (0.977)
+    assert recipe.FOCUS_CAPS["rules"] == 1800 and recipe.FOCUS_CAPS["hard-v2"] <= 1300 and recipe.FOCUS_CAPS["compose-v2"] <= 2000
+    assert "bound-v1" not in recipe.FOCUS_CAPS, "bound-v1 pairs are kept whole, so no pair is split"
+    assert recipe.SERVING_PAD_SHARE <= 0.25
     src = open(os.path.join(os.path.dirname(__file__), "..", "cloud", "modal_train.py")).read()
-    assert "import_n: int = 8000" in src
+    assert "import_n: int = 5000" in src and '"--bound", str(IMPORT_BOUND_PAIRS)' in src and '"--shares", IMPORT_SHARES' in src
     assert "serving_mix" in src and "eval_serving" in src

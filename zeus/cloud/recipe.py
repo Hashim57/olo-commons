@@ -225,7 +225,16 @@ def merge_pool(pool, new, cap=MISTAKE_POOL_CAP):
 # are where the mistake pool says Zeus fails, 227 of its 338 rows, and the held-out VitaminC score has fallen from
 # v22's 0.733 to v33's 0.57), and the rule-made groups give room so a focused pass still fits about the hour:
 # rules 2,500 to 1,800, hard-v1 and hard-v2 1,600 to 1,300, and compose-v2, kept whole until now (3,521 rows), capped at 2,400.
-FOCUS_CAPS = {"rules": 1800, "hard-v1": 1300, "hard-v2": 1300, "compose-v2": 2400}   # rows kept per sampled group; every other group is kept whole
+# Since 2026-11-27 (mix v3): v34, the first mix v2 run, read 851 of its 1,039 planned steps in the hour, and on held-out
+# VitaminC it called 47 of 100 contradicted claims "not covered" (v22: 19; every version since v23: 35 to 52). Those
+# claims mostly bound a number the passage gives exactly ("more than 570 cases" against 561), and the not-covered answers
+# rose with the size of the VitaminC import (1,500 rows in v22, 4,000 from v23, 8,000 in v34). Mix v3: bound-v1 pairs
+# (zeus/bound.py: about 200 over Commons atoms, 500 over VitaminC's own train sentences, kept whole); the VitaminC import
+# back to 5,000 rows weighted toward contradictions (modal_train.py IMPORT_SHARES); compose-v2 2,400 to 1,700 (a third of
+# its rows are not covered) and restate-v1 1,500 to 1,000 rows (restate.MAX_ROWS); and a quarter, not 40 percent, of the
+# serving rows padded with unrelated passages (SERVING_PAD_SHARE), which shortens the longest prompts. On the 27 November
+# snapshot that is about 14,300 focused rows (895 steps of 16), close to one pass in the hour.
+FOCUS_CAPS = {"rules": 1800, "hard-v1": 1300, "hard-v2": 1300, "compose-v2": 1700}   # rows kept per sampled group; every other group is kept whole
 # Hard rows of these kinds form their own group and are kept whole: they are the few hundred rows that teach
 # the pattern eval3 scores lowest (modal_shift, 0.667 in v24), and a 1,600-row sample of 8,000 would see a fifth of them.
 FOCUS_WHOLE_KINDS = {"hard_modal_shift", "hard_hedge_drop"}
@@ -273,7 +282,7 @@ def focus_indices(train, priority, rng, caps=None):
 # every run is also scored on the first split in that form (serving_eval), which promote.py reads as a floor.
 # ---------------------------------------------------------------------------
 SERVING_SHARE = 0.5          # share of training rows shown in olo-answer's form
-SERVING_PAD_SHARE = 0.4      # of those, the share that also gets unrelated passages, up to SERVING_MAX_PASSAGES
+SERVING_PAD_SHARE = 0.25     # of those, the share that also gets unrelated passages, up to SERVING_MAX_PASSAGES (0.4 until mix v3)
 SERVING_MAX_PASSAGES = 8     # olo-answer's default k
 SERVING_EVAL_PASSAGES = 6    # every serving_eval row is padded to this many passages
 

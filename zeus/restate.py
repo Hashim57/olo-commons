@@ -31,7 +31,7 @@ import random
 import re
 
 RESTATE_VERSION = "restate-v1"
-MAX_ROWS = 1500
+MAX_ROWS = 1000   # 1,500 until mix v3 (recipe.py): room for bound-v1 inside the hour
 MAX_ASIDE = 200   # the aside rule applies to most Wikidata one-liners ("(born 1964)"); capped so the kinds stay mixed
 
 MONTHS = "January|February|March|April|May|June|July|August|September|October|November|December"
