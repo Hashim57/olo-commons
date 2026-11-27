@@ -74,7 +74,7 @@ def test_main_keeps_eval_files_identical_and_no_longdoc_reproduces_train(tmp_pat
     sp.write_text(json.dumps(snap))
     script = os.path.join(HERE, "..", "build_dataset.py")
     outs = {}
-    for name, extra in (("on", []), ("off", ["--no-longdoc"])):
+    for name, extra in (("on", ["--no-restate"]), ("off", ["--no-longdoc", "--no-restate"])):  # restate-v1 left out: this test is about longdoc alone
         out = tmp_path / name
         subprocess.run([sys.executable, script, "--snapshot", str(sp), "--out", str(out), "--eval-share", "0.2"] + extra, check=True, capture_output=True)
         outs[name] = out

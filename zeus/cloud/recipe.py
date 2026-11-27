@@ -221,7 +221,11 @@ def merge_pool(pool, new, cap=MISTAKE_POOL_CAP):
 # planned steps in the hour (about 14 steps a minute: long-document rows take longer), so the caps below are
 # sized for a whole focused pass of about 13,600 rows, about 850 steps.
 # ---------------------------------------------------------------------------
-FOCUS_CAPS = {"rules": 2500, "hard-v1": 1600, "hard-v2": 1600}   # rows kept per sampled group; every other group is kept whole
+# Since 2026-11-27 (mix v2): the VitaminC import doubles (modal_train.py import_n 4,000 to 8,000: human-written claims
+# are where the mistake pool says Zeus fails, 227 of its 338 rows, and the held-out VitaminC score has fallen from
+# v22's 0.733 to v33's 0.57), and the rule-made groups give room so a focused pass still fits about the hour:
+# rules 2,500 to 1,800, hard-v1 and hard-v2 1,600 to 1,300, and compose-v2, kept whole until now (3,521 rows), capped at 2,400.
+FOCUS_CAPS = {"rules": 1800, "hard-v1": 1300, "hard-v2": 1300, "compose-v2": 2400}   # rows kept per sampled group; every other group is kept whole
 # Hard rows of these kinds form their own group and are kept whole: they are the few hundred rows that teach
 # the pattern eval3 scores lowest (modal_shift, 0.667 in v24), and a 1,600-row sample of 8,000 would see a fifth of them.
 FOCUS_WHOLE_KINDS = {"hard_modal_shift", "hard_hedge_drop"}
@@ -258,3 +262,80 @@ def focus_indices(train, priority, rng, caps=None):
             take = round(cap * len(li) / len(idx))
             keep.extend(rng.sample(li, min(take, len(li))))
     return sorted(keep)
+
+
+# ---------------------------------------------------------------------------
+# Serving format (since 2026-11-27). Every training row until v33 labelled its passages by atom id (eight hex
+# characters) and nearly all had exactly three passages; olo-answer labels them p1, p2, ... and sends the
+# passages a sentence cites, or up to eight. v31 read its frozen split well (served evidence hit 0.905) and
+# failed live: in the answer eval of 26 November 48 of its supported sentences lost their evidence, most likely
+# to passage ids. A share of every run's rows is now shown the way olo-answer shows them (serving_view), and
+# every run is also scored on the first split in that form (serving_eval), which promote.py reads as a floor.
+# ---------------------------------------------------------------------------
+SERVING_SHARE = 0.5          # share of training rows shown in olo-answer's form
+SERVING_PAD_SHARE = 0.4      # of those, the share that also gets unrelated passages, up to SERVING_MAX_PASSAGES
+SERVING_MAX_PASSAGES = 8     # olo-answer's default k
+SERVING_EVAL_PASSAGES = 6    # every serving_eval row is padded to this many passages
+
+
+def serving_view(ex, rng, distractors=(), pad_to=0, label="p"):
+    """The row with its passages labelled the way olo-answer labels them ("p1", "p2", ... in a shuffled order),
+    its evidence re-keyed to the new labels, and, when pad_to is above the row's passage count, unrelated
+    passages from `distractors` added at random positions until there are pad_to. A distractor whose text is
+    already one of the row's passages is skipped. Claim, label, quotes and rationale are unchanged, so the
+    answer the model learns is the same verdict over the same words; only how the passages are named, ordered
+    and surrounded changes. The input row is not modified."""
+    own = [dict(p) for p in ex.get("passages") or []]
+    texts = {p.get("text") for p in own}
+    extra = []
+    if pad_to and pad_to > len(own) and distractors:
+        pool = [d for d in distractors if d.get("text") not in texts]
+        rng.shuffle(pool)
+        for d in pool[: pad_to - len(own)]:
+            extra.append(dict(d))
+            texts.add(d.get("text"))
+    allp = own + extra
+    rng.shuffle(allp)
+    new_id = {}
+    out_p = []
+    for i, p in enumerate(allp, 1):
+        nid = f"{label}{i}"
+        if p in own and p.get("id") not in new_id:
+            new_id[p.get("id")] = nid
+        out_p.append({**p, "id": nid})
+    out = dict(ex)
+    out["passages"] = out_p
+    out["evidence"] = [{**e, "passage": new_id.get(e.get("passage"), e.get("passage"))} for e in ex.get("evidence") or []]
+    return out
+
+
+def serving_mix(rows, rng, distractors, share=SERVING_SHARE, pad_share=SERVING_PAD_SHARE, max_passages=SERVING_MAX_PASSAGES):
+    """The training rows with `share` of them shown in olo-answer's form (serving_view) and, of those,
+    `pad_share` padded with distractors to a random count between their own and max_passages. Seeded by rng,
+    so a version's mix is reproducible. Returns a new list in the same order."""
+    out = []
+    for ex in rows:
+        if rng.random() >= share:
+            out.append(ex)
+            continue
+        n = len(ex.get("passages") or [])
+        pad = rng.randint(n + 1, max(n + 1, max_passages)) if rng.random() < pad_share and n < max_passages else 0
+        out.append(serving_view(ex, rng, distractors, pad_to=pad))
+    return out
+
+
+def distractor_pool(rows, rng, n=4000):
+    """Passages to pad rows with: up to n drawn from the given rows (each keeps its source and text). For the
+    serving eval the rows are the eval split itself, so no training text enters an eval prompt."""
+    ps = [p for ex in rows for p in (ex.get("passages") or []) if p.get("text")]
+    rng.shuffle(ps)
+    return [{"id": p.get("id"), "source": p.get("source", ""), "text": p["text"]} for p in ps[:n]]
+
+
+def serving_eval(evals, seed=0, pad_to=SERVING_EVAL_PASSAGES):
+    """The first split as olo-answer would show it: every row relabelled p1..pK in a shuffled order and padded
+    with passages from other eval rows to pad_to. Fixed seed, so every version is scored on the same prompts."""
+    import random as _r
+    rng = _r.Random(seed)
+    pool = distractor_pool(evals, _r.Random(seed + 1), n=len(evals) * 3)
+    return [serving_view(ex, rng, pool, pad_to=pad_to) for ex in evals]

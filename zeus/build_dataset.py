@@ -1265,6 +1265,7 @@ def main():
     ap.add_argument("--no-hard-negatives", action="store_true", help=f"leave out the {HARD_NEGATIVES_VERSION} contrastive train negatives (train only; eval is never affected)")
     ap.add_argument("--no-compose", action="store_true", help="leave out the compose-v2 train examples (two-passage claims, century and decade paraphrases; train only)")
     ap.add_argument("--no-longdoc", action="store_true", help="leave out the longdoc-v1 train examples (claims inside long documents; train only)")
+    ap.add_argument("--no-restate", action="store_true", help="leave out the restate-v1 train examples (supported claims restated in other words; train only)")
     ap.add_argument("--keep-malformed-names", action="store_true", help="keep the rule-made name contradictions that are not a name swap in train (dropped since 2026-11-23; see drop_malformed_name_edits)")
     ap.add_argument("--snapshot", nargs="?", const=SNAPSHOT_URL, metavar="PATH_OR_URL",
                     help=f"build offline from the snapshot branch's commons.json (a local copy or a URL) instead of the live Commons; with no value, download {SNAPSHOT_URL}")
@@ -1288,6 +1289,8 @@ def main():
     hard = [] if args.no_hard_negatives else add_hard_negatives(data["train"], atoms, args.eval_share)
     composed = [] if args.no_compose else add_composed_train(data["train"], atoms, args.eval_share)
     longdocs = [] if args.no_longdoc else add_longdoc_train(data["train"], atoms, args.eval_share)
+    import restate
+    restated = [] if args.no_restate else restate.add_restated(data["train"])
     data["eval2"] = build_eval2(atoms, args.eval_share)
     name_dropped, name_reasons = 0, {}
     if not args.keep_malformed_names:
@@ -1319,6 +1322,8 @@ def main():
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_compose else [compose.COMPOSE_VERSION])
     import longdoc
     meta["train_generators"] = meta["train_generators"] + ([] if args.no_longdoc else [longdoc.LONGDOC_VERSION])
+    meta["train_generators"] = meta["train_generators"] + ([] if args.no_restate else [restate.RESTATE_VERSION])
+    meta["train_restated_by_kind"] = {k: sum(1 for ex in restated if ex["kind"] == k) for k in sorted({ex["kind"] for ex in restated})}
     meta["train_filters"] = [] if args.keep_malformed_names else ["name-check-v1"]
     meta["train_dropped_malformed_name"] = {"rows": name_dropped, "by_reason": name_reasons}
     meta["train_hard_by_kind"] = {k: sum(1 for ex in hard if ex["kind"] == k) for k in sorted({ex["kind"] for ex in hard})}

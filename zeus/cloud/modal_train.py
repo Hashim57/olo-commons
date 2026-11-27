@@ -126,8 +126,13 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     tok.pad_token = tok.pad_token or tok.eos_token
 
     max_len = 2048
+    # Serving format (recipe.serving_mix): half the rows are shown with olo-answer's passage labels (p1, p2, ...) in a
+    # shuffled order, some padded with unrelated passages from the training rows, so Zeus reads the prompts it is
+    # served with. Seeded by the version. The rows kept for the mistake probe and the pool stay in their stored form.
+    view_rng = _random.Random(recipe.shuffle_seed(version) + 3)
+    served = recipe.serving_mix(focused, view_rng, recipe.distractor_pool(focused, _random.Random(recipe.shuffle_seed(version) + 4)))
     rows = []
-    for ex in focused:
+    for ex in served:
         p = tok.apply_chat_template(recipe.prompt_messages(ex), add_generation_prompt=True)
         a = tok(recipe.render_answer(ex), add_special_tokens=False)["input_ids"] + [tok.eos_token_id]
         rows.append(recipe.mask_labels(p, a, max_len))
@@ -220,7 +225,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                "examples_seen": step * batch * accum, "shuffle_seed": recipe.shuffle_seed(version), "batch": batch * accum, "lr": 2e-4, "lora": recipe.LORA, "minutes": minutes, "system_folded": True,
                # how many of the gold and imported rows the budgeted part of the order held (all of them unless the hour allowed less than PRIORITY_FRONT of the list)
                "priority_rows": sum(priority), "priority_front": recipe.PRIORITY_FRONT, "mistake_pool_rows": len(pool_rows),
-               "rows_available": len(train), "rows_focused": len(focused), "focus_caps": recipe.FOCUS_CAPS,
+               "rows_available": len(train), "rows_focused": len(focused), "focus_caps": recipe.FOCUS_CAPS, "serving_rows": sum(1 for a, b in zip(focused, served) if a is not b), "serving_share": recipe.SERVING_SHARE,
                "priority_seen": sum(1 for pos in range(min(len(order), step * batch * accum)) if focused_priority[order[pos]]) if step < planned_steps else sum(focused_priority)}
     json.dump(report, open(os.path.join(out, "eval.json"), "w"), indent=2)
     json.dump(summary, open(os.path.join(out, "train_summary.json"), "w"), indent=2)
@@ -251,6 +256,17 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
                                    "note": "frozen versioned split: near misses naming everything, relation and before/after flips, modal shifts, two-passage support, decade paraphrases"}
         except Exception as e:
             external["eval_v3"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    # The first split as olo-answer shows it (recipe.serving_eval): passages labelled p1, p2, ... in a shuffled order and
+    # padded to six with other eval passages. v31 scored 0.905 on the first split as stored and lost most of its
+    # evidence live; this is the measurement that would have shown it. promote.py reads it as a floor.
+    if evals:
+        try:
+            sv = recipe.serving_eval(evals)
+            a, _ = run(sv)
+            external["eval_serving"] = {"n": len(sv), **score(sv, a), "well_formed": score_well_formed(sv, a),
+                                        "note": "the first split in olo-answer's form: p-labels, shuffled order, padded to six passages"}
+        except Exception as e:
+            external["eval_serving"] = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
     # Held-out VitaminC dev (Wikipedia revisions, human-written claims): the first number to trust once the rule-made split saturates.
     vit = load(os.path.join(data, "imported", "vitaminc-eval.jsonl"))
     if vit:
@@ -325,7 +341,7 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
 
 
 @app.local_entrypoint()
-def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 4000, aggrefact_n: int = 600, max_minutes: float = 60.0):
+def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int = 8000, aggrefact_n: int = 600, max_minutes: float = 60.0):
     py = sys.executable
     os.chdir(REPO)
     subprocess.run([py, "zeus/validate_gold.py"], check=True)

@@ -72,15 +72,17 @@ def candidates(out_dir, rows):
         except (OSError, ValueError):
             continue
         ext_path = os.path.join(out_dir, f"zeus-{v}", "eval-external.json")
-        held_out = eval3 = None
+        held_out = eval3 = serving = None
         if os.path.exists(ext_path):
             try:
                 ext = json.load(open(ext_path, encoding="utf-8"))
                 vit, e3 = ext.get("vitaminc_dev") or {}, ext.get("eval_v3") or {}
                 held_out = float(vit["label_accuracy"]) if "label_accuracy" in vit else None
                 eval3 = float(e3["label_accuracy"]) if "label_accuracy" in e3 else None
+                sv = ext.get("eval_serving") or {}
+                serving = float((sv.get("well_formed") or {}).get("label_accuracy", sv.get("label_accuracy"))) if ("label_accuracy" in sv or "well_formed" in sv) else None
             except (OSError, ValueError, TypeError, AttributeError):
-                held_out = eval3 = None
+                held_out = eval3 = serving = None
         # The train generators (rules-v1, hard-v1, compose-v1, ...) the version was built with, as record.py
         # copied them from meta.json into train_summary.json; due.py retrains when the recipe changes.
         gens = None
@@ -94,6 +96,7 @@ def candidates(out_dir, rows):
                     "label_accuracy": float(ev.get("label_accuracy", row["label_accuracy"])), "evidence_hit": float(ev.get("evidence_hit", row["evidence_hit"])),
                     "well_formed_accuracy": well_formed_accuracy(ev, row["label_accuracy"]),
                     "json_valid": ev.get("json_valid"), "eval_n": ev.get("n"), "f1": ev.get("f1"), "held_out_accuracy": held_out, "eval3_accuracy": eval3,
+                    **({"serving_accuracy": serving} if serving is not None else {}),
                     **({"train_generators": gens} if gens else {})})
     return out
 
@@ -108,6 +111,11 @@ def cloudflare_servable(c):
 # Commons eval v3 0.92 against 0.66), and Olo kept serving v16. Above the floor, versions are ranked by the
 # held-out human-written claims (VitaminC dev), then the hard patterns (eval v3), then evidence hit, then age.
 FROZEN_FLOOR = 0.98
+# Since 2026-11-27: a version measured in olo-answer's form (eval-external.json "eval_serving", the first split with
+# p-labels, a shuffled order and six passages; its well_formed score when present) must also reach SERVING_FLOOR.
+# v31 cleared the frozen floor and failed live; this is the gate that would have stopped it. Versions measured
+# before the serving eval existed have no such number and are judged as before.
+SERVING_FLOOR = 0.95
 
 
 def rank_key(c):
@@ -118,7 +126,9 @@ def rank_key(c):
     e3 = c.get("eval3_accuracy")
     honest = c.get("well_formed_accuracy")
     honest = c["label_accuracy"] if honest is None else honest
-    return (honest >= FROZEN_FLOOR - 1e-9, ho if ho is not None else -1.0, e3 if e3 is not None else -1.0,
+    serving = c.get("serving_accuracy")
+    clears = honest >= FROZEN_FLOOR - 1e-9 and (serving is None or serving >= SERVING_FLOOR - 1e-9)
+    return (clears, ho if ho is not None else -1.0, e3 if e3 is not None else -1.0,
             round(c["label_accuracy"], 3), c["evidence_hit"], int(c["version"][1:]))
 
 
