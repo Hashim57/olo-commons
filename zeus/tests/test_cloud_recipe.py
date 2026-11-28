@@ -282,7 +282,11 @@ def test_a_reproduction_trains_on_the_old_commit_and_is_measured_on_todays_split
     assert repro["v22"]["import_n"] == 1500, "v22 imported 1,500 balanced VitaminC rows"
     # no mistake pool, no focus sampling, no serving views, and the reproduced version's seeds
     assert 'pool_rows = [] if recipe_name' in src and 'list(range(len(train))) if recipe_name' in src and 'list(focused) if recipe_name' in src
-    assert "seed_of = recipe_name or version" in src and "recipe.shuffle_seed(version))" not in src.split("def train_remote")[1].split("probe_indices")[0]
+    assert 'seed_of = recipe_name.split("+")[0] if recipe_name else version' in src and "recipe.shuffle_seed(version))" not in src.split("def train_remote")[1].split("probe_indices")[0]
+    # Ablations (2026-11-28): the same baseline with one of today's directories laid on it, shuffled with the base's seeds.
+    for name, d in (("v22+gold", "gold"), ("v22+vc5k", "imported")):
+        assert repro[name]["commit"] == repro["v22"]["commit"] and repro[name]["import_n"] == 1500 and repro[name]["today"] == [d], name
+    assert 'REPO if d in today else worktree' in src.split("def repro_parts")[1].split("\ndef ")[0]
     # today's splits and held-out dev file go into the payload, the old commit's training data comes from the worktree
     body = src.split("def repro_parts")[1].split("\ndef ")[0]
     assert '"eval.jsonl", "eval2.jsonl", "eval3.jsonl"' in body and "vitaminc-eval.jsonl" in body and "-eval.jsonl" in body

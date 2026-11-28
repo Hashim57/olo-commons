@@ -47,7 +47,7 @@ on:
         description: 'Minutes the optimiser loop may run (0: the whole pass)'
         default: '60'
       recipe:
-        description: 'Reproduce an earlier version from its own training data, e.g. v22 (blank: the current recipe)'
+        description: 'Reproduce an earlier version from its own training data, e.g. v22, or one change on it: v22+gold, v22+vc5k (blank: the current recipe)'
         required: false
         default: ''
 permissions:
