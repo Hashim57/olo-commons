@@ -77,10 +77,32 @@ Deno.test('restingSources rests a source that failed the last four runs, and pro
   assertEquals(Array.from(restingSources(notes, slugs, new Date('2026-11-19T07:33:00Z'))), ['gutenberg']);
   // The run in the first quarter of the hour asks every source, so a recovered source is back within the hour.
   assertEquals(restingSources(notes, slugs, new Date('2026-11-19T08:03:00Z')).size, 0);
-  // One good run in the last four ends the rest.
-  assertEquals(restingSources(['cron', ...notes], slugs, new Date('2026-11-19T07:48:00Z')).size, 0);
+  // One good run does not clear four failures behind it: four of the last six is a rest too (since 28 November 2026).
+  assertEquals(Array.from(restingSources(['cron', ...notes], slugs, new Date('2026-11-19T07:48:00Z'))), ['gutenberg']);
+  // Two good runs still leave four failures in the window of six; three good runs leave three, which is not a rest.
+  assertEquals(Array.from(restingSources(['cron', 'cron', ...notes], slugs, new Date('2026-11-19T07:48:00Z'))), ['gutenberg']);
+  assertEquals(restingSources(['cron', 'cron', 'cron', ...notes], slugs, new Date('2026-11-19T07:48:00Z')).size, 0);
   // Too little history: nobody rests.
   assertEquals(restingSources(notes.slice(0, 3), slugs, new Date('2026-11-19T07:33:00Z')).size, 0);
+});
+
+Deno.test('a source that fails most runs but not four in a row rests as well (gutendex on 28 November 2026)', () => {
+  const slugs = ['gutenberg', 'openalex'];
+  const fail = 'cron errors: gutenberg: Signal timed out.';
+  // The morning of 28 November 2026, newest first: 7 failures in 9 runs, never four in a row.
+  const notes = [fail, fail, fail, 'cron (1 stubs skipped)', fail, 'cron', fail, fail, fail];
+  assertEquals(Array.from(restingSources(notes, slugs, new Date('2026-11-28T12:33:00Z'))), ['gutenberg']);
+  // Only the last six runs that asked the source count: three failures and three answers is not a rest.
+  assertEquals(restingSources([fail, 'cron', fail, 'cron', fail, 'cron', fail, fail, fail], slugs, new Date('2026-11-28T12:33:00Z')).size, 0);
+  // Once it rests, one answered probe wakes it, whatever the window before the rest held.
+  const rested = 'cron (resting after 4 failed runs: gutenberg)';
+  assertEquals(restingSources(['cron', rested, ...notes], slugs, new Date('2026-11-28T13:18:00Z')).size, 0);
+  // A failed probe keeps it resting.
+  assertEquals(Array.from(restingSources([fail, rested, ...notes], slugs, new Date('2026-11-28T13:18:00Z'))), ['gutenberg']);
+  // The runs in which it rested do not count as runs that asked it.
+  assertEquals(Array.from(restingSources([rested, rested, rested, ...notes], slugs, new Date('2026-11-28T13:18:00Z'))), ['gutenberg']);
+  // The probe in the first quarter of the hour still asks everyone.
+  assertEquals(restingSources(notes, slugs, new Date('2026-11-28T13:03:00Z')).size, 0);
 });
 
 Deno.test('the resting clause goes into the run note', () => {
