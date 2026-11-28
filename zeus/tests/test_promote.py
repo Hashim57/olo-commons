@@ -155,16 +155,21 @@ def test_the_command_line_promotes_by_hand_only_a_measured_version_with_a_reason
     best = tmp_path / "BEST.json"
     shutil.copy(os.path.join(zeus, "BEST.json"), best)
     run = lambda *a: subprocess.run([sys.executable, os.path.join(zeus, "promote.py"), "--best", str(best), *a], capture_output=True, text=True)
-    assert run("--version", "v31").returncode != 0, "a reason is required"
+    # The newest measured Cloudflare-servable version: nothing trained after it can outrank the pin, so the automatic
+    # run below has to keep it. Until 2026-11-28 this test pinned v31 and held after v36 (trained later, better on
+    # every key) was measured, because the pin yields to a later version that outranks it, as the test above says.
+    cands = [c for c in promote.candidates(os.path.join(zeus, "out"), promote.measured_rows(os.path.join(zeus, "STATUS.md"))) if promote.cloudflare_servable(c)]
+    newest = max(cands, key=lambda c: int(c["version"][1:]))["version"]
+    assert run("--version", newest).returncode != 0, "a reason is required"
     assert run("--version", "v999", "--reason", "x").returncode != 0, "an unmeasured version is refused"
-    r = run("--version", "v31", "--reason", "Hashim's decision")
+    r = run("--version", newest, "--reason", "Hashim's decision")
     assert r.returncode == 0, r.stderr
     b = json.loads(best.read_text())
-    assert b["version"] == "v31" and b["cloudflare"]["version"] == "v31"
-    assert b["pinned"]["version"] == "v31" and b["pinned"]["reason"] == "Hashim's decision"
+    assert b["version"] == newest and b["cloudflare"]["version"] == newest
+    assert b["pinned"]["version"] == newest and b["pinned"]["reason"] == "Hashim's decision"
     # a later automatic run keeps it
     assert run().returncode == 0
-    assert json.loads(best.read_text())["version"] == "v31"
+    assert json.loads(best.read_text())["version"] == newest
 
 
 def test_a_version_that_fails_in_olo_answers_form_cannot_be_promoted_however_well_it_reads_the_stored_split():

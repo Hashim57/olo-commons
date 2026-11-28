@@ -98,7 +98,8 @@ def train_remote(payload: bytes, version: str, hf_token: str = "", iters_epochs:
     # serving-format views, which v22 did not have, and the shuffle seeds of the version it reproduces.
     pool_rows = [] if recipe_name else load(os.path.join(data, "mistakes", "pool.jsonl"))
     train += pool_rows
-    seed_of = recipe_name or version
+    # An ablation recipe ("v22+gold") shuffles with its base recipe's seeds, so its data is the only difference.
+    seed_of = recipe_name.split("+")[0] if recipe_name else version
     # The gold, imported and mistake rows: under the time budget they always come inside the part of the list a run reads (recipe.budgeted_order).
     priority = [i >= rule_made for i in range(len(train))]
     # Focused training (recipe.focus_indices): every gold, imported, mistake, composed and long-document row, and a
@@ -350,15 +351,31 @@ IMPORT_BOUND_PAIRS = 500
 # from the commit that version trained from, measured on today's splits and held-out sets. Why: since v22 every new
 # generator raised the in-house scores and lowered VitaminC dev (v22 0.733, v34 0.677, v35 0.623), so the first
 # question is whether v22's 0.733 reproduces at all. v22 trained from a8ae4b4 (the commit before 74c6124).
-REPRO = {"v22": {"commit": "a8ae4b4521b2783e9382217b560936ca55fa6163", "import_n": 1500}}
+#
+# Ablations (2026-11-28, after v36 reproduced v22: VitaminC dev 0.713 against 0.733, within the noise of n=300, and
+# the same eval splits byte for byte, no eval atom among the old build's claim atoms): the same v22 baseline with
+# ONE of today's changes laid on it, so each change is measured alone against v36. "v22+gold" trains v22's rows
+# with today's gold files instead of the 248 lines of 15 November (the 200 since are the restatements, name swaps
+# and bounds written from what later versions got wrong). "v22+vc5k" trains v22's rows with today's VitaminC import
+# (5,000 rows weighted toward contradictions and 500 bound pairs) instead of 1,500 balanced rows; the versions
+# since v23 that imported 4,000 or more answered not covered on 35 to 55 of 100 contradicted dev claims, v22 and
+# v36 on 19 and 25. A "+" recipe shuffles with the base recipe's seeds (train_remote: seed_of), so the data is the
+# only difference.
+REPRO = {
+    "v22": {"commit": "a8ae4b4521b2783e9382217b560936ca55fa6163", "import_n": 1500},
+    "v22+gold": {"commit": "a8ae4b4521b2783e9382217b560936ca55fa6163", "import_n": 1500, "today": ["gold"]},
+    "v22+vc5k": {"commit": "a8ae4b4521b2783e9382217b560936ca55fa6163", "import_n": 1500, "today": ["imported"]},
+}
 
 
-def repro_parts(name, worktree):
+def repro_parts(name, worktree, today=()):
     """The payload entries of a reproduction: its training data from the old worktree, the splits and the held-out
-    VitaminC dev file from today's tree, so the numbers compare with every other version's."""
+    VitaminC dev file from today's tree, so the numbers compare with every other version's. A directory named in
+    `today` ("gold" or "imported") is taken from today's tree instead of the worktree: that is the one change an
+    ablation recipe lays on the baseline."""
     parts = [(os.path.join(worktree, "zeus", "data", "train.jsonl"), "zeus/data/train.jsonl")]
     for d in ("gold", "imported"):
-        src = os.path.join(worktree, "zeus", "data", d)
+        src = os.path.join(REPO if d in today else worktree, "zeus", "data", d)
         if os.path.isdir(src):
             for f in sorted(os.listdir(src)):
                 if f.endswith(".jsonl") and not f.endswith("-eval.jsonl"):
@@ -381,12 +398,17 @@ def main(version: str, epochs: float = 1.0, eval_limit: int = 200, import_n: int
         subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--split", "dev", "--n", "300", "--out", "zeus/data/imported/vitaminc-eval.jsonl"], check=False)
         subprocess.run([py, "zeus/build_dataset.py"], check=True)
         spec = REPRO[recipe]
-        worktree = os.path.join("/tmp", f"zeus-repro-{recipe}")
+        today = tuple(spec.get("today", ()))
+        if "imported" in today:
+            # Today's import, exactly as the current recipe makes it (below), into today's tree.
+            subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--n", str(import_n),
+                            "--shares", IMPORT_SHARES, "--bound", str(IMPORT_BOUND_PAIRS)], check=False)
+        worktree = os.path.join("/tmp", f"zeus-repro-{recipe.split('+')[0]}")
         subprocess.run(["git", "fetch", "-q", "--unshallow"], check=False)
         subprocess.run(["git", "worktree", "add", "-f", worktree, spec["commit"]], check=True)
         subprocess.run([py, "zeus/import_corpora.py", "--corpus", "vitaminc", "--n", str(spec["import_n"])], cwd=worktree, check=False)
         subprocess.run([py, "zeus/build_dataset.py"], cwd=worktree, check=True)
-        parts = repro_parts(recipe, worktree)
+        parts = repro_parts(recipe, worktree, today)
         parts += [("zeus/eval.py", "zeus/eval.py"), ("zeus/quality.py", "zeus/quality.py"), ("zeus/train_lora.py", "zeus/train_lora.py"), ("zeus/cloud/recipe.py", "zeus/cloud/recipe.py")]
         _finish(version, _tar(parts), epochs, eval_limit, aggrefact_n, max_minutes, recipe)
         return
